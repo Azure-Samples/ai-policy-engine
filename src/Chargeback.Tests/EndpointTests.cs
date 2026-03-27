@@ -696,36 +696,6 @@ public class EndpointTests : IClassFixture<ChargebackApiFactory>
     }
 
     [Fact]
-    public async Task GetLogs_ReturnsAggregatedLogs()
-    {
-        // Seed billing summary in Cosmos mock for the current period
-        var period = $"{DateTime.UtcNow:yyyy-MM}";
-        var summaries = new List<BillingSummaryDocument>
-        {
-            new()
-            {
-                Id = $"logs-client:gpt-4o:{period}",
-                ClientAppId = "logs-client",
-                TenantId = "tenant-logs",
-                DeploymentId = "gpt-4o",
-                Model = "gpt-4o",
-                BillingPeriod = period,
-                TotalTokens = 150,
-            }
-        };
-        _factory.AuditStore.GetBillingSummariesAsync(period, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(summaries));
-
-        var response = await _client.GetAsync("/logs");
-        response.EnsureSuccessStatusCode();
-
-        var payload = await response.Content.ReadFromJsonAsync<LogsResponse>(JsonOpts);
-        Assert.NotNull(payload);
-        Assert.Single(payload.AggregatedLogs);
-        Assert.Equal("logs-client", payload.AggregatedLogs[0].ClientAppId);
-    }
-
-    [Fact]
     public async Task GetRequestLogs_ReturnsEntriesAndDisplayName()
     {
         SeedClientAssignment("trace-client", "trace-plan", "Trace Client");

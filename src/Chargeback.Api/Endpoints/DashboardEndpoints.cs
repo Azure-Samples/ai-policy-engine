@@ -17,12 +17,6 @@ public static class DashboardEndpoints
             .RequireAuthorization()
             .Produces<UsageSummaryResponse>();
 
-        routes.MapGet("/logs", GetLogs)
-            .WithName("GetLogs")
-            .WithDescription("Legacy: Fetch all cached log data with calculated costs")
-            .RequireAuthorization()
-            .Produces<LogsResponse>();
-
         routes.MapGet("/api/logs", GetRequestLogs)
             .WithName("GetRequestLogs")
             .WithDescription("Fetch individual request log entries from trace records")
@@ -62,22 +56,6 @@ public static class DashboardEndpoints
         }
     }
 
-    private static async Task<IResult> GetLogs(
-        ILogDataService logDataService,
-        ILogger<LogsResponse> logger)
-    {
-        try
-        {
-            var logs = await logDataService.GetBillingPeriodSummariesAsync(logger);
-            return Results.Json(new LogsResponse { AggregatedLogs = logs }, JsonConfig.Default);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error fetching logs");
-            return Results.Json(new { error = "Failed to fetch logs" }, statusCode: StatusCodes.Status500InternalServerError);
-        }
-    }
-
     private static async Task<IResult> GetRequestLogs(
         ILogDataService logDataService,
         ILogger<RequestLogsResponse> logger)
@@ -105,7 +83,7 @@ public static class DashboardEndpoints
         try
         {
             var logs = await logDataService.GetBillingPeriodSummariesAsync(logger);
-            var totalChargeback = logs.Sum(l => decimal.Parse(l.TotalCost));
+            var totalChargeback = logs.Sum(l => decimal.Parse(l.TotalCost, System.Globalization.CultureInfo.InvariantCulture));
 
             return Results.Json(new ChargebackResponse
             {

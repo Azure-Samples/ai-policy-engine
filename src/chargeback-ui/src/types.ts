@@ -18,10 +18,6 @@ export interface LogEntry {
 // Preferred name going forward — same shape as LogEntry
 export type UsageSummary = LogEntry;
 
-export interface LogsResponse {
-  aggregatedLogs: LogEntry[];
-}
-
 export interface UsageSummaryResponse {
   usageSummaries: UsageSummary[];
 }

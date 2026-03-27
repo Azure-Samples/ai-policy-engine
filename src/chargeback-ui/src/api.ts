@@ -1,6 +1,6 @@
 import { InteractionRequiredAuthError, PublicClientApplication, type SilentRequest } from "@azure/msal-browser";
 import { msalConfig, loginRequest } from "./auth/msalConfig";
-import type { LogsResponse, ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse } from "./types";
+import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -67,12 +67,6 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   }
   const res = await fetch(url, { ...options, headers });
   return res;
-}
-
-export async function fetchLogs(): Promise<LogsResponse> {
-  const res = await authFetch(`${API_BASE}/logs`);
-  if (!res.ok) throw new Error(`Failed to fetch logs: ${res.statusText}`);
-  return res.json();
 }
 
 export async function fetchUsageSummary(): Promise<UsageSummaryResponse> {
