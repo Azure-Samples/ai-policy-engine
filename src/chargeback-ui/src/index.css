@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-border: hsl(20 6% 90%);
+  --color-input: hsl(20 6% 90%);
+  --color-ring: hsl(206 100% 42%);
+  --color-background: hsl(30 14% 97%);
+  --color-foreground: hsl(20 6% 10%);
+  --color-primary: hsl(206 100% 42%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(20 5% 96%);
+  --color-secondary-foreground: hsl(20 6% 10%);
+  --color-destructive: hsl(358 65% 51%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+  --color-muted: hsl(20 5% 96%);
+  --color-muted-foreground: hsl(20 4% 46%);
+  --color-accent: hsl(210 68% 92%);
+  --color-accent-foreground: hsl(208 100% 31%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(20 6% 10%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(20 6% 10%);
+  --radius: 0.5rem;
+  --font-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.dark {
+  --color-border: hsl(24 3% 20%);
+  --color-input: hsl(24 3% 20%);
+  --color-ring: hsl(199 100% 65%);
+  --color-background: hsl(20 3% 12%);
+  --color-foreground: hsl(30 10% 96%);
+  --color-primary: hsl(199 100% 65%);
+  --color-primary-foreground: hsl(20 3% 12%);
+  --color-secondary: hsl(24 3% 20%);
+  --color-secondary-foreground: hsl(30 10% 96%);
+  --color-destructive: hsl(358 65% 40%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-muted: hsl(24 3% 20%);
+  --color-muted-foreground: hsl(24 5% 64%);
+  --color-accent: hsl(210 40% 20%);
+  --color-accent-foreground: hsl(199 100% 65%);
+  --color-popover: hsl(20 3% 12%);
+  --color-popover-foreground: hsl(30 10% 96%);
+  --color-card: hsl(24 3% 19%);
+  --color-card-foreground: hsl(30 10% 96%);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}

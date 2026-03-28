@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore src/Chargeback.slnx
+
+      - name: Build
+        run: dotnet build src/Chargeback.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test src/Chargeback.Tests/Chargeback.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Check for vulnerable packages
+        run: |
+          dotnet list src/Chargeback.slnx package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -qi "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::Vulnerable packages detected!"
+            exit 1
+          fi

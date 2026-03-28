@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.vs/
+**/.vscode/
+**/Chargeback.Tests/
+**/Chargeback.AppHost/
+*.slnx
+*.sln
+*.md
+.gitignore

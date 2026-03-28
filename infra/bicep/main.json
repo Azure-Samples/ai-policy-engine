@@ -1,0 +1,2810 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "16050678372111220882"
+    }
+  },
+  "parameters": {
+    "apimInstanceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the API Management instance."
+      }
+    },
+    "oaiApiName": {
+      "type": "string"
+    },
+    "funcApiName": {
+      "type": "string"
+    },
+    "containerAppName": {
+      "type": "string",
+      "defaultValue": "ca-chargeback",
+      "metadata": {
+        "description": "Name of the Container App for the .NET chargeback API."
+      }
+    },
+    "containerAppEnvName": {
+      "type": "string",
+      "defaultValue": "cae-chargeback",
+      "metadata": {
+        "description": "Name of the Container App Environment."
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "defaultValue": "mcr.microsoft.com/dotnet/aspnet:10.0",
+      "metadata": {
+        "description": "Container image for the chargeback API."
+      }
+    },
+    "keyVaultName": {
+      "type": "string"
+    },
+    "redisCacheName": {
+      "type": "string"
+    },
+    "cosmosAccountName": {
+      "type": "string"
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string"
+    },
+    "appInsightsName": {
+      "type": "string",
+      "defaultValue": "ai-chargeback",
+      "metadata": {
+        "description": "Name of the Application Insights resource."
+      }
+    },
+    "workbookDisplayName": {
+      "type": "string",
+      "defaultValue": "Chargeback Log Analytics Dashboard",
+      "metadata": {
+        "description": "Display name for the Azure Monitor workbook dashboard."
+      }
+    },
+    "purviewClientAppId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Purview client app ID for Agent 365 integration (leave empty to skip)."
+      }
+    },
+    "entraIdTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Entra ID tenant ID for JWT validation."
+      }
+    },
+    "containerAppClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Container App Entra ID app registration client ID. APIM uses this as the audience when acquiring managed identity tokens for the Container App."
+      }
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "ACR login server for Container App image pull (e.g. myacr.azurecr.io)."
+      }
+    },
+    "acrUsername": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "ACR admin username."
+      }
+    },
+    "acrPassword": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "ACR admin password."
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 24
+    },
+    "workloadName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "metadata": {
+        "description": "Name of the workload which is used to generate a short unique hash used in all resources."
+      }
+    },
+    "aiServiceName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional explicit Azure AI Services account name (leave empty to auto-generate)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "Primary location for all resources."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {
+        "WorkloadName": "[parameters('workloadName')]",
+        "Environment": "Dev"
+      },
+      "metadata": {
+        "description": "Tags for all resources."
+      }
+    }
+  },
+  "variables": {
+    "$fxv#0": {
+      "ai": {
+        "aiSearch": "srch-",
+        "aiSearchIndex": "aisrchix-",
+        "aiServices": "aisrv-",
+        "aiVideoIndexer": "avi-",
+        "machineLearningWorkspace": "mlw-",
+        "openAIService": "oai-",
+        "botService": "bot-",
+        "computerVision": "cv-",
+        "contentModerator": "cm-",
+        "contentSafety": "cs-",
+        "customVisionPrediction": "cstv-",
+        "customVisionTraining": "cstvt-",
+        "documentIntelligence": "di-",
+        "faceApi": "face-",
+        "healthInsights": "hi-",
+        "immersiveReader": "ir-",
+        "languageService": "lang-",
+        "speechService": "spch-",
+        "translator": "trsl-",
+        "aiHub": "aih-",
+        "aiHubProject": "aihp-"
+      },
+      "analytics": {
+        "analysisServicesServer": "as",
+        "databricksWorkspace": "dbw-",
+        "dataExplorerCluster": "dec",
+        "dataExplorerClusterDatabase": "dedb",
+        "dataFactory": "adf-",
+        "digitalTwin": "dt-",
+        "streamAnalytics": "asa-",
+        "synapseAnalyticsPrivateLinkHub": "synplh-",
+        "synapseAnalyticsSQLDedicatedPool": "syndp",
+        "synapseAnalyticsSparkPool": "synsp",
+        "synapseAnalyticsWorkspaces": "synw",
+        "dataLakeStoreAccount": "dls",
+        "dataLakeAnalyticsAccount": "dla",
+        "eventHubsNamespace": "evhns-",
+        "eventHub": "evh-",
+        "eventGridDomain": "evgd-",
+        "eventGridSubscriptions": "evgs-",
+        "eventGridTopic": "evgt-",
+        "eventGridSystemTopic": "egst-",
+        "hdInsightHadoopCluster": "hadoop-",
+        "hdInsightHBaseCluster": "hbase-",
+        "hdInsightKafkaCluster": "kafka-",
+        "hdInsightSparkCluster": "spark-",
+        "hdInsightStormCluster": "storm-",
+        "hdInsightMLServicesCluster": "mls-",
+        "iotHub": "iot-",
+        "provisioningServices": "provs-",
+        "provisioningServicesCertificate": "pcert-",
+        "powerBIEmbedded": "pbi-",
+        "timeSeriesInsightsEnvironment": "tsi-"
+      },
+      "compute": {
+        "appServiceEnvironment": "ase-",
+        "appServicePlan": "asp-",
+        "loadTesting": "lt-",
+        "availabilitySet": "avail-",
+        "arcEnabledServer": "arcs-",
+        "arcEnabledKubernetesCluster": "arck",
+        "batchAccounts": "ba-",
+        "cloudService": "cld-",
+        "communicationServices": "acs-",
+        "diskEncryptionSet": "des",
+        "functionApp": "func-",
+        "gallery": "gal",
+        "hostingEnvironment": "host-",
+        "imageTemplate": "it-",
+        "managedDiskOS": "osdisk",
+        "managedDiskData": "disk",
+        "notificationHubs": "ntf-",
+        "notificationHubsNamespace": "ntfns-",
+        "proximityPlacementGroup": "ppg-",
+        "restorePointCollection": "rpc-",
+        "snapshot": "snap-",
+        "staticWebApp": "stapp-",
+        "virtualMachine": "vm",
+        "virtualMachineScaleSet": "vmss-",
+        "virtualMachineMaintenanceConfiguration": "mc-",
+        "virtualMachineStorageAccount": "stvm",
+        "webApp": "app-"
+      },
+      "containers": {
+        "aksCluster": "aks-",
+        "aksSystemNodePool": "npsystem-",
+        "aksUserNodePool": "np-",
+        "containerApp": "ca-",
+        "containerAppsEnvironment": "cae-",
+        "containerRegistry": "cr",
+        "containerInstance": "ci",
+        "serviceFabricCluster": "sf-",
+        "serviceFabricManagedCluster": "sfmc-"
+      },
+      "databases": {
+        "cosmosDBDatabase": "cosmos-",
+        "cosmosDBApacheCassandra": "coscas-",
+        "cosmosDBMongoDB": "cosmon-",
+        "cosmosDBNoSQL": "cosno-",
+        "cosmosDBTable": "costab-",
+        "cosmosDBGremlin": "cosgrm-",
+        "cosmosDBPostgreSQL": "cospos-",
+        "cacheForRedis": "redis-",
+        "sqlDatabaseServer": "sql-",
+        "sqlDatabase": "sqldb-",
+        "sqlElasticJobAgent": "sqlja-",
+        "sqlElasticPool": "sqlep-",
+        "mariaDBServer": "maria-",
+        "mariaDBDatabase": "mariadb-",
+        "mySQLDatabase": "mysql-",
+        "postgreSQLDatabase": "psql-",
+        "sqlServerStretchDatabase": "sqlstrdb-",
+        "sqlManagedInstance": "sqlmi-"
+      },
+      "developerTools": {
+        "appConfigurationStore": "appcs-",
+        "mapsAccount": "map-",
+        "signalR": "sigr",
+        "webPubSub": "wps-"
+      },
+      "devOps": {
+        "managedGrafana": "amg-"
+      },
+      "integration": {
+        "apiManagementService": "apim-",
+        "integrationAccount": "ia-",
+        "logicApp": "logic-",
+        "serviceBusNamespace": "sbns-",
+        "serviceBusQueue": "sbq-",
+        "serviceBusTopic": "sbt-",
+        "serviceBusTopicSubscription": "sbts-"
+      },
+      "managementGovernance": {
+        "automationAccount": "aa-",
+        "applicationInsights": "appi-",
+        "monitorActionGroup": "ag-",
+        "monitorDataCollectionRules": "dcr-",
+        "monitorAlertProcessingRule": "apr-",
+        "blueprint": "bp-",
+        "blueprintAssignment": "bpa-",
+        "dataCollectionEndpoint": "dce-",
+        "logAnalyticsWorkspace": "log-",
+        "logAnalyticsQueryPacks": "pack-",
+        "managementGroup": "mg-",
+        "purviewInstance": "pview-",
+        "resourceGroup": "rg-",
+        "templateSpecsName": "ts-"
+      },
+      "migration": {
+        "migrateProject": "migr-",
+        "databaseMigrationService": "dms-",
+        "recoveryServicesVault": "rsv-"
+      },
+      "networking": {
+        "applicationGateway": "agw-",
+        "applicationSecurityGroup": "asg-",
+        "cdnProfile": "cdnp-",
+        "cdnEndpoint": "cdne-",
+        "connections": "con-",
+        "dnsForwardingRuleset": "dnsfrs-",
+        "dnsPrivateResolver": "dnspr-",
+        "dnsPrivateResolverInboundEndpoint": "in-",
+        "dnsPrivateResolverOutboundEndpoint": "out-",
+        "firewall": "afw-",
+        "firewallPolicy": "afwp-",
+        "expressRouteCircuit": "erc-",
+        "expressRouteGateway": "ergw-",
+        "frontDoorProfile": "afd-",
+        "frontDoorEndpoint": "fde-",
+        "frontDoorFirewallPolicy": "fdfp-",
+        "ipGroups": "ipg-",
+        "loadBalancerInternal": "lbi-",
+        "loadBalancerExternal": "lbe-",
+        "loadBalancerRule": "rule-",
+        "localNetworkGateway": "lgw-",
+        "natGateway": "ng-",
+        "networkInterface": "nic-",
+        "networkSecurityGroup": "nsg-",
+        "networkSecurityGroupSecurityRules": "nsgsr-",
+        "networkWatcher": "nw-",
+        "privateLink": "pl-",
+        "privateEndpoint": "pep-",
+        "publicIPAddress": "pip-",
+        "publicIPAddressPrefix": "ippre-",
+        "routeFilter": "rf-",
+        "routeServer": "rtserv-",
+        "routeTable": "rt-",
+        "serviceEndpointPolicy": "se-",
+        "trafficManagerProfile": "traf-",
+        "userDefinedRoute": "udr-",
+        "virtualNetwork": "vnet-",
+        "virtualNetworkGateway": "vgw-",
+        "virtualNetworkManager": "vnm-",
+        "virtualNetworkPeering": "peer-",
+        "virtualNetworkSubnet": "snet-",
+        "virtualWAN": "vwan-",
+        "virtualWANHub": "vhub-"
+      },
+      "security": {
+        "bastion": "bas-",
+        "keyVault": "kv-",
+        "keyVaultManagedHSM": "kvmhsm-",
+        "managedIdentity": "id-",
+        "sshKey": "sshkey-",
+        "vpnGateway": "vpng-",
+        "vpnConnection": "vcn-",
+        "vpnSite": "vst-",
+        "webApplicationFirewallPolicy": "waf",
+        "webApplicationFirewallPolicyRuleGroup": "wafrg"
+      },
+      "storage": {
+        "storSimple": "ssimp",
+        "backupVault": "bvault-",
+        "backupVaultPolicy": "bkpol-",
+        "fileShare": "share-",
+        "storageAccount": "st",
+        "storageSyncService": "sss-"
+      },
+      "virtualDesktop": {
+        "labServicesPlan": "lp-",
+        "virtualDesktopHostPool": "vdpool-",
+        "virtualDesktopApplicationGroup": "vdag-",
+        "virtualDesktopWorkspace": "vdws-",
+        "virtualDesktopScalingPlan": "vdscaling-"
+      }
+    },
+    "$fxv#1": {
+      "general": {
+        "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+        "owner": "8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+        "reader": "acdd72a7-3385-48ef-bd42-f606fba81ae7",
+        "roleBasedAccessControlAdministrator": "f58310d9-a9f6-439a-9e8d-f62e7b41a168",
+        "userAccessAdministrator": "18d7d88d-d35e-4fb5-a5c3-7773c20a72d9"
+      },
+      "compute": {
+        "classicVirtualMachineContributor": "d73bb868-a0df-4d4d-bd69-98a00b01fccb",
+        "dataOperatorForManagedDisks": "959f8984-c045-4866-89c7-12bf9737be2e",
+        "desktopVirtualizationApplicationGroupContributor": "86240b0e-9422-4c43-887b-b61143f32ba8",
+        "desktopVirtualizationApplicationGroupReader": "aebf23d0-b568-4e86-b8f9-fe83a2c6ab55",
+        "desktopVirtualizationContributor": "082f0a83-3be5-4ba1-904c-961cca79b387",
+        "desktopVirtualizationHostPoolContributor": "e307426c-f9b6-4e81-87de-d99efb3c32bc",
+        "desktopVirtualizationHostPoolReader": "ceadfde2-b300-400a-ab7b-6143895aa822",
+        "desktopVirtualizationReader": "49a72310-ab8d-41df-bbb0-79b649203868",
+        "desktopVirtualizationSessionHostOperator": "2ad6aaab-ead9-4eaa-8ac5-da422f562408",
+        "desktopVirtualizationUser": "1d18fff3-a72a-46b5-b4a9-0b38a3cd7e63",
+        "desktopVirtualizationUserSessionOperator": "ea4bfff8-7fb4-485a-aadd-d4129a0ffaa6",
+        "desktopVirtualizationWorkspaceContributor": "21efdde3-836f-432b-bf3d-3e8e734d4b2b",
+        "desktopVirtualizationWorkspaceReader": "0fa44ee9-7a7d-466b-9bb2-2bf446b1204d",
+        "diskBackupReader": "3e5e47e6-65f7-47ef-90b5-e5dd4d455f24",
+        "diskPoolOperator": "60fc6e62-5479-42d4-8bf4-67625fcc2840",
+        "diskRestoreOperator": "b50d9833-a0cb-478e-945f-707fcc997c13",
+        "diskSnapshotContributor": "7efff54f-a5b4-42b5-a1c5-5411624893ce",
+        "virtualMachineAdministratorLogin": "1c0163c0-47e6-4577-8991-ea5c82e286e4",
+        "virtualMachineContributor": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c",
+        "virtualMachineDataAccessAdministrator": "66f75aeb-eabe-4b70-9f1e-c350c4c9ad04",
+        "virtualMachineLocalUserLogin": "602da2ba-a5c2-41da-b01d-5360126ab525",
+        "virtualMachineUserLogin": "fb879df8-f326-4884-b1cf-06f3ad86be52",
+        "windowsAdminCenterAdministratorLogin": "a6333a3e-0164-44c3-b281-7a577aff287f"
+      },
+      "networking": {
+        "azureFrontDoorDomainContributor": "0ab34830-df19-4f8c-b84e-aa85b8afa6e8",
+        "azureFrontDoorDomainReader": "0f99d363-226e-4dca-9920-b807cf8e1a5f",
+        "azureFrontDoorProfileReader": "662802e2-50f6-46b0-aed2-e834bacc6d12",
+        "azureFrontDoorSecretReader": "0db238c4-885e-4c4f-a933-aa2cef684fca",
+        "cdnEndpointContributor": "426e0c7f-0c7e-4658-b36f-ff54d6c29b45",
+        "cdnEndpointReader": "871e35f6-b5c1-49cc-a043-bde969a0f2cd",
+        "cdnProfileContributor": "ec156ff8-a8d1-4d15-830c-5b80698ca432",
+        "cdnProfileReader": "8f96442b-4075-438f-813d-ad51ab4019af",
+        "classicNetworkContributor": "b34d265f-36f7-4a0d-a4d4-e158ca92e90f",
+        "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+        "networkContributor": "4d97b98b-1d4f-4787-a291-c67834d212e7",
+        "privateDNSZoneContributor": "b12aa53e-6015-4669-85d0-8515ebb3ae7f",
+        "trafficManagerContributor": "a4b10055-b0c7-44c2-b00f-c7b5b3550cf7"
+      },
+      "storage": {
+        "avereContributor": "4f8fab4f-1852-4a58-a46a-8eaf358af14a",
+        "avereOperator": "c025889f-8102-4ebf-b32c-fc0c6f0c6bd9",
+        "backupContributor": "5e467623-bb1f-42f4-a55d-6e525e11384b",
+        "backupOperator": "00c29273-979b-4161-815c-10b084fb9324",
+        "backupReader": "a795c7a0-d4a2-40c1-ae25-d81f01202912",
+        "classicStorageAccountContributor": "86e8f5dc-a6e9-4c67-9d15-de283e8eac25",
+        "classicStorageAccountKeyOperatorServiceRole": "985d6b00-f706-48f5-a6fe-d0ca12fb668d",
+        "dataBoxContributor": "add466c9-e687-43fc-8d98-dfcf8d720be5",
+        "dataBoxReader": "028f4ed7-e2a9-465e-a8f4-9c0ffdfdc027",
+        "dataLakeAnalyticsDeveloper": "47b7735b-770e-4598-a7da-8b91488b4c88",
+        "defenderForStorageDataScanner": "1e7ca9b1-60d1-4db8-a914-f2ca1ff27c40",
+        "elasticSANOwner": "80dcbedb-47ef-405d-95bd-188a1b4ac406",
+        "elasticSANReader": "af6a70f8-3c9f-4105-acf1-d719e9fca4ca",
+        "elasticSANVolumeGroupOwner": "a8281131-f312-4f34-8d98-ae12be9f0d23",
+        "readerAndDataAccess": "c12c1c16-33a1-487b-954d-41c89c60f349",
+        "storageAccountBackupContributor": "e5e2a7ff-d759-4cd2-bb51-3152d37e2eb1",
+        "storageAccountContributor": "17d1049b-9a84-46fb-8f53-869881c3d3ab",
+        "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+        "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+        "storageBlobDataOwner": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
+        "storageBlobDataReader": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
+        "storageBlobDelegator": "db58b8e5-c6ad-4a2a-8342-4190687cbf4a",
+        "storageFileDataPrivilegedContributor": "69566ab7-960f-475b-8e7c-b3118f30c6bd",
+        "storageFileDataPrivilegedReader": "b8eda974-7b85-4f76-af95-65846b26df6d",
+        "storageFileDataSMBShareContributor": "0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb",
+        "storageFileDataSMBShareElevatedContributor": "a7264617-510b-434b-a828-9731dc254ea7",
+        "storageFileDataSMBShareReader": "aba4ae5f-2193-4029-9191-0cb91df5e314",
+        "storageQueueDataContributor": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
+        "storageQueueDataMessageProcessor": "8a0f0c08-91a1-4084-bc3d-661d67233fed",
+        "storageQueueDataMessageSender": "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",
+        "storageQueueDataReader": "19e7f393-937e-4f77-808e-94535e297925",
+        "storageTableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
+        "storageTableDataReader": "76199698-9eea-4c19-bc75-cec21354c6b6"
+      },
+      "web": {
+        "azureMapsDataContributor": "8f5e0ce6-4f7b-4dcf-bddf-e6f48634a204",
+        "azureMapsDataReader": "423170ca-a8f6-4b0f-8487-9e4eb8f49bfa",
+        "azureSpringCloudConfigServerContributor": "a06f5c24-21a7-4e1a-aa2b-f19eb6684f5b",
+        "azureSpringCloudConfigServerReader": "d04c6db6-4947-4782-9e91-30a88feb7be7",
+        "azureSpringCloudDataReader": "b5537268-8956-4941-a8f0-646150406f0c",
+        "azureSpringCloudServiceRegistryContributor": "f5880b48-c26d-48be-b172-7927bfa1c8f1",
+        "azureSpringCloudServiceRegistryReader": "cff1b556-2399-4e7e-856d-a8f754be7b65",
+        "mediaServicesAccountAdministrator": "054126f8-9a2b-4f1c-a9ad-eca461f08466",
+        "mediaServicesLiveEventsAdministrator": "532bc159-b25e-42c0-969e-a1d439f60d77",
+        "mediaServicesMediaOperator": "e4395492-1534-4db2-bedf-88c14621589c",
+        "mediaServicesPolicyAdministrator": "c4bba371-dacd-4a26-b320-7250bca963ae",
+        "mediaServicesStreamingEndpointsAdministrator": "99dba123-b5fe-44d5-874c-ced7199a5804",
+        "signalRAccessKeyReader": "04165923-9d83-45d5-8227-78b77b0a687e",
+        "signalRAppServer": "420fcaa2-552c-430f-98ca-3264be4806c7",
+        "signalRRestAPIOwner": "fd53cd77-2268-407a-8f46-7e7863d0f521",
+        "signalRRestAPIReader": "ddde6b66-c0df-4114-a159-3618637b3035",
+        "signalRServiceOwner": "7e4f1700-ea5a-4f59-8f37-079cfe29dce3",
+        "signalRWebPubSubContributor": "8cf5e20a-e4b2-4e9d-b3a1-5ceb692c2761",
+        "webPlanContributor": "2cc479cb-7b4d-49a8-b449-8c00fd0f0a4b",
+        "websiteContributor": "de139f84-1756-47ae-9be6-808fbbe84772"
+      },
+      "containers": {
+        "acrDelete": "c2f4ef07-c644-48eb-af81-4b1b4947fb11",
+        "acrImageSigner": "6cef56e8-d556-48e5-a04f-b8e64114680f",
+        "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+        "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+        "acrQuarantineReader": "cdda3590-29a3-44f6-95f2-9f980659eb04",
+        "acrQuarantineWriter": "c8d4ff99-41c3-41a8-9f60-21dfdad59608",
+        "azureArcEnabledKubernetesClusterUser": "00493d72-78f6-4148-b6c5-d3ce8e4799dd",
+        "azureArcKubernetesAdmin": "dffb1e0c-446f-4dde-a09f-99eb5cc68b96",
+        "azureArcKubernetesClusterAdmin": "8393591c-06b9-48a2-a542-1bd6b377f6a2",
+        "azureArcKubernetesViewer": "63f0a09d-1495-4db4-a681-037d84835eb4",
+        "azureArcKubernetesWriter": "5b999177-9696-4545-85c7-50de3797e5a1",
+        "azureContainerStorageOperator": "08d4c71a-cc63-4ce4-a9c8-5dd251b4d619",
+        "azureContainerStorageOwner": "95de85bd-744d-4664-9dde-11430bc34793",
+        "aksFleetManagerContributorRole": "63bb64ad-9799-4770-b5c3-24ed299a07bf",
+        "aksFleetManagerRBACAdmin": "434fb43a-c01c-447e-9f67-c3ad923cfaba",
+        "aksFleetManagerRBACClusterAdmin": "18ab4d3d-a1bf-4477-8ad9-8359bc988f69",
+        "aksFleetManagerRBACReader": "30b27cfc-9c84-438e-b0ce-70e35255df80",
+        "aksFleetManagerRBACWriter": "5af6afb3-c06c-4fa4-8848-71a8aee05683",
+        "aksClusterAdminRole": "0ab0b1a8-8aac-4efd-b8c2-3ee1fb270be8",
+        "aksClusterMonitoringUser": "1afdec4b-e479-420e-99e7-f82237c7c5e6",
+        "aksClusterUserRole": "4abbcc35-e782-43d8-92c5-2d3f1bd2253f",
+        "aksContributorRole": "ed7f3fbd-7b88-4dd4-9017-9adb7ce333f8",
+        "aksRBACAdmin": "3498e952-d568-435e-9b2c-8d77e338d7f7",
+        "aksRBACClusterAdmin": "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b",
+        "aksRBACReader": "7f6c6a51-bcf8-42ba-9220-52d62157d7db",
+        "aksRBACWriter": "a7ffa36f-339b-4b5c-8bdf-e2c188b2c0eb",
+        "kubernetesAgentlessOperator": "d5a2ae44-610b-4500-93be-660a0c5f5ca6",
+        "kubernetesClusterAzureArcOnboarding": "34e09817-6cbe-4d01-b1a2-e0eac5743d41",
+        "kubernetesExtensionContributor": "85cb6faf-e071-4c9b-8136-154b5a04f717"
+      },
+      "databases": {
+        "azureConnectedSQLServerOnboarding": "e8113dce-c529-4d33-91fa-e9b972617508",
+        "cosmosDBAccountReaderRole": "fbdf93bf-df7d-467e-a4d2-9458aa1360c8",
+        "cosmosDBOperator": "230815da-be43-4aae-9cb4-875f7bd000aa",
+        "cosmosBackupOperator": "db7b14f2-5adf-42da-9f96-f2ee17bab5cb",
+        "cosmosRestoreOperator": "5432c526-bc82-444a-b7ba-57c5b0b5b34f",
+        "documentDBAccountContributor": "5bd9cd88-fe45-4216-938b-f97437e15450",
+        "redisCacheContributor": "e0f68234-74aa-48ed-b826-c38b57376e17",
+        "sqlDBContributor": "9b7fa17d-e63e-47b0-bb0a-15c516ac86ec",
+        "sqlManagedInstanceContributor": "4939a1f6-9ae0-4e48-a1e0-f2cbe897382d",
+        "sqlSecurityManager": "056cd41c-7e88-42e1-933e-88ba6a50c9c3",
+        "sqlServerContributor": "6d8ee4ec-f05a-4a1d-8b00-a9b17e38b437"
+      },
+      "analytics": {
+        "azureEventHubsDataOwner": "f526a384-b230-433a-b45c-95f59c4a2dec",
+        "azureEventHubsDataReceiver": "a638d3c7-ab3a-418d-83e6-5f17a39d4fde",
+        "azureEventHubsDataSender": "2b629674-e913-4c01-ae53-ef4638d8f975",
+        "dataFactoryContributor": "673868aa-7521-48a0-acc6-0f60742d39f5",
+        "dataPurger": "150f5e0c-0603-4f03-8c7f-cf70034c4e90",
+        "hdInsightClusterOperator": "61ed4efc-fab3-44fd-b111-e24485cc132a",
+        "hdInsightDomainServicesContributor": "8d8d5a11-05d3-4bda-a417-a08778121c7c",
+        "logAnalyticsContributor": "92aaf0da-9dab-42b6-94a3-d43ce8d16293",
+        "logAnalyticsReader": "73c42c96-874c-492b-b04d-ab87d138a893",
+        "schemaRegistryContributor": "5dffeca3-4936-4216-b2bc-10343a5abb25",
+        "schemaRegistryReader": "2c56ea50-c6b3-40a6-83c0-9d98858bc7d2",
+        "streamAnalyticsQueryTester": "1ec5b3c1-b17e-4e25-8312-2acb3c3c5abf"
+      },
+      "ai": {
+        "azureAIDeveloper": "64702f94-c441-49e6-a78b-ef80e0188fee",
+        "azureAIInferenceDeploymentOperator": "3afb7f49-54cb-416e-8c09-6dc049efa503",
+        "azureMLComputeOperator": "e503ece1-11d0-4e8e-8e2c-7a6c3bf38815",
+        "azureMLDataScientist": "f6c7c914-8db3-469d-8ca1-694a8f32e121",
+        "cognitiveServicesContributor": "25fbc0a9-bd7c-42a3-aa1a-3b75d497ee68",
+        "cognitiveServicesCustomVisionContributor": "c1ff6cc2-c111-46fe-8896-e0ef812ad9f3",
+        "cognitiveServicesCustomVisionDeployment": "5c4089e1-6d96-4d2f-b296-c1bc7137275f",
+        "cognitiveServicesCustomVisionLabeler": "88424f51-ebe7-446f-bc41-7fa16989e96c",
+        "cognitiveServicesCustomVisionReader": "93586559-c37d-4a6b-ba08-b9f0940c2d73",
+        "cognitiveServicesCustomVisionTrainer": "0a5ae4ab-0d65-4eeb-be61-29fc9b54394b",
+        "cognitiveServicesDataReader": "b59867f0-fa02-499b-be73-45a86b5b3e1c",
+        "cognitiveServicesFaceRecognizer": "9894cab4-e18a-44aa-828b-cb588cd6f2d7",
+        "cognitiveServicesMetricsAdvisorAdministrator": "cb43c632-a144-4ec5-977c-e80c4affc34a",
+        "cognitiveServicesOpenAIContributor": "a001fd3d-188f-4b5d-821b-7da978bf7442",
+        "cognitiveServicesOpenAIUser": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
+        "cognitiveServicesQnAMakerEditor": "f4cc2bf9-21be-47a1-bdf1-5c5804381025",
+        "cognitiveServicesQnAMakerReader": "466ccd10-b268-4a11-b098-b4849f024126",
+        "cognitiveServicesUsagesReader": "bba48692-92b0-4667-a9ad-c31c7b334ac2",
+        "cognitiveServicesUser": "a97b65f3-24c7-4388-baec-2e87135dc908",
+        "searchIndexDataContributor": "8ebe5a00-799e-43f5-93ac-243d3dce84a7",
+        "searchIndexDataReader": "1407120a-92aa-4202-b7e9-c0e197c71c8f",
+        "searchServiceContributor": "7ca78c08-252a-4471-8644-bb5ff32d4ba0"
+      },
+      "iot": {
+        "azureDigitalTwinsDataOwner": "bcd981a7-7f74-457b-83e1-cceb9e632ffe",
+        "azureDigitalTwinsDataReader": "d57506d4-4c8d-48b1-8587-93c323f6a5a3",
+        "deviceUpdateAdministrator": "02ca0879-e8e4-47a5-a61e-5c618b76e64a",
+        "deviceUpdateContentAdministrator": "0378884a-3af5-44ab-8323-f5b22f9f3c98",
+        "deviceUpdateContentReader": "d1ee9a80-8b14-47f0-bdc2-f4a351625a7b",
+        "deviceUpdateDeploymentsAdministrator": "e4237640-0e3d-4a46-8fda-70bc94856432",
+        "deviceUpdateDeploymentsReader": "49e2f5d2-7741-4835-8efa-19e1fe35e47f",
+        "deviceUpdateReader": "e9dba6fb-3d52-4cf0-bce3-f06ce71b9e0f",
+        "iotHubDataContributor": "4fc6c259-987e-4a07-842e-c321cc9d413f",
+        "iotHubDataReader": "b447c946-2db7-41ec-983d-d8bf3b1c77e3",
+        "iotHubRegistryContributor": "4ea46cd5-c1b2-4a8e-910b-273211f9ce47",
+        "iotHubTwinContributor": "494bdba2-168f-4f31-a0a1-191d2f7c028c"
+      },
+      "mixedReality": {
+        "remoteRenderingAdministrator": "3df8b902-2a6f-47c7-8cc5-360e9b272a7e",
+        "remoteRenderingClient": "d39065c4-c120-43c9-ab0a-63eed9795f0a",
+        "spatialAnchorsAccountContributor": "8bbe83f1-e2a6-4df7-8cb4-4e04d4e5c827",
+        "spatialAnchorsAccountOwner": "70bbe301-9835-447d-afdd-19eb3167307c",
+        "spatialAnchorsAccountReader": "5d51204f-eb77-4b1c-b86a-2ec626c49413"
+      },
+      "integration": {
+        "apiManagementServiceContributor": "312a565d-c81f-4fd8-895a-4e21e48d571c",
+        "apiManagementServiceOperatorRole": "e022efe7-f5ba-4159-bbe4-b44f577e9b61",
+        "apiManagementServiceReaderRole": "71522526-b88f-4d52-b57f-d31fc3546d0d",
+        "apiManagementServiceWorkspaceApiDeveloper": "9565a273-41b9-4368-97d2-aeb0c976a9b3",
+        "apiManagementServiceWorkspaceApiProductManager": "d59a3e9c-6d52-4a5a-aeed-6bf3cf0e31da",
+        "apiManagementWorkspaceApiDeveloper": "56328988-075d-4c6a-8766-d93edd6725b6",
+        "apiManagementWorkspaceApiProductManager": "73c2c328-d004-4c5e-938c-35c6f5679a1f",
+        "apiManagementWorkspaceContributor": "0c34c906-8d99-4cb7-8bb7-33f5b0a1a799",
+        "apiManagementWorkspaceReader": "ef1c2c96-4a77-49e8-b9a4-6179fe1d2fd2",
+        "appConfigurationDataOwner": "5ae67dd6-50cb-40e7-96ff-dc2bfa4b606b",
+        "appConfigurationDataReader": "516239f1-63e1-4d78-a4de-a74fb236a071",
+        "azureApiCenterComplianceManager": "ede9aaa3-4627-494e-be13-4aa7c256148d",
+        "azureApiCenterDataReader": "c7244dfb-f447-457d-b2ba-3999044d1706",
+        "azureApiCenterServiceContributor": "dd24193f-ef65-44e5-8a7e-6fa6e03f7713",
+        "azureApiCenterServiceReader": "6cba8790-29c5-48e5-bab1-c7541b01cb04",
+        "azureRelayListener": "26e0b698-aa6d-4085-9386-aadae190014d",
+        "azureRelayOwner": "2787bf04-f1f5-4bfe-8383-c8a24483ee38",
+        "azureRelaySender": "26baccc8-eea7-41f1-98f4-1762cc7f685d",
+        "azureServiceBusDataOwner": "090c5cfd-751d-490a-894a-3ce6f1109419",
+        "azureServiceBusDataReceiver": "4f6d3b9b-027b-4f4c-9142-0e5a2a2247e0",
+        "azureServiceBusDataSender": "69a216fc-b8fb-44d8-bc22-1f3c2cd27a39",
+        "bizTalkContributor": "5e3c6656-6cfa-4708-81fe-0de47ac73342",
+        "eventGridContributor": "1e241071-0855-49ea-94dc-649edcd759de",
+        "eventGridDataSender": "d5a91429-5739-47e2-a06b-3470a27159e7",
+        "eventGridEventSubscriptionContributor": "428e0ff0-5e57-4d9c-a221-2c70d0e0a443",
+        "eventGridEventSubscriptionReader": "2414bbcf-6497-4faf-8c65-045460748405",
+        "fhirDataContributor": "5a1fc7df-4bf1-4951-a576-89034ee01acd",
+        "fhirDataExporter": "3db33094-8700-4567-8da5-1501d4e7e843",
+        "fhirDataImporter": "4465e953-8ced-4406-a58e-0f6e3f3b530b",
+        "fhirDataReader": "4c8d0bbc-75d3-4935-991f-5f3c56d81508",
+        "fhirDataWriter": "3f88fce4-5892-4214-ae73-ba5294559913",
+        "integrationServiceEnvironmentContributor": "a41e2c5b-bd99-4a07-88f4-9bf657a760b8",
+        "integrationServiceEnvironmentDeveloper": "c7aa55d3-1abb-444a-a5ca-5e51e485d6ec",
+        "intelligentSystemsAccountContributor": "03a6d094-3444-4b3d-88af-7477090a9e5e",
+        "logicAppContributor": "87a39d53-fc1b-424a-814c-f7e04687dc9e",
+        "logicAppOperator": "515c2055-d9d4-4321-b1b9-bd0c9a0f79fe",
+        "logicAppsStandardContributor": "ad710c24-b039-4e85-a019-deb4a06e8570",
+        "logicAppsStandardDeveloper": "523776ba-4eb2-4600-a3c8-f2dc93da4bdb",
+        "logicAppsStandardOperator": "b70c96e9-66fe-4c09-b6e7-c98e69c98555",
+        "logicAppsStandardReader": "4accf36b-2c05-432f-91c8-5c532dff4c73",
+        "schedulerJobCollectionsContributor": "188a0f2f-5c9e-469b-ae67-2aa5ce574b94",
+        "servicesHubOperator": "82200a5b-e217-47a5-b665-6d8765ee745b"
+      },
+      "identity": {
+        "domainServicesContributor": "eeaeda52-9324-47f6-8069-5d5bade478b2",
+        "domainServicesReader": "361898ef-9ed1-48c2-849c-a832951106bb",
+        "managedIdentityContributor": "e40ec5ca-96e0-45a2-b4ff-59039f2c2b59",
+        "managedIdentityOperator": "f1a07417-d97a-45cb-824c-7a7467783830"
+      },
+      "security": {
+        "appComplianceAutomationAdministrator": "0f37683f-2463-46b6-9ce7-9b788b988ba2",
+        "appComplianceAutomationReader": "ffc6bbe0-e443-4c3b-bf54-26581bb2f78e",
+        "attestationContributor": "bbf86eb8-f7b4-4cce-96e4-18cddf81d86e",
+        "attestationReader": "fd1bd22b-8476-40bc-a0bc-69b95687b9f3",
+        "keyVaultAdministrator": "00482a5a-887f-4fb3-b363-3b7fe8e74483",
+        "keyVaultCertificateUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+        "keyVaultCertificatesOfficer": "a4417e6f-fecd-4de8-b567-7b0420556985",
+        "keyVaultContributor": "f25e0fa2-a7c8-4377-a976-54943a77a395",
+        "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+        "keyVaultCryptoServiceEncryptionUser": "e147488a-f6f5-4113-8e2d-b22465e65bf6",
+        "keyVaultCryptoServiceReleaseUser": "08bbd89e-9f13-488c-ac41-acfcb10c90ab",
+        "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+        "keyVaultDataAccessAdministrator": "8b54135c-b56d-4d72-a534-26097cfdc8d8",
+        "keyVaultReader": "21090545-7ca7-4776-b22c-e363652d74d2",
+        "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
+        "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+        "managedHSMContributor": "18500a29-7fe2-46b2-a342-b16a415e101d",
+        "microsoftSentinelAutomationContributor": "f4c81013-99ee-4d62-a7ee-b3f1f648599a",
+        "microsoftSentinelContributor": "ab8e14d6-4a74-4a29-9ba8-549422addade",
+        "microsoftSentinelPlaybookOperator": "51d6186e-6489-4900-b93f-92e23144cca5",
+        "microsoftSentinelReader": "8d289c81-5878-46d4-8554-54e1e3d8b5cb",
+        "microsoftSentinelResponder": "3e150937-b8fe-4cfb-8069-0eaf05ecd056",
+        "securityAdmin": "fb1c8493-542b-48eb-b624-b4c8fea62acd",
+        "securityAssessmentContributor": "612c2aa1-cb24-443b-ac28-3ab7272de6f5",
+        "securityReader": "39bc4728-0917-49c7-9d2c-d95423bc2eb4"
+      },
+      "devOps": {
+        "devTestLabsUser": "76283e04-6283-4c54-8f91-bcf1374a3c64",
+        "labAssistant": "ce40b423-cede-4313-a93f-9b28290b72e1",
+        "labContributor": "5daaa2af-1fe8-407c-9122-bba179798270",
+        "labCreator": "b97fb8bc-a8b2-4522-a38b-dd33c7e65ead",
+        "labOperator": "a36e6959-b6be-4b12-8e9f-ef4b474d304d",
+        "labServicesContributor": "f69b8690-cc87-41d6-b77a-a4bc3c0a966f",
+        "labServicesReader": "2a5c394f-5eb7-4d4f-9c8e-e8eae39faebc",
+        "loadTestContributor": "749a398d-560b-491b-bb21-08924219302e",
+        "loadTestOwner": "45bb0b16-2f0c-4e78-afaa-a07599b003f6",
+        "loadTestReader": "3ae3fb29-0000-4ccd-bf80-542e7b26e081"
+      },
+      "monitor": {
+        "applicationInsightsComponentContributor": "ae349356-3a1b-4a5e-921d-050484c6347e",
+        "applicationInsightsSnapshotDebugger": "08954f03-6346-4c2e-81c0-ec3a5cfae23b",
+        "grafanaAdmin": "22926164-76b3-42b3-bc55-97df8dab3e41",
+        "grafanaEditor": "a79a5197-3a5c-4973-a920-486035ffd60f",
+        "grafanaViewer": "60921a7e-fef1-4a43-9b16-a26c52ad4769",
+        "monitoringContributor": "749f88d5-cbae-40b8-bcfc-e573ddc772fa",
+        "monitoringMetricsPublisher": "3913510d-42f4-4e42-8a64-420c390055eb",
+        "monitoringReader": "43d0d8ad-25c7-4714-9337-8ba259a9fe05",
+        "workbookContributor": "e8ddcd69-c73f-4f9f-9844-4100522f16ad",
+        "workbookReader": "b279062a-9be3-42a0-92ae-8b3cf002ec4d"
+      },
+      "managementGovernance": {
+        "automationContributor": "f353d9bd-d4a6-484e-a77a-8050b599b867",
+        "automationJobOperator": "4fe576fe-1146-4730-92eb-48519fa6bf9f",
+        "automationOperator": "d3881f73-407a-4167-8283-e981cbba0404",
+        "automationRunbookOperator": "5fb5aef8-1081-4b8e-bb16-9d5d0385bab5",
+        "azureConnectedMachineOnboarding": "b64e21ea-ac4e-4cdf-9dc9-5b892992bee7",
+        "azureConnectedMachineResourceAdministrator": "cd570a14-e51a-42ad-bac8-bafd67325302",
+        "azureConnectedMachineResourceManager": "f5819b54-e033-4d82-ac66-4fec3cbf3f4c",
+        "billingReader": "fa23ad8b-c56e-40d8-ac0c-ce449e1d2c64",
+        "blueprintContributor": "41077137-e803-4205-871c-5a86e6a753b4",
+        "blueprintOperator": "437d2ced-4a38-4302-8479-ed2bcb43d090",
+        "carbonOptimizationReader": "fa0d39e6-28e5-40cf-8521-1eb320653a4c",
+        "costManagementContributor": "434105ed-43f6-45c7-a02f-909b2ba83430",
+        "costManagementReader": "72fafb9e-0641-4937-9268-a91bfd8191a3",
+        "hierarchySettingsAdministrator": "350f8d15-c687-4448-8ae1-157740a3936d",
+        "managedApplicationContributorRole": "641177b8-a67a-45b9-a033-47bc880bb21e",
+        "managedApplicationOperatorRole": "c7393b34-138c-406f-901b-d8cf2b17e6ae",
+        "managedApplicationsReader": "b9331d33-8a36-4f8c-b097-4f54124fdb44",
+        "managedServicesRegistrationAssignmentDeleteRole": "91c1777a-f3dc-4fae-b103-61d183457e46",
+        "managementGroupContributor": "5d58bcaf-24a5-4b20-bdb6-eed9f69fbe4c",
+        "managementGroupReader": "ac63b705-f282-497d-ac71-919bf39d939d",
+        "newRelicAPMAccountContributor": "5d28c62d-5b37-4476-8438-e587778df237",
+        "policyInsightsDataWriter": "66bb4e9e-b016-4a94-8249-4c0511c2be84",
+        "quotaRequestOperator": "0e5f05e5-9ab9-446b-b98d-1e2157c94125",
+        "reservationPurchaser": "f7b75c60-3036-4b75-91c3-6b41c27c1689",
+        "reservationsAdministrator": "a8889054-8d42-49c9-bc1c-52486c10e7cd",
+        "reservationsReader": "582fc458-8989-419f-a480-75249bc5db7e",
+        "resourcePolicyContributor": "36243c78-bf99-498c-9df9-86d9f8d28608",
+        "scheduledPatchingContributor": "cd08ab90-6b14-449c-ad9a-8f8e549482c6",
+        "siteRecoveryContributor": "6670b86e-a3f7-4917-ac9b-5d6ab1be4567",
+        "siteRecoveryOperator": "494ae006-db33-4328-bf46-533a6560a3ca",
+        "siteRecoveryReader": "dbaa88c4-0c30-4179-9fb3-46319faa6149",
+        "supportRequestContributor": "cfd33db0-3dd1-45e3-aa9d-cdbdf3b6f24e",
+        "tagContributor": "4a9ae827-6dc8-4573-8ac7-8239d42aa03f",
+        "templateSpecContributor": "1c9b6475-caf0-4164-b5a1-2142a7116f4b",
+        "templateSpecReader": "392ae280-861d-42bd-9ea5-08ee6d83b80e"
+      },
+      "hybrid": {
+        "azureStackRegistrationOwner": "6f12a6df-dd06-4f3e-bcb1-ce8be600526a"
+      }
+    },
+    "abbrs": "[variables('$fxv#0')]",
+    "roles": "[variables('$fxv#1')]",
+    "resourceToken": "[toLower(uniqueString(subscription().id, parameters('workloadName'), parameters('location')))]",
+    "resolvedAiServiceName": "[if(empty(parameters('aiServiceName')), format('{0}{1}', variables('abbrs').ai.aiServices, variables('resourceToken')), toLower(parameters('aiServiceName')))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployKeyVault",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[parameters('keyVaultName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "15964264015551791169"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2021-04-01-preview",
+              "name": "[parameters('keyVaultName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "tenantId": "[subscription().tenantId]",
+                "accessPolicies": []
+              }
+            }
+          ],
+          "outputs": {
+            "keyVaultUri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2021-04-01-preview').vaultUri]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployLogAnalyticsWorkspace",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "18077580272308483573"
+            }
+          },
+          "parameters": {
+            "logAnalyticsWorkspaceName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2021-06-01",
+              "name": "[parameters('logAnalyticsWorkspaceName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployApimInstance",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "apimInstanceName": {
+            "value": "[parameters('apimInstanceName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "9880685636647403153"
+            }
+          },
+          "parameters": {
+            "apimInstanceName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ApiManagement/service",
+              "apiVersion": "2021-08-01",
+              "name": "[parameters('apimInstanceName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "StandardV2",
+                "capacity": 1
+              },
+              "properties": {
+                "publisherEmail": "admin@contoso.com",
+                "publisherName": "Contoso"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              }
+            }
+          ],
+          "outputs": {
+            "name": {
+              "type": "string",
+              "value": "[parameters('apimInstanceName')]"
+            },
+            "clientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apimInstanceName')), '2021-08-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployRedisCache",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "redisCacheName": {
+            "value": "[parameters('redisCacheName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "13210066655456182457"
+            }
+          },
+          "parameters": {
+            "redisCacheName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Cache/redisEnterprise",
+              "apiVersion": "2025-04-01",
+              "name": "[parameters('redisCacheName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "highAvailability": "Disabled",
+                "minimumTlsVersion": "1.2"
+              },
+              "sku": {
+                "name": "Balanced_B0"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              }
+            },
+            {
+              "type": "Microsoft.Cache/redisEnterprise/databases",
+              "apiVersion": "2025-04-01",
+              "name": "[format('{0}/{1}', parameters('redisCacheName'), 'default')]",
+              "properties": {
+                "clientProtocol": "Encrypted",
+                "clusteringPolicy": "OSSCluster",
+                "evictionPolicy": "VolatileLRU",
+                "accessKeysAuthentication": "Disabled",
+                "port": 10000
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cache/redisEnterprise', parameters('redisCacheName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "redisCacheName": {
+              "type": "string",
+              "value": "[parameters('redisCacheName')]"
+            },
+            "redisHostName": {
+              "type": "string",
+              "value": "[format('{0}.{1}.redis.azure.net', parameters('redisCacheName'), parameters('location'))]"
+            },
+            "redisPort": {
+              "type": "int",
+              "value": 10000
+            },
+            "redisPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Cache/redisEnterprise', parameters('redisCacheName')), '2025-04-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployCosmosAccount",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "cosmosAccountName": {
+            "value": "[parameters('cosmosAccountName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "17766675004239633149"
+            }
+          },
+          "parameters": {
+            "cosmosAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Cosmos DB account"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the Cosmos DB account"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts",
+              "apiVersion": "2024-05-15",
+              "name": "[parameters('cosmosAccountName')]",
+              "location": "[parameters('location')]",
+              "kind": "GlobalDocumentDB",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "databaseAccountOfferType": "Standard",
+                "capabilities": [
+                  {
+                    "name": "EnableServerless"
+                  }
+                ],
+                "consistencyPolicy": {
+                  "defaultConsistencyLevel": "Session"
+                },
+                "locations": [
+                  {
+                    "locationName": "[parameters('location')]",
+                    "failoverPriority": 0,
+                    "isZoneRedundant": false
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+              "apiVersion": "2024-05-15",
+              "name": "[format('{0}/{1}', parameters('cosmosAccountName'), 'chargeback')]",
+              "properties": {
+                "resource": {
+                  "id": "chargeback"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2024-05-15",
+              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'chargeback', 'audit-logs')]",
+              "properties": {
+                "resource": {
+                  "id": "audit-logs",
+                  "partitionKey": {
+                    "paths": [
+                      "/customerKey"
+                    ],
+                    "kind": "Hash"
+                  },
+                  "indexingPolicy": {
+                    "indexingMode": "consistent",
+                    "includedPaths": [
+                      {
+                        "path": "/billingPeriod/?"
+                      },
+                      {
+                        "path": "/customerKey/?"
+                      },
+                      {
+                        "path": "/clientAppId/?"
+                      },
+                      {
+                        "path": "/tenantId/?"
+                      },
+                      {
+                        "path": "/timestamp/?"
+                      }
+                    ],
+                    "excludedPaths": [
+                      {
+                        "path": "/*"
+                      }
+                    ]
+                  },
+                  "defaultTtl": 94608000
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'chargeback')]"
+              ]
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2024-05-15",
+              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'chargeback', 'billing-summaries')]",
+              "properties": {
+                "resource": {
+                  "id": "billing-summaries",
+                  "partitionKey": {
+                    "paths": [
+                      "/customerKey"
+                    ],
+                    "kind": "Hash"
+                  },
+                  "indexingPolicy": {
+                    "indexingMode": "consistent",
+                    "includedPaths": [
+                      {
+                        "path": "/billingPeriod/?"
+                      },
+                      {
+                        "path": "/customerKey/?"
+                      },
+                      {
+                        "path": "/clientAppId/?"
+                      },
+                      {
+                        "path": "/tenantId/?"
+                      }
+                    ],
+                    "excludedPaths": [
+                      {
+                        "path": "/*"
+                      }
+                    ]
+                  },
+                  "defaultTtl": 94608000
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'chargeback')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "cosmosAccountName": {
+              "type": "string",
+              "value": "[parameters('cosmosAccountName')]"
+            },
+            "cosmosEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName')), '2024-05-15').documentEndpoint]"
+            },
+            "cosmosPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName')), '2024-05-15', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployStorageAccount",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "storageAccountName": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "13445984782848973576"
+            }
+          },
+          "parameters": {
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Storage Account"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the Storage Account"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "accessTier": "Hot",
+                "minimumTlsVersion": "TLS1_2"
+              }
+            }
+          ],
+          "outputs": {
+            "storageAccountId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            },
+            "storageAccountName": {
+              "type": "string",
+              "value": "[parameters('storageAccountName')]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2022-09-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployAppInsights",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "appInsightsName": {
+            "value": "[parameters('appInsightsName')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "14271995425647155581"
+            }
+          },
+          "parameters": {
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Application Insights resource"
+              }
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Log Analytics workspace"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              }
+            }
+          ],
+          "outputs": {
+            "appInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            "appInsightsInstrumentationKey": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').InstrumentationKey]"
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployLogAnalyticsWorkspace')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployLogAnalyticsWorkbook",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workbookDisplayName": {
+            "value": "[parameters('workbookDisplayName')]"
+          },
+          "appInsightsName": {
+            "value": "[parameters('appInsightsName')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "12890373827018962559"
+            }
+          },
+          "parameters": {
+            "workbookDisplayName": {
+              "type": "string",
+              "defaultValue": "Chargeback Log Analytics Dashboard",
+              "metadata": {
+                "description": "Display name for the Azure Monitor workbook."
+              }
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Log Analytics workspace."
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Application Insights component."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the workbook resource."
+              }
+            }
+          },
+          "variables": {
+            "workbookName": "[guid(resourceGroup().id, parameters('workbookDisplayName'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')))]",
+            "workbookData": {
+              "version": "Notebook/1.0",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "## Chargeback Operations Dashboard\nThis workbook pulls 30-day operational chargeback data from Log Analytics / Application Insights telemetry."
+                  },
+                  "name": "text - 0"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "title": "Daily tokens and cost-to-us (30 days)",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "timechart",
+                    "size": 0,
+                    "timeContext": {
+                      "durationMs": 2592000000
+                    }
+                  },
+                  "name": "query - 1"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "title": "Top clients by cost (30 days)",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend clientAppId = tostring(dimensions.ClientAppId), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by clientAppId\r\n| top 20 by TotalCostToUs desc\r\n",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "size": 0,
+                    "timeContext": {
+                      "durationMs": 2592000000
+                    }
+                  },
+                  "name": "query - 2"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "title": "Request status breakdown (30 days)",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend statusCode = toint(dimensions.StatusCode), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), Tokens = sum(totalTokens), CostToUs = round(sum(costToUs), 4) by statusCode\r\n| order by statusCode asc\r\n",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "barchart",
+                    "size": 0,
+                    "timeContext": {
+                      "durationMs": 2592000000
+                    }
+                  },
+                  "name": "query - 3"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "title": "Quota / rate-limit event timeline (30 days)",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has_any (\"Rate limit exceeded\", \"Quota exceeded\", \"Over quota\")\r\n| summarize EventCount = count() by Event = tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))), bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "timechart",
+                    "size": 0,
+                    "timeContext": {
+                      "durationMs": 2592000000
+                    }
+                  },
+                  "name": "query - 4"
+                }
+              ],
+              "isLocked": false
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/workbooks",
+              "apiVersion": "2022-04-01",
+              "name": "[variables('workbookName')]",
+              "location": "[parameters('location')]",
+              "kind": "shared",
+              "properties": {
+                "displayName": "[parameters('workbookDisplayName')]",
+                "serializedData": "[string(variables('workbookData'))]",
+                "version": "Notebook/1.0",
+                "sourceId": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+                "category": "workbook"
+              }
+            }
+          ],
+          "outputs": {
+            "workbookId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/workbooks', variables('workbookName'))]"
+            },
+            "workbookName": {
+              "type": "string",
+              "value": "[variables('workbookName')]"
+            },
+            "workbookPortalUrl": {
+              "type": "string",
+              "value": "[format('https://portal.azure.com/#resource{0}', resourceId('Microsoft.Insights/workbooks', variables('workbookName')))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployAppInsights')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployLogAnalyticsWorkspace')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployContainerApp",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "containerAppName": {
+            "value": "[parameters('containerAppName')]"
+          },
+          "containerAppEnvName": {
+            "value": "[parameters('containerAppEnvName')]"
+          },
+          "containerImage": {
+            "value": "[parameters('containerImage')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "redisCacheName": {
+            "value": "[parameters('redisCacheName')]"
+          },
+          "cosmosEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount'), '2025-04-01').outputs.cosmosEndpoint.value]"
+          },
+          "aiServiceEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName')), '2025-04-01').outputs.endpoint.value]"
+          },
+          "subscriptionId": {
+            "value": "[subscription().subscriptionId]"
+          },
+          "azureResourceGroup": {
+            "value": "[resourceGroup().name]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployAppInsights'), '2025-04-01').outputs.appInsightsConnectionString.value]"
+          },
+          "purviewClientAppId": {
+            "value": "[parameters('purviewClientAppId')]"
+          },
+          "entraIdTenantId": {
+            "value": "[parameters('entraIdTenantId')]"
+          },
+          "containerAppClientId": {
+            "value": "[parameters('containerAppClientId')]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('acrLoginServer')]"
+          },
+          "acrUsername": {
+            "value": "[parameters('acrUsername')]"
+          },
+          "acrPassword": {
+            "value": "[parameters('acrPassword')]"
+          },
+          "minReplicas": {
+            "value": 1
+          },
+          "maxReplicas": {
+            "value": 10
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "2532744083138115369"
+            }
+          },
+          "parameters": {
+            "containerAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Container App"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the resources"
+              }
+            },
+            "containerAppEnvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Container App Environment"
+              }
+            },
+            "containerImage": {
+              "type": "string",
+              "defaultValue": "mcr.microsoft.com/dotnet/aspnet:10.0",
+              "metadata": {
+                "description": "Container image to deploy"
+              }
+            },
+            "redisCacheName": {
+              "type": "string",
+              "metadata": {
+                "description": "Redis cache name for connection"
+              }
+            },
+            "subscriptionId": {
+              "type": "string"
+            },
+            "azureResourceGroup": {
+              "type": "string"
+            },
+            "aiServiceEndpoint": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Azure AI Service endpoint for deployment discovery"
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Application Insights connection string"
+              }
+            },
+            "purviewClientAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Purview client app ID for Agent 365 integration"
+              }
+            },
+            "entraIdTenantId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Entra ID tenant ID for JWT validation"
+              }
+            },
+            "containerAppClientId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Container App Entra ID app registration client ID (audience for APIM managed identity auth)"
+              }
+            },
+            "cosmosEndpoint": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Cosmos DB endpoint URL"
+              }
+            },
+            "acrLoginServer": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACR login server (e.g. myacr.azurecr.io). Leave empty to pull from public registries."
+              }
+            },
+            "acrUsername": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACR admin username. Required when acrLoginServer is set."
+              }
+            },
+            "acrPassword": {
+              "type": "securestring",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACR admin password. Required when acrLoginServer is set."
+              }
+            },
+            "minReplicas": {
+              "type": "int",
+              "defaultValue": 1,
+              "minValue": 0,
+              "maxValue": 30,
+              "metadata": {
+                "description": "Minimum number of replicas (0 for scale-to-zero)"
+              }
+            },
+            "maxReplicas": {
+              "type": "int",
+              "defaultValue": 10,
+              "minValue": 1,
+              "maxValue": 30,
+              "metadata": {
+                "description": "Maximum number of replicas"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('containerAppEnvName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "zoneRedundant": false
+              }
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('containerAppName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppEnvName'))]",
+                "configuration": {
+                  "ingress": {
+                    "external": true,
+                    "targetPort": 8080,
+                    "transport": "http",
+                    "allowInsecure": false
+                  },
+                  "registries": "[if(not(empty(parameters('acrLoginServer'))), createArray(createObject('server', parameters('acrLoginServer'), 'username', parameters('acrUsername'), 'passwordSecretRef', 'acr-password')), createArray())]",
+                  "secrets": "[if(not(empty(parameters('acrLoginServer'))), createArray(createObject('name', 'acr-password', 'value', parameters('acrPassword'))), createArray())]"
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('containerAppName')]",
+                      "image": "[parameters('containerImage')]",
+                      "resources": {
+                        "cpu": "[json('1.0')]",
+                        "memory": "2Gi"
+                      },
+                      "env": [
+                        {
+                          "name": "ASPNETCORE_URLS",
+                          "value": "http://+:8080"
+                        },
+                        {
+                          "name": "AZURE_SUBSCRIPTION_ID",
+                          "value": "[parameters('subscriptionId')]"
+                        },
+                        {
+                          "name": "AZURE_RESOURCE_GROUP",
+                          "value": "[parameters('azureResourceGroup')]"
+                        },
+                        {
+                          "name": "REDIS_NAME",
+                          "value": "[parameters('redisCacheName')]"
+                        },
+                        {
+                          "name": "ConnectionStrings__redis",
+                          "value": "[format('{0}.{1}.redis.azure.net:10000,ssl=True,abortConnect=False', parameters('redisCacheName'), parameters('location'))]"
+                        },
+                        {
+                          "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                          "value": "[parameters('appInsightsConnectionString')]"
+                        },
+                        {
+                          "name": "PURVIEW_CLIENT_APP_ID",
+                          "value": "[parameters('purviewClientAppId')]"
+                        },
+                        {
+                          "name": "AzureAd__TenantId",
+                          "value": "[parameters('entraIdTenantId')]"
+                        },
+                        {
+                          "name": "AzureAd__ClientId",
+                          "value": "[parameters('containerAppClientId')]"
+                        },
+                        {
+                          "name": "AzureAd__Audience",
+                          "value": "[if(not(empty(parameters('containerAppClientId'))), format('api://{0}', parameters('containerAppClientId')), '')]"
+                        },
+                        {
+                          "name": "ConnectionStrings__chargeback",
+                          "value": "[parameters('cosmosEndpoint')]"
+                        },
+                        {
+                          "name": "AZURE_AI_ENDPOINT",
+                          "value": "[parameters('aiServiceEndpoint')]"
+                        }
+                      ]
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": "[parameters('minReplicas')]",
+                    "maxReplicas": "[parameters('maxReplicas')]",
+                    "rules": [
+                      {
+                        "name": "http-scaling",
+                        "http": {
+                          "metadata": {
+                            "concurrentRequests": "50"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppEnvName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "containerAppUrl": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
+            },
+            "containerAppId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
+            },
+            "containerAppPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "containerAppEnvId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppEnvName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployAppInsights')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployRedisCache')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployStorageAccount')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignKeyVaultAccessPolicy",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[parameters('keyVaultName')]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppPrincipalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "8153761212001386508"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults/accessPolicies",
+              "apiVersion": "2021-04-01-preview",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), 'add')]",
+              "properties": {
+                "accessPolicies": [
+                  {
+                    "tenantId": "[subscription().tenantId]",
+                    "objectId": "[parameters('principalId')]",
+                    "permissions": {
+                      "secrets": [
+                        "get",
+                        "list",
+                        "set",
+                        "delete",
+                        "recover",
+                        "backup",
+                        "restore"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('resolvedAiServiceName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('resolvedAiServiceName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[union(parameters('tags'), createObject())]"
+          },
+          "deployments": {
+            "value": [
+              {
+                "name": "gpt-4.1",
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4.1",
+                  "version": "2025-04-14"
+                },
+                "raiPolicyName": "Microsoft.Default",
+                "versionUpgradeOption": "OnceCurrentVersionExpired",
+                "sku": {
+                  "name": "GlobalStandard",
+                  "capacity": 10
+                }
+              },
+              {
+                "name": "gpt-4.1-mini",
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4.1-mini",
+                  "version": "2025-04-14"
+                },
+                "raiPolicyName": "Microsoft.Default",
+                "versionUpgradeOption": "OnceCurrentVersionExpired",
+                "sku": {
+                  "name": "GlobalStandard",
+                  "capacity": 5
+                }
+              },
+              {
+                "name": "text-embedding",
+                "model": {
+                  "format": "OpenAI",
+                  "name": "text-embedding-3-large",
+                  "version": "1"
+                },
+                "raiPolicyName": "Microsoft.Default",
+                "versionUpgradeOption": "OnceCurrentVersionExpired",
+                "sku": {
+                  "name": "GlobalStandard",
+                  "capacity": 5
+                }
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "248767910648140539"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "deployments": {
+              "type": "array",
+              "defaultValue": []
+            },
+            "publicNetworkAccess": {
+              "type": "string",
+              "defaultValue": "Enabled",
+              "allowedValues": [
+                "Enabled",
+                "Disabled"
+              ]
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2024-04-01-preview",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "AIServices",
+              "properties": {
+                "customSubDomainName": "[toLower(parameters('name'))]",
+                "publicNetworkAccess": "[parameters('publicNetworkAccess')]"
+              },
+              "sku": {
+                "name": "S0"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              }
+            },
+            {
+              "copy": {
+                "name": "openAiDeployment",
+                "count": "[length(parameters('deployments'))]",
+                "mode": "serial",
+                "batchSize": 1
+              },
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-04-01-preview",
+              "name": "[format('{0}/{1}', parameters('name'), parameters('deployments')[copyIndex()].name)]",
+              "properties": {
+                "model": "[coalesce(tryGet(parameters('deployments')[copyIndex()], 'model'), null())]",
+                "raiPolicyName": "[coalesce(tryGet(parameters('deployments')[copyIndex()], 'raiPolicyName'), null())]",
+                "versionUpgradeOption": "[coalesce(tryGet(parameters('deployments')[copyIndex()], 'versionUpgradeOption'), 'OnceCurrentVersionExpired')]"
+              },
+              "sku": "[coalesce(tryGet(parameters('deployments')[copyIndex()], 'sku'), createObject('name', 'Standard', 'capacity', 20))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "metadata": {
+                "description": "ID for the deployed Azure OpenAI Service."
+              },
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name for the deployed Azure OpenAI Service."
+              },
+              "value": "[parameters('name')]"
+            },
+            "endpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint for the deployed Azure OpenAI Service."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-04-01-preview').endpoint]"
+            },
+            "host": {
+              "type": "string",
+              "metadata": {
+                "description": "Host for the deployed Azure OpenAI Service."
+              },
+              "value": "[split(reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-04-01-preview').endpoint, '/')[2]]"
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID for the deployed Azure OpenAI Service."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-04-01-preview', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignAppInsightsRoleToContainerApp",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppPrincipalId.value]"
+          },
+          "roleDefinitionId": {
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignStorageRoleToContainerApp",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppPrincipalId.value]"
+          },
+          "roleDefinitionId": {
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployStorageAccount')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignRedisAccessPolicyToContainerApp",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "redisCacheName": {
+            "value": "[parameters('redisCacheName')]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppPrincipalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1338441632118870611"
+            }
+          },
+          "parameters": {
+            "redisCacheName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Cache/redisEnterprise/databases/accessPolicyAssignments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('{0}/{1}/{2}', parameters('redisCacheName'), 'default', 'containerappDataOwner')]",
+              "properties": {
+                "accessPolicyName": "default",
+                "user": {
+                  "objectId": "[parameters('principalId')]"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployRedisCache')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignKeyVaultRoleToApim",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
+          },
+          "roleDefinitionId": {
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignOpenAiRoleToApim",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
+          },
+          "roleDefinitionId": {
+            "value": "[format('/subscriptions/{0}/providers/Microsoft.Authorization/roleDefinitions/{1}', subscription().subscriptionId, variables('roles').ai.cognitiveServicesUser)]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignContainerAppRoleToApim",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
+          },
+          "roleDefinitionId": {
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployApimOaiApi",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "apimInstanceName": {
+            "value": "[parameters('apimInstanceName')]"
+          },
+          "oaiApiName": {
+            "value": "[parameters('oaiApiName')]"
+          },
+          "openAiServiceUrl": {
+            "value": "[format('https://{0}/openai', reference(resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName')), '2025-04-01').outputs.host.value)]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "17300998328281960730"
+            }
+          },
+          "parameters": {
+            "apimInstanceName": {
+              "type": "string"
+            },
+            "oaiApiName": {
+              "type": "string"
+            },
+            "openAiServiceUrl": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "$fxv#0": "<!--\r\n    IMPORTANT:\r\n    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.\r\n    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.\r\n    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.\r\n    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.\r\n    - To remove a policy, delete the corresponding policy statement from the policy document.\r\n    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.\r\n    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.\r\n    - Policies are applied in the order of their appearance, from the top down.\r\n    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.\r\n-->\r\n<policies>\r\n\t<inbound>\r\n\t\t<base />\r\n\t\t<!-- Validate Entra ID (Azure AD) JWT token — uses /common for multi-tenant support -->\r\n\t\t<validate-jwt header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Unauthorized. Access token is missing or invalid.\">\r\n\t\t\t<openid-config url=\"https://login.microsoftonline.com/common/.well-known/openid-configuration\" />\r\n\t\t\t<required-claims>\r\n\t\t\t\t<claim name=\"aud\" match=\"all\">\r\n\t\t\t\t\t<value>{{ExpectedAudience}}</value>\r\n\t\t\t\t</claim>\r\n\t\t\t</required-claims>\r\n\t\t</validate-jwt>\r\n\t\t<!-- Extract JWT claims into variables -->\r\n\t\t<set-variable name=\"tenantId\" value=\"@(context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(\"tid\",\"\"))\" />\r\n\t\t<set-variable name=\"clientAppId\" value=\"@{\r\n\t\t\tvar jwt = context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt();\r\n\t\t\t// azp is present in delegated (user) tokens, appid in client_credentials tokens\r\n\t\t\tvar azp = jwt?.Claims.GetValueOrDefault(\"azp\",\"\");\r\n\t\t\treturn !string.IsNullOrEmpty(azp) ? azp : jwt?.Claims.GetValueOrDefault(\"appid\",\"\");\r\n\t\t}\" />\r\n\t\t<set-variable name=\"audience\" value=\"@(context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(\"aud\",\"\"))\" />\r\n\t\t<!-- Set variables for later use -->\r\n\t\t<set-variable name=\"requestBody\" value=\"@(context.Request.Body.As<string>(preserveContent: true))\" />\r\n\t\t<!-- Extract deploymentId from URL path (/deployments/{id}/...) or fall back to\r\n\t\t     the \"model\" field in the JSON request body for routes like /responses, /models -->\r\n\t\t<set-variable name=\"deploymentId\" value=\"@{\r\n\t\t\tvar path = context.Request.Url.Path;\r\n\t\t\tvar marker = \"/deployments/\";\r\n\t\t\tvar idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);\r\n\t\t\tif (idx >= 0) {\r\n\t\t\t\tvar rest = path.Substring(idx + marker.Length);\r\n\t\t\t\tvar slash = rest.IndexOf('/');\r\n\t\t\t\tif (slash >= 0) { return rest.Substring(0, slash); }\r\n\t\t\t\treturn rest;\r\n\t\t\t}\r\n\t\t\ttry {\r\n\t\t\t\tvar body = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n\t\t\t\tif (!string.IsNullOrEmpty(body)) {\r\n\t\t\t\t\tvar json = Newtonsoft.Json.Linq.JObject.Parse(body);\r\n\t\t\t\t\tvar model = json[\"model\"]?.ToString();\r\n\t\t\t\t\tif (!string.IsNullOrEmpty(model)) { return model; }\r\n\t\t\t\t}\r\n\t\t\t} catch { }\r\n\t\t\tvar segments = path.Split('/');\r\n\t\t\tif (segments.Length > 1) { return segments[segments.Length - 1]; }\r\n\t\t\treturn \"unknown\";\r\n\t\t}\" />\r\n\t\t<!-- Acquire a token from APIM's managed identity for the Container App audience -->\r\n\t\t<authentication-managed-identity resource=\"{{ContainerAppAudience}}\" output-token-variable-name=\"msi-access-token\" ignore-error=\"false\" />\r\n\t\t<!-- Pre-check: verify client has a valid plan and is within quota BEFORE calling OpenAI -->\r\n\t\t<set-variable name=\"containerAppBaseUrl\" value=\"{{ContainerAppUrl}}\" />\r\n\t\t<send-request mode=\"new\" response-variable-name=\"precheckResponse\" timeout=\"10\" ignore-error=\"true\">\r\n\t\t\t<set-url>@((string)context.Variables[\"containerAppBaseUrl\"] + \"/api/precheck/\" + (string)context.Variables[\"clientAppId\"] + \"/\" + (string)context.Variables[\"tenantId\"] + \"?deploymentId=\" + (string)context.Variables[\"deploymentId\"])</set-url>\r\n\t\t\t<set-method>GET</set-method>\r\n\t\t\t<set-header name=\"Authorization\" exists-action=\"override\">\r\n\t\t\t\t<value>@(\"Bearer \" + (string)context.Variables[\"msi-access-token\"])</value>\r\n\t\t\t</set-header>\r\n\t\t</send-request>\r\n\t\t<choose>\r\n\t\t\t<when condition=\"@(context.Variables[\"precheckResponse\"] == null || ((IResponse)context.Variables[\"precheckResponse\"]).StatusCode == 401)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"401\" reason=\"Unauthorized\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>@{\r\n\t\t\t\t\t\tvar resp = context.Variables[\"precheckResponse\"] as IResponse;\r\n\t\t\t\t\t\treturn resp != null ? resp.Body.As<string>() : \"{\\\"error\\\":\\\"Pre-check failed — could not reach authorization service\\\"}\";\r\n\t\t\t\t\t}</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t\t<when condition=\"@(((IResponse)context.Variables[\"precheckResponse\"]).StatusCode == 429)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"429\" reason=\"Too Many Requests\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>@(((IResponse)context.Variables[\"precheckResponse\"]).Body.As<string>())</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t\t<when condition=\"@(((IResponse)context.Variables[\"precheckResponse\"]).StatusCode != 200)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"500\" reason=\"Internal Server Error\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>{\"error\":\"Pre-authorization check failed\"}</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t</choose>\r\n\t\t<!-- Set the backend service to the Azure OpenAI endpoint -->\r\n\t\t<set-backend-service id=\"apim-generated-policy\" backend-id=\"openAiBackend\" />\r\n\t\t<!-- Use managed identity to authenticate against the Azure Cognitive Services -->\r\n\t\t<authentication-managed-identity resource=\"https://cognitiveservices.azure.com/\" />\r\n\t\t<!-- Start of Request Transformation policy -->\r\n\t\t<!-- Capture the request body as text and add the 'stream_options' property if 'stream' is set to true -->\r\n\t\t<set-body>@{\r\n            var rawBody = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n            var requestBody = Newtonsoft.Json.Linq.JObject.Parse(rawBody);\r\n            if (requestBody[\"stream\"] != null && (bool)requestBody[\"stream\"] == true) {\r\n                requestBody[\"stream_options\"] = Newtonsoft.Json.Linq.JObject.Parse(@\"{\"\"include_usage\"\":true}\");\r\n            }\r\n            return requestBody.ToString();\r\n        }</set-body>\r\n\t\t<!-- End of Request Transformation policy -->\r\n\t</inbound>\r\n\t<backend>\r\n\t\t<base />\r\n\t</backend>\r\n\t<outbound>\r\n\t\t<base />\r\n\t\t<!-- Capture the raw response as text -->\r\n\t\t<set-variable name=\"responseBodyText\" value=\"@{\r\n            return context.Response.Body.As<string>(preserveContent: true);\r\n        }\" />\r\n\t\t<!-- Parse the response: if streaming (starts with 'data:'), extract the last chunk with a JSON payload;\r\n             otherwise parse the entire response text as JSON. -->\r\n\t\t<set-variable name=\"parsedResponse\" value=\"@{\r\n            string txt = (string)context.Variables[\"responseBodyText\"];\r\n            if (txt.TrimStart().StartsWith(\"data:\")) {\r\n                var lines = txt.Split(new[] {'\\n', '\\r'}, StringSplitOptions.RemoveEmptyEntries);\r\n                // Get the last line starting with 'data:' that contains a JSON part and is not the '[DONE]' marker\r\n                var chunkLine = lines\r\n                    .Where(l => l.Trim().StartsWith(\"data:\") && l.Contains(\"{\") && !l.Contains(\"[DONE]\"))\r\n                    .LastOrDefault();\r\n                if (chunkLine != null) {\r\n                    int index = chunkLine.IndexOf('{');\r\n                    string jsonPart = chunkLine.Substring(index);\r\n                    return Newtonsoft.Json.Linq.JObject.Parse(jsonPart);\r\n                }\r\n                return null;\r\n            } else {\r\n                return Newtonsoft.Json.Linq.JObject.Parse(txt);\r\n            }\r\n        }\" />\r\n\t\t<!-- Convert parsedResponse to string and store in a new variable -->\r\n\t\t<set-variable name=\"parsedResponseString\" value=\"@{\r\n            var parsedResponse = context.Variables.GetValueOrDefault<Newtonsoft.Json.Linq.JObject>(\"parsedResponse\");\r\n            return parsedResponse != null ? parsedResponse.ToString() : string.Empty;\r\n        }\" />\r\n\t\t<!-- Fire-and-forget: send usage data to chargeback API without waiting for response.\r\n\t\t     This eliminates latency on the response path for maximum scalability. -->\r\n\t\t<send-one-way-request mode=\"new\">\r\n\t\t\t<set-url>{{ContainerAppUrl}}/api/log</set-url>\r\n\t\t\t<set-method>POST</set-method>\r\n\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\">\r\n\t\t\t\t<value>application/json</value>\r\n\t\t\t</set-header>\r\n\t\t\t<set-header name=\"Authorization\" exists-action=\"override\">\r\n\t\t\t\t<value>@(\"Bearer \" + (string)context.Variables[\"msi-access-token\"])</value>\r\n\t\t\t</set-header>\r\n\t\t\t<set-body>@{\r\n\t\t\t\tvar requestBody = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n\t\t\t\tvar parsedResponseString = context.Variables.GetValueOrDefault<string>(\"parsedResponseString\");\r\n\t\t\t\tvar tenantId = context.Variables.GetValueOrDefault<string>(\"tenantId\");\r\n\t\t\t\tvar clientAppId = context.Variables.GetValueOrDefault<string>(\"clientAppId\");\r\n\t\t\t\tvar audience = context.Variables.GetValueOrDefault<string>(\"audience\");\r\n\t\t\t\tvar deploymentId = context.Variables.GetValueOrDefault<string>(\"deploymentId\");\r\n\t\t\t\treturn $\"{{\\\"tenantId\\\": \\\"{tenantId}\\\", \\\"clientAppId\\\": \\\"{clientAppId}\\\", \\\"audience\\\": \\\"{audience}\\\", \\\"requestBody\\\": {requestBody}, \\\"responseBody\\\": {parsedResponseString}, \\\"deploymentId\\\": \\\"{deploymentId}\\\"}}\";\r\n\t\t\t}</set-body>\r\n\t\t</send-one-way-request>\r\n\t</outbound>\r\n\t<on-error>\r\n\t\t<base />\r\n\t\t<!-- Set the error headers -->\r\n\t\t<set-header name=\"ErrorSource\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Source)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorReason\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Reason)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorMessage\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Message)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorScope\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Scope)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorSection\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Section)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorPath\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Path)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorPolicyId\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.PolicyId)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorStatusCode\" exists-action=\"override\">\r\n\t\t\t<value>@(context.Response.StatusCode.ToString())</value>\r\n\t\t</set-header>\r\n\t</on-error>\r\n</policies>\r\n",
+            "passthroughMethods": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ApiManagement/service/backends",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), 'openAiBackend')]",
+              "properties": {
+                "url": "[parameters('openAiServiceUrl')]",
+                "protocol": "http",
+                "title": "OpenAI Backend",
+                "description": "Backend for Azure OpenAI APIs"
+              }
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), parameters('oaiApiName'))]",
+              "properties": {
+                "displayName": "Azure OpenAI Service API",
+                "path": "openai",
+                "serviceUrl": "[parameters('openAiServiceUrl')]",
+                "protocols": [
+                  "https"
+                ],
+                "subscriptionRequired": false
+              }
+            },
+            {
+              "copy": {
+                "name": "apimOaiApiPassthrough",
+                "count": "[length(variables('passthroughMethods'))]",
+                "mode": "serial",
+                "batchSize": 1
+              },
+              "type": "Microsoft.ApiManagement/service/apis/operations",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('oaiApiName'), format('passthrough-{0}', toLower(variables('passthroughMethods')[copyIndex()])))]",
+              "properties": {
+                "displayName": "[format('Passthrough {0}', variables('passthroughMethods')[copyIndex()])]",
+                "method": "[variables('passthroughMethods')[copyIndex()]]",
+                "urlTemplate": "/*"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('oaiApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis/policies",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('oaiApiName'), 'policy')]",
+              "properties": {
+                "format": "rawxml",
+                "value": "[variables('$fxv#0')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('oaiApiName'))]",
+                "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apimInstanceName'), 'openAiBackend')]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]",
+        "[resourceId('Microsoft.Resources/deployments', 'assignOpenAiRoleToApim')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployDiagnosticSettings",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "functionAppName": {
+            "value": "[parameters('containerAppName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "14101433639388146777"
+            }
+          },
+          "parameters": {
+            "logAnalyticsWorkspaceName": {
+              "type": "string"
+            },
+            "functionAppName": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[format('Microsoft.App/containerApps/{0}', parameters('functionAppName'))]",
+              "name": "[format('{0}-{1}', parameters('functionAppName'), parameters('logAnalyticsWorkspaceName'))]",
+              "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployLogAnalyticsWorkspace')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deployApimFuncApi",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "apimInstanceName": {
+            "value": "[parameters('apimInstanceName')]"
+          },
+          "funcApiName": {
+            "value": "[parameters('funcApiName')]"
+          },
+          "backendFunctionAppServiceUrl": {
+            "value": "[format('https://{0}', reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppUrl.value)]"
+          },
+          "managedIdentityClientId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "4328267729054570879"
+            }
+          },
+          "parameters": {
+            "apimInstanceName": {
+              "type": "string"
+            },
+            "funcApiName": {
+              "type": "string"
+            },
+            "backendFunctionAppServiceUrl": {
+              "type": "string"
+            },
+            "managedIdentityClientId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ApiManagement/service/backends",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), 'functionBackend')]",
+              "properties": {
+                "url": "[parameters('backendFunctionAppServiceUrl')]",
+                "protocol": "http",
+                "title": "Function Backend",
+                "description": "Backend for Azure Function App",
+                "credentials": {
+                  "authorization": {
+                    "scheme": "ManagedIdentity",
+                    "parameter": "[parameters('managedIdentityClientId')]"
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), parameters('funcApiName'))]",
+              "properties": {
+                "displayName": "[parameters('funcApiName')]",
+                "serviceUrl": "[parameters('backendFunctionAppServiceUrl')]",
+                "path": "[parameters('funcApiName')]",
+                "protocols": [
+                  "http",
+                  "https"
+                ],
+                "subscriptionRequired": false
+              }
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis/operations",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('funcApiName'), 'get')]",
+              "properties": {
+                "displayName": "Get",
+                "method": "GET",
+                "urlTemplate": "/",
+                "request": {
+                  "description": "Request to get data"
+                },
+                "responses": [
+                  {
+                    "statusCode": 200,
+                    "description": "Successful response"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('funcApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis/operations",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('funcApiName'), 'post')]",
+              "properties": {
+                "displayName": "Post",
+                "method": "POST",
+                "urlTemplate": "/log",
+                "request": {
+                  "description": "Request to log data",
+                  "headers": [
+                    {
+                      "name": "Authorization",
+                      "required": false,
+                      "type": "string",
+                      "description": "Bearer token for authorization"
+                    },
+                    {
+                      "name": "x-api-key",
+                      "required": false,
+                      "type": "string",
+                      "description": "API key for authorization"
+                    },
+                    {
+                      "name": "Content-Type",
+                      "required": false,
+                      "type": "string",
+                      "defaultValue": "application/json",
+                      "description": "The content type of the request body"
+                    }
+                  ]
+                },
+                "responses": [
+                  {
+                    "statusCode": 200,
+                    "description": "Successful response"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('funcApiName'))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deployContainerApp')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "containerAppUrlInfo": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployContainerApp'), '2025-04-01').outputs.containerAppUrl.value]"
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployAppInsights'), '2025-04-01').outputs.appInsightsConnectionString.value]"
+    },
+    "logAnalyticsWorkbookId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployLogAnalyticsWorkbook'), '2025-04-01').outputs.workbookId.value]"
+    },
+    "logAnalyticsWorkbookUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployLogAnalyticsWorkbook'), '2025-04-01').outputs.workbookPortalUrl.value]"
+    },
+    "resourceGroupInfo": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "redisInfo": {
+      "type": "object",
+      "value": {
+        "name": "[reference(resourceId('Microsoft.Resources/deployments', 'deployRedisCache'), '2025-04-01').outputs.redisCacheName.value]",
+        "hostName": "[reference(resourceId('Microsoft.Resources/deployments', 'deployRedisCache'), '2025-04-01').outputs.redisHostName.value]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'deployRedisCache'), '2025-04-01').outputs.redisPrincipalId.value]"
+      }
+    },
+    "cosmosInfo": {
+      "type": "object",
+      "value": {
+        "name": "[reference(resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount'), '2025-04-01').outputs.cosmosAccountName.value]",
+        "endpoint": "[reference(resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount'), '2025-04-01').outputs.cosmosEndpoint.value]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount'), '2025-04-01').outputs.cosmosPrincipalId.value]"
+      }
+    }
+  }
+}

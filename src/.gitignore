@@ -1,0 +1,23 @@
+## .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+*.vs/
+.dotnet/
+
+## Node / React
+**/node_modules/
+**/dist/
+*.tsbuildinfo
+
+## IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+## OS
+Thumbs.db
+.DS_Store
