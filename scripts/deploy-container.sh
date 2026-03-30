@@ -301,14 +301,12 @@ else
         "$REPO_ROOT/src/." \
         --no-logs
 
-    # Also tag as latest
-    az acr build \
+    # Tag the same image as latest (no rebuild)
+    az acr import \
+        --name "$acr_name" \
+        --source "$acr_login_server/$image_name:$TAG" \
         --image "$image_name:latest" \
-        --resource-group "$RESOURCE_GROUP_NAME" \
-        --registry "$acr_name" \
-        --file "$REPO_ROOT/src/Dockerfile" \
-        "$REPO_ROOT/src/." \
-        --no-logs
+        --force
 
     green "    ✓ Image built & pushed to $acr_login_server"
 fi

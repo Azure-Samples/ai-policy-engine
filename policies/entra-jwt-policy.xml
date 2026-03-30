@@ -79,6 +79,13 @@
 					}</set-body>
 				</return-response>
 			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 403)">
+				<return-response>
+					<set-status code="403" reason="Forbidden" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
 			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 429)">
 				<return-response>
 					<set-status code="429" reason="Too Many Requests" />
