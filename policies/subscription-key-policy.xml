@@ -1,0 +1,184 @@
+<!--
+    IMPORTANT:
+    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.
+    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.
+    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.
+    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.
+    - To remove a policy, delete the corresponding policy statement from the policy document.
+    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.
+    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.
+    - Policies are applied in the order of their appearance, from the top down.
+    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.
+-->
+<policies>
+	<inbound>
+		<base />
+		<!-- Subscription key is validated automatically by APIM when subscriptionRequired=true.
+		     Extract the subscription name as the client identifier. -->
+		<set-variable name="tenantId" value="key-based" />
+		<set-variable name="clientAppId" value="@(context.Subscription.Name)" />
+		<set-variable name="audience" value="subscription-key" />
+		<!-- Set variables for later use -->
+		<set-variable name="requestBody" value="@(context.Request.Body.As<string>(preserveContent: true))" />
+		<!-- Extract deploymentId from URL path (/deployments/{id}/...) or fall back to
+		     the "model" field in the JSON request body for routes like /responses, /models -->
+		<set-variable name="deploymentId" value="@{
+			var path = context.Request.Url.Path;
+			var marker = "/deployments/";
+			var idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+			if (idx >= 0) {
+				var rest = path.Substring(idx + marker.Length);
+				var slash = rest.IndexOf('/');
+				if (slash >= 0) { return rest.Substring(0, slash); }
+				return rest;
+			}
+			try {
+				var body = context.Variables.GetValueOrDefault<string>("requestBody");
+				if (!string.IsNullOrEmpty(body)) {
+					var json = Newtonsoft.Json.Linq.JObject.Parse(body);
+					var model = json["model"]?.ToString();
+					if (!string.IsNullOrEmpty(model)) { return model; }
+				}
+			} catch { }
+			var segments = path.Split('/');
+			if (segments.Length > 1) { return segments[segments.Length - 1]; }
+			return "unknown";
+		}" />
+		<!-- Acquire a token from APIM's managed identity for the Container App audience -->
+		<authentication-managed-identity resource="{{ContainerAppAudience}}" output-token-variable-name="msi-access-token" ignore-error="false" />
+		<!-- Pre-check: verify client has a valid plan and is within quota BEFORE calling OpenAI -->
+		<set-variable name="containerAppBaseUrl" value="{{ContainerAppUrl}}" />
+		<send-request mode="new" response-variable-name="precheckResponse" timeout="10" ignore-error="true">
+			<set-url>@((string)context.Variables["containerAppBaseUrl"] + "/api/precheck/" + (string)context.Variables["clientAppId"] + "/" + (string)context.Variables["tenantId"] + "?deploymentId=" + (string)context.Variables["deploymentId"])</set-url>
+			<set-method>GET</set-method>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+			</set-header>
+		</send-request>
+		<choose>
+			<when condition="@(context.Variables["precheckResponse"] == null || ((IResponse)context.Variables["precheckResponse"]).StatusCode == 401)">
+				<return-response>
+					<set-status code="401" reason="Unauthorized" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@{
+						var resp = context.Variables["precheckResponse"] as IResponse;
+						return resp != null ? resp.Body.As<string>() : "{\"error\":\"Pre-check failed — could not reach authorization service\"}";
+					}</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 429)">
+				<return-response>
+					<set-status code="429" reason="Too Many Requests" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode != 200)">
+				<return-response>
+					<set-status code="500" reason="Internal Server Error" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>{"error":"Pre-authorization check failed"}</set-body>
+				</return-response>
+			</when>
+		</choose>
+		<!-- Set the backend service to the Azure OpenAI endpoint -->
+		<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+		<!-- Use managed identity to authenticate against the Azure Cognitive Services -->
+		<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
+		<!-- Start of Request Transformation policy -->
+		<!-- Capture the request body as text and add the 'stream_options' property if 'stream' is set to true -->
+		<set-body>@{
+            var rawBody = context.Variables.GetValueOrDefault<string>("requestBody");
+            var requestBody = Newtonsoft.Json.Linq.JObject.Parse(rawBody);
+            if (requestBody["stream"] != null && (bool)requestBody["stream"] == true) {
+                requestBody["stream_options"] = Newtonsoft.Json.Linq.JObject.Parse(@"{""include_usage"":true}");
+            }
+            return requestBody.ToString();
+        }</set-body>
+		<!-- End of Request Transformation policy -->
+	</inbound>
+	<backend>
+		<base />
+	</backend>
+	<outbound>
+		<base />
+		<!-- Capture the raw response as text -->
+		<set-variable name="responseBodyText" value="@{
+            return context.Response.Body.As<string>(preserveContent: true);
+        }" />
+		<!-- Parse the response: if streaming (starts with 'data:'), extract the last chunk with a JSON payload;
+             otherwise parse the entire response text as JSON. -->
+		<set-variable name="parsedResponse" value="@{
+            string txt = (string)context.Variables["responseBodyText"];
+            if (txt.TrimStart().StartsWith("data:")) {
+                var lines = txt.Split(new[] {'\n', '\r'}, StringSplitOptions.RemoveEmptyEntries);
+                // Get the last line starting with 'data:' that contains a JSON part and is not the '[DONE]' marker
+                var chunkLine = lines
+                    .Where(l => l.Trim().StartsWith("data:") && l.Contains("{") && !l.Contains("[DONE]"))
+                    .LastOrDefault();
+                if (chunkLine != null) {
+                    int index = chunkLine.IndexOf('{');
+                    string jsonPart = chunkLine.Substring(index);
+                    return Newtonsoft.Json.Linq.JObject.Parse(jsonPart);
+                }
+                return null;
+            } else {
+                return Newtonsoft.Json.Linq.JObject.Parse(txt);
+            }
+        }" />
+		<!-- Convert parsedResponse to string and store in a new variable -->
+		<set-variable name="parsedResponseString" value="@{
+            var parsedResponse = context.Variables.GetValueOrDefault<Newtonsoft.Json.Linq.JObject>("parsedResponse");
+            return parsedResponse != null ? parsedResponse.ToString() : string.Empty;
+        }" />
+		<!-- Fire-and-forget: send usage data to chargeback API without waiting for response.
+		     This eliminates latency on the response path for maximum scalability. -->
+		<send-one-way-request mode="new">
+			<set-url>{{ContainerAppUrl}}/api/log</set-url>
+			<set-method>POST</set-method>
+			<set-header name="Content-Type" exists-action="override">
+				<value>application/json</value>
+			</set-header>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+			</set-header>
+			<set-body>@{
+				var requestBody = context.Variables.GetValueOrDefault<string>("requestBody");
+				var parsedResponseString = context.Variables.GetValueOrDefault<string>("parsedResponseString");
+				var tenantId = context.Variables.GetValueOrDefault<string>("tenantId");
+				var clientAppId = context.Variables.GetValueOrDefault<string>("clientAppId");
+				var audience = context.Variables.GetValueOrDefault<string>("audience");
+				var deploymentId = context.Variables.GetValueOrDefault<string>("deploymentId");
+				return $"{{\"tenantId\": \"{tenantId}\", \"clientAppId\": \"{clientAppId}\", \"audience\": \"{audience}\", \"requestBody\": {requestBody}, \"responseBody\": {parsedResponseString}, \"deploymentId\": \"{deploymentId}\"}}";
+			}</set-body>
+		</send-one-way-request>
+	</outbound>
+	<on-error>
+		<base />
+		<!-- Set the error headers -->
+		<set-header name="ErrorSource" exists-action="override">
+			<value>@(context.LastError.Source)</value>
+		</set-header>
+		<set-header name="ErrorReason" exists-action="override">
+			<value>@(context.LastError.Reason)</value>
+		</set-header>
+		<set-header name="ErrorMessage" exists-action="override">
+			<value>@(context.LastError.Message)</value>
+		</set-header>
+		<set-header name="ErrorScope" exists-action="override">
+			<value>@(context.LastError.Scope)</value>
+		</set-header>
+		<set-header name="ErrorSection" exists-action="override">
+			<value>@(context.LastError.Section)</value>
+		</set-header>
+		<set-header name="ErrorPath" exists-action="override">
+			<value>@(context.LastError.Path)</value>
+		</set-header>
+		<set-header name="ErrorPolicyId" exists-action="override">
+			<value>@(context.LastError.PolicyId)</value>
+		</set-header>
+		<set-header name="ErrorStatusCode" exists-action="override">
+			<value>@(context.Response.StatusCode.ToString())</value>
+		</set-header>
+	</on-error>
+</policies>
