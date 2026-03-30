@@ -13,7 +13,7 @@ variable "workload_name" {
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
-  default = "77f5679a-f7cd-4b09-91f0-e8808bf4447e"
+
 }
 
 variable "container_image" {
@@ -37,7 +37,7 @@ variable "apim_sku" {
 variable "apim_publisher_email" {
   description = "APIM publisher email"
   type        = string
-  default     = "nour@datareap.io"
+  default     = "admin@contoso.com"
 }
 
 variable "apim_publisher_name" {

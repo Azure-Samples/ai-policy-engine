@@ -28,7 +28,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
   const [clientDisplayName, setClientDisplayName] = useState("")
   const [clientAllowedDeployments, setClientAllowedDeployments] = useState<string[]>([])
   const [authType, setAuthType] = useState<"key-based" | "entra-id">("entra-id")
-  const [tenantType, setTenantType] = useState<"primary" | "secondary">("primary")
+  const [tenantType, setTenantType] = useState<"first-party" | "third-party">("first-party")
   const [subscriptionName, setSubscriptionName] = useState("")
 
   const primaryTenantId = import.meta.env.VITE_AZURE_TENANT_ID ?? ""
@@ -61,7 +61,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
     setClientDisplayName("")
     setClientAllowedDeployments([])
     setAuthType("entra-id")
-    setTenantType("primary")
+    setTenantType("first-party")
     setSubscriptionName("")
     setClientDialogOpen(true)
   }
@@ -80,9 +80,9 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
       setAuthType("entra-id")
       setSubscriptionName("")
       if (c.tenantId === primaryTenantId) {
-        setTenantType("primary")
+        setTenantType("first-party")
       } else {
-        setTenantType("secondary")
+        setTenantType("third-party")
       }
     }
     setClientDialogOpen(true)
@@ -101,7 +101,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
         tenant = "key-based"
       } else {
         appId = clientAppIdInput
-        tenant = tenantType === "primary" ? primaryTenantId : clientTenantIdInput
+        tenant = tenantType === "first-party" ? primaryTenantId : clientTenantIdInput
       }
       await assignClient(appId, tenant, {
         planId: clientPlanId,
@@ -314,14 +314,14 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     value={tenantType}
-                    onChange={(e) => setTenantType(e.target.value as "primary" | "secondary")}
+                    onChange={(e) => setTenantType(e.target.value as "first-party" | "third-party")}
                   >
-                    <option value="primary">Primary Tenant{primaryTenantId ? ` (${primaryTenantId})` : ""}</option>
-                    <option value="secondary">Secondary Tenant</option>
+                    <option value="first-party">First-Party Tenant{primaryTenantId ? ` (${primaryTenantId})` : ""}</option>
+                    <option value="third-party">Third-Party Tenant</option>
                   </select>
                 </div>
               )}
-              {tenantType === "secondary" && (
+              {tenantType === "third-party" && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Tenant ID</label>
                   <Input
@@ -399,7 +399,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setClientDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveClient} disabled={saving || (!editingClientId && (authType === "key-based" ? !subscriptionName : (!clientAppIdInput || (tenantType === "secondary" && !clientTenantIdInput)))) || !clientPlanId}>
+            <Button onClick={handleSaveClient} disabled={saving || (!editingClientId && (authType === "key-based" ? !subscriptionName : (!clientAppIdInput || (tenantType === "third-party" && !clientTenantIdInput)))) || !clientPlanId}>
               {saving ? "Saving…" : editingClientId ? "Update" : "Assign"}
             </Button>
           </div>
