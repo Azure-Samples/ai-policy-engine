@@ -85,12 +85,14 @@ resource "azurerm_api_management_backend" "openai" {
 # OpenAI API – full passthrough (wildcard operations)
 # =============================================================================
 
-resource "azurerm_api_management_api" "openai" {
-  name                  = "azure-openai-service-api"
+resource "azurerm_api_management_api" "openai_jwt_based" {
+  count = var.enable_jwt ? 1 : 0
+
+  name                  = "azure-openai-jwt-based-api"
   api_management_name   = azurerm_api_management.this.name
   resource_group_name   = var.resource_group_name
   display_name          = "Azure OpenAI Service API"
-  path                  = "openai"
+  path                  = "jwt/openai"
   protocols             = ["https"]
   subscription_required = false
   service_url           = "${var.ai_service_endpoint}openai"
@@ -112,11 +114,11 @@ locals {
   passthrough_methods = toset(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
 }
 
-resource "azurerm_api_management_api_operation" "openai_passthrough" {
-  for_each = local.passthrough_methods
+resource "azurerm_api_management_api_operation" "openai_jwt_based_passthrough" {
+  for_each = var.enable_jwt ? local.passthrough_methods : toset([])
 
   operation_id        = "passthrough-${lower(each.key)}"
-  api_name            = azurerm_api_management_api.openai.name
+  api_name            = azurerm_api_management_api.openai_jwt_based[0].name
   api_management_name = azurerm_api_management.this.name
   resource_group_name = var.resource_group_name
   display_name        = "Passthrough ${each.key}"
@@ -130,15 +132,83 @@ resource "azurerm_api_management_api_operation" "openai_passthrough" {
 # avoiding XML entity-escaping issues with C# generics and string literals.
 # =============================================================================
 
-resource "azapi_resource" "openai_policy" {
+resource "azapi_resource" "openai_jwt_based_policy" {
+  count = var.enable_jwt ? 1 : 0
+
   type      = "Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview"
   name      = "policy"
-  parent_id = azurerm_api_management_api.openai.id
+  parent_id = azurerm_api_management_api.openai_jwt_based[0].id
 
   body = {
     properties = {
       format = "rawxml"
-      value  = file(var.policy_xml_path)
+      value  = file(var.jwt_policy_xml_path)
+    }
+  }
+
+  depends_on = [
+    azurerm_api_management_backend.openai,
+    azurerm_api_management_named_value.entra_tenant_id,
+    azurerm_api_management_named_value.expected_audience,
+    azurerm_api_management_named_value.container_app_url,
+    azurerm_api_management_named_value.container_app_audience,
+  ]
+}
+
+# =============================================================================
+# OpenAI Key-Based API – subscription-key authenticated passthrough
+# =============================================================================
+
+resource "azurerm_api_management_api" "openai_key_based" {
+  count = var.enable_keys ? 1 : 0
+
+  name                  = "azure-openai-key-based-api"
+  api_management_name   = azurerm_api_management.this.name
+  resource_group_name   = var.resource_group_name
+  display_name          = "Azure OpenAI Key-Based API"
+  path                  = "keys/openai"
+  protocols             = ["https"]
+  subscription_required = true
+  service_url           = "${var.ai_service_endpoint}openai"
+  revision              = "1"
+
+  subscription_key_parameter_names {
+    header = "api-key"
+    query = "api-key"
+  }
+
+  dynamic "import" {
+    for_each = var.api_spec_url != "" ? [1] : []
+    content {
+      content_format = "openapi+json-link"
+      content_value  = var.api_spec_url
+    }
+  }
+}
+
+resource "azurerm_api_management_api_operation" "openai_key_based_passthrough" {
+  for_each = var.enable_keys ? local.passthrough_methods : toset([])
+
+  operation_id        = "key-passthrough-${lower(each.key)}"
+  api_name            = azurerm_api_management_api.openai_key_based[0].name
+  api_management_name = azurerm_api_management.this.name
+  resource_group_name = var.resource_group_name
+  display_name        = "Key Passthrough ${each.key}"
+  method              = each.key
+  url_template        = "/*"
+}
+
+resource "azapi_resource" "openai_key_based_policy" {
+  count = var.enable_keys ? 1 : 0
+
+  type      = "Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview"
+  name      = "policy"
+  parent_id = azurerm_api_management_api.openai_key_based[0].id
+
+  body = {
+    properties = {
+      format = "rawxml"
+      value  = file(var.subscription_key_policy_xml_path)
     }
   }
 

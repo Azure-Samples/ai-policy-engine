@@ -137,7 +137,10 @@ module "gateway" {
   gateway_app_id      = module.identity.gateway_app_id
   tenant_id           = module.identity.tenant_id
   key_vault_id        = module.compute.key_vault_id
-  policy_xml_path     = "${path.module}/../../policies/entra-jwt-policy.xml"
+  enable_jwt          = var.enable_jwt
+  enable_keys         = var.enable_keys
+  jwt_policy_xml_path              = "${path.module}/../../policies/entra-jwt-policy.xml"
+  subscription_key_policy_xml_path = "${path.module}/../../policies/subscription-key-policy.xml"
   tags                = local.tags
 }
 
@@ -248,20 +251,23 @@ resource "local_file" "demo_env" {
 DemoClient__TenantId=${module.identity.tenant_id}
 DemoClient__SecondaryTenantId=${var.secondary_tenant_id}
 DemoClient__ApiScope=api://${module.identity.gateway_app_id}/.default
-DemoClient__ApimBase=${module.gateway.apim_gateway_url}
+DemoClient__ApimBase=${module.gateway.apim_gateway_url}/jwt
 DemoClient__ApiVersion=2025-04-01-preview
 DemoClient__ChargebackBase=https://${module.compute.container_app_fqdn}
-DemoClient__Clients__0__Name=Chargeback Sample Client
+DemoClient__Clients__0__Name="Chargeback Sample Client"
 DemoClient__Clients__0__AppId=${module.identity.client1_app_id}
 DemoClient__Clients__0__Secret=${module.identity.client1_secret}
 DemoClient__Clients__0__Plan=Enterprise
 DemoClient__Clients__0__DeploymentId=gpt-4.1
 DemoClient__Clients__0__TenantId=${module.identity.tenant_id}
-DemoClient__Clients__1__Name=Chargeback Demo Client 2
+DemoClient__Clients__1__Name="Chargeback Demo Client 2"
 DemoClient__Clients__1__AppId=${module.identity.client2_app_id}
 DemoClient__Clients__1__Secret=${module.identity.client2_secret}
 DemoClient__Clients__1__Plan=Starter
 DemoClient__Clients__1__DeploymentId=gpt-4.1-mini
 DemoClient__Clients__1__TenantId=${module.identity.tenant_id}
+DemoClient__AgentInstructions="You are a concise Azure platform assistant. Keep responses to one sentence."
+DemoClient__Prompts__0="What is Azure API Management in one sentence?"
+DemoClient__Prompts__1="Explain token-based billing in one sentence."
   EOT
 }

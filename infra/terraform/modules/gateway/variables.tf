@@ -77,9 +77,28 @@ variable "key_vault_id" {
   default     = ""
 }
 
-variable "policy_xml_path" {
-  description = "Path to the APIM policy XML file (entra-jwt-policy.xml)."
+variable "enable_jwt" {
+  description = "Enable the JWT-authenticated OpenAI API endpoint."
+  type        = bool
+  default     = true
+}
+
+variable "enable_keys" {
+  description = "Enable the subscription-key-authenticated OpenAI API endpoint."
+  type        = bool
+  default     = true
+}
+
+variable "jwt_policy_xml_path" {
+  description = "Path to the Entra JWT APIM policy XML file (entra-jwt-policy.xml)."
   type        = string
+  default     = ""
+}
+
+variable "subscription_key_policy_xml_path" {
+  description = "Path to the subscription-key APIM policy XML file (subscription-key-policy.xml)."
+  type        = string
+  default     = ""
 }
 
 variable "tags" {

@@ -1,18 +1,19 @@
 variable "location" {
   description = "Azure region for all resources"
   type        = string
-  default     = "eastus2"
+  default     = "francecentral"
 }
 
 variable "workload_name" {
   description = "Short name used as prefix for all resources"
   type        = string
-  default     = "chrgbk"
+  default     = "nourtf2"
 }
 
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
+  default = "77f5679a-f7cd-4b09-91f0-e8808bf4447e"
 }
 
 variable "container_image" {
@@ -36,6 +37,7 @@ variable "apim_sku" {
 variable "apim_publisher_email" {
   description = "APIM publisher email"
   type        = string
+  default     = "nour@datareap.io"
 }
 
 variable "apim_publisher_name" {
@@ -48,6 +50,18 @@ variable "openai_api_spec_url" {
   description = "URL to the OpenAI API spec for APIM import. Set to empty string to use passthrough operations only."
   type        = string
   default     = ""
+}
+
+variable "enable_jwt" {
+  description = "Enable the JWT-authenticated OpenAI API endpoint."
+  type        = bool
+  default     = true
+}
+
+variable "enable_keys" {
+  description = "Enable the subscription-key-authenticated OpenAI API endpoint."
+  type        = bool
+  default     = true
 }
 
 variable "purview_client_app_id" {
