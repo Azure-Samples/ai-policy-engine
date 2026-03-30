@@ -1,13 +1,13 @@
 variable "location" {
   description = "Azure region for all resources"
   type        = string
-  default     = "francecentral"
+  default     = "eastus2"
 }
 
 variable "workload_name" {
   description = "Short name used as prefix for all resources"
   type        = string
-  default     = "nourtf2"
+  default     = "chrgbk"
 }
 
 variable "subscription_id" {
