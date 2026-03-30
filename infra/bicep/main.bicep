@@ -60,6 +60,12 @@ param tags object = {
   Environment: 'Dev'
 }
 
+@description('Deploy the JWT-authenticated OpenAI API endpoint.')
+param enableJwt bool = true
+
+@description('Deploy the subscription-key-authenticated OpenAI API endpoint.')
+param enableKeys bool = true
+
 var abbrs = loadJsonContent('./abbrs.json')
 var roles = loadJsonContent('./roles.json')
 var resourceToken = toLower(uniqueString(subscription().id, workloadName, location))
@@ -340,6 +346,8 @@ module apimOaiApi './apimOaiApi.bicep' = {
     apimInstanceName: apimInstanceName
     oaiApiName: oaiApiName
     openAiServiceUrl: openAiServiceUrl
+    enableJwt: enableJwt
+    enableKeys: enableKeys
   }
 }
 

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.38.33.27573",
+      "templateHash": "16240781146342215937"
+    }
+  },
+  "parameters": {
+    "apimInstanceName": {
+      "type": "string"
+    },
+    "oaiApiName": {
+      "type": "string"
+    },
+    "openAiServiceUrl": {
+      "type": "string"
+    },
+    "enableJwt": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the JWT-authenticated OpenAI API endpoint."
+      }
+    },
+    "enableKeys": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the subscription-key-authenticated OpenAI API endpoint."
+      }
+    }
+  },
+  "variables": {
+    "passthroughMethods": [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "HEAD",
+      "OPTIONS"
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service/backends",
+      "apiVersion": "2021-08-01",
+      "name": "[format('{0}/{1}', parameters('apimInstanceName'), 'openAiBackend')]",
+      "properties": {
+        "url": "[parameters('openAiServiceUrl')]",
+        "protocol": "http",
+        "title": "OpenAI Backend",
+        "description": "Backend for Azure OpenAI APIs"
+      }
+    },
+    {
+      "condition": "[parameters('enableJwt')]",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2021-08-01",
+      "name": "[format('{0}/{1}', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')))]",
+      "properties": {
+        "displayName": "Azure OpenAI Service API",
+        "path": "jwt/openai",
+        "serviceUrl": "[parameters('openAiServiceUrl')]",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": false
+      }
+    },
+    {
+      "copy": {
+        "name": "apimJwtOaiApiPassthrough",
+        "count": "[length(if(parameters('enableJwt'), variables('passthroughMethods'), createArray()))]",
+        "mode": "serial",
+        "batchSize": 1
+      },
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2021-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')), format('passthrough-{0}', toLower(if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()])))]",
+      "properties": {
+        "displayName": "[format('Passthrough {0}', if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()])]",
+        "method": "[if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()]]",
+        "urlTemplate": "/*"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enableKeys')]",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2021-08-01",
+      "name": "[format('{0}/{1}', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')))]",
+      "properties": {
+        "displayName": "Azure OpenAI Key-Based API",
+        "path": "keys/openai",
+        "serviceUrl": "[parameters('openAiServiceUrl')]",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": true
+      }
+    },
+    {
+      "copy": {
+        "name": "apimKeyOaiApiPassthrough",
+        "count": "[length(if(parameters('enableKeys'), variables('passthroughMethods'), createArray()))]",
+        "mode": "serial",
+        "batchSize": 1
+      },
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2021-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')), format('key-passthrough-{0}', toLower(if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()])))]",
+      "properties": {
+        "displayName": "[format('Key Passthrough {0}', if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()])]",
+        "method": "[if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()]]",
+        "urlTemplate": "/*"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')))]"
+      ]
+    }
+  ]
+}

@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.39.26.7824",
-      "templateHash": "16050678372111220882"
+      "version": "0.38.33.27573",
+      "templateHash": "1357575036701063122"
     }
   },
   "parameters": {
@@ -145,6 +145,20 @@
       },
       "metadata": {
         "description": "Tags for all resources."
+      }
+    },
+    "enableJwt": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the JWT-authenticated OpenAI API endpoint."
+      }
+    },
+    "enableKeys": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the subscription-key-authenticated OpenAI API endpoint."
       }
     }
   },
@@ -756,8 +770,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "15964264015551791169"
+              "version": "0.38.33.27573",
+              "templateHash": "17073851250405597348"
             }
           },
           "parameters": {
@@ -816,8 +830,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "18077580272308483573"
+              "version": "0.38.33.27573",
+              "templateHash": "7535139409263685923"
             }
           },
           "parameters": {
@@ -873,8 +887,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "9880685636647403153"
+              "version": "0.38.33.27573",
+              "templateHash": "16397573082268915873"
             }
           },
           "parameters": {
@@ -888,7 +902,7 @@
           "resources": [
             {
               "type": "Microsoft.ApiManagement/service",
-              "apiVersion": "2021-08-01",
+              "apiVersion": "2024-06-01-preview",
               "name": "[parameters('apimInstanceName')]",
               "location": "[parameters('location')]",
               "sku": {
@@ -911,7 +925,7 @@
             },
             "clientId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apimInstanceName')), '2021-08-01', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apimInstanceName')), '2024-06-01-preview', 'full').identity.principalId]"
             }
           }
         }
@@ -940,8 +954,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "13210066655456182457"
+              "version": "0.38.33.27573",
+              "templateHash": "2643602553427271851"
             }
           },
           "parameters": {
@@ -1029,8 +1043,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "17766675004239633149"
+              "version": "0.38.33.27573",
+              "templateHash": "9217513881809328621"
             }
           },
           "parameters": {
@@ -1058,6 +1072,7 @@
                 "type": "SystemAssigned"
               },
               "properties": {
+                "disableLocalAuth": false,
                 "databaseAccountOfferType": "Standard",
                 "capabilities": [
                   {
@@ -1074,6 +1089,9 @@
                     "isZoneRedundant": false
                   }
                 ]
+              },
+              "tags": {
+                "SecurityControl": "ignore"
               }
             },
             {
@@ -1217,8 +1235,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "13445984782848973576"
+              "version": "0.38.33.27573",
+              "templateHash": "857010764948303441"
             }
           },
           "parameters": {
@@ -1297,8 +1315,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14271995425647155581"
+              "version": "0.38.33.27573",
+              "templateHash": "10305432726697593832"
             }
           },
           "parameters": {
@@ -1383,8 +1401,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "12890373827018962559"
+              "version": "0.38.33.27573",
+              "templateHash": "16556541193762110583"
             }
           },
           "parameters": {
@@ -1431,7 +1449,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Daily tokens and cost-to-us (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
+                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "timechart",
@@ -1447,7 +1465,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Top clients by cost (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend clientAppId = tostring(dimensions.ClientAppId), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by clientAppId\r\n| top 20 by TotalCostToUs desc\r\n",
+                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend clientAppId = tostring(dimensions.ClientAppId), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize Requests = count(), TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by clientAppId\n| top 20 by TotalCostToUs desc\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "table",
@@ -1463,7 +1481,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Request status breakdown (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend statusCode = toint(dimensions.StatusCode), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), Tokens = sum(totalTokens), CostToUs = round(sum(costToUs), 4) by statusCode\r\n| order by statusCode asc\r\n",
+                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend statusCode = toint(dimensions.StatusCode), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize Requests = count(), Tokens = sum(totalTokens), CostToUs = round(sum(costToUs), 4) by statusCode\n| order by statusCode asc\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "barchart",
@@ -1479,7 +1497,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Quota / rate-limit event timeline (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has_any (\"Rate limit exceeded\", \"Quota exceeded\", \"Over quota\")\r\n| summarize EventCount = count() by Event = tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))), bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
+                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has_any (\"Rate limit exceeded\", \"Quota exceeded\", \"Over quota\")\n| summarize EventCount = count() by Event = tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))), bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "timechart",
@@ -1602,8 +1620,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "2532744083138115369"
+              "version": "0.38.33.27573",
+              "templateHash": "12440229574038070092"
             }
           },
           "parameters": {
@@ -1890,8 +1908,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "8153761212001386508"
+              "version": "0.38.33.27573",
+              "templateHash": "18082009403777612425"
             }
           },
           "parameters": {
@@ -2006,8 +2024,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "248767910648140539"
+              "version": "0.38.33.27573",
+              "templateHash": "10010308081297755697"
             }
           },
           "parameters": {
@@ -2138,8 +2156,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1016576043138759447"
+              "version": "0.38.33.27573",
+              "templateHash": "12652607929097930662"
             }
           },
           "parameters": {
@@ -2191,8 +2209,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1016576043138759447"
+              "version": "0.38.33.27573",
+              "templateHash": "12652607929097930662"
             }
           },
           "parameters": {
@@ -2245,8 +2263,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1338441632118870611"
+              "version": "0.38.33.27573",
+              "templateHash": "5399757726845206364"
             }
           },
           "parameters": {
@@ -2300,8 +2318,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1016576043138759447"
+              "version": "0.38.33.27573",
+              "templateHash": "12652607929097930662"
             }
           },
           "parameters": {
@@ -2353,8 +2371,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1016576043138759447"
+              "version": "0.38.33.27573",
+              "templateHash": "12652607929097930662"
             }
           },
           "parameters": {
@@ -2406,8 +2424,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "1016576043138759447"
+              "version": "0.38.33.27573",
+              "templateHash": "12652607929097930662"
             }
           },
           "parameters": {
@@ -2454,6 +2472,12 @@
           },
           "openAiServiceUrl": {
             "value": "[format('https://{0}/openai', reference(resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName')), '2025-04-01').outputs.host.value)]"
+          },
+          "enableJwt": {
+            "value": "[parameters('enableJwt')]"
+          },
+          "enableKeys": {
+            "value": "[parameters('enableKeys')]"
           }
         },
         "template": {
@@ -2462,8 +2486,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "17300998328281960730"
+              "version": "0.38.33.27573",
+              "templateHash": "16240781146342215937"
             }
           },
           "parameters": {
@@ -2475,10 +2499,23 @@
             },
             "openAiServiceUrl": {
               "type": "string"
+            },
+            "enableJwt": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Deploy the JWT-authenticated OpenAI API endpoint."
+              }
+            },
+            "enableKeys": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Deploy the subscription-key-authenticated OpenAI API endpoint."
+              }
             }
           },
           "variables": {
-            "$fxv#0": "<!--\r\n    IMPORTANT:\r\n    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.\r\n    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.\r\n    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.\r\n    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.\r\n    - To remove a policy, delete the corresponding policy statement from the policy document.\r\n    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.\r\n    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.\r\n    - Policies are applied in the order of their appearance, from the top down.\r\n    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.\r\n-->\r\n<policies>\r\n\t<inbound>\r\n\t\t<base />\r\n\t\t<!-- Validate Entra ID (Azure AD) JWT token — uses /common for multi-tenant support -->\r\n\t\t<validate-jwt header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Unauthorized. Access token is missing or invalid.\">\r\n\t\t\t<openid-config url=\"https://login.microsoftonline.com/common/.well-known/openid-configuration\" />\r\n\t\t\t<required-claims>\r\n\t\t\t\t<claim name=\"aud\" match=\"all\">\r\n\t\t\t\t\t<value>{{ExpectedAudience}}</value>\r\n\t\t\t\t</claim>\r\n\t\t\t</required-claims>\r\n\t\t</validate-jwt>\r\n\t\t<!-- Extract JWT claims into variables -->\r\n\t\t<set-variable name=\"tenantId\" value=\"@(context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(\"tid\",\"\"))\" />\r\n\t\t<set-variable name=\"clientAppId\" value=\"@{\r\n\t\t\tvar jwt = context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt();\r\n\t\t\t// azp is present in delegated (user) tokens, appid in client_credentials tokens\r\n\t\t\tvar azp = jwt?.Claims.GetValueOrDefault(\"azp\",\"\");\r\n\t\t\treturn !string.IsNullOrEmpty(azp) ? azp : jwt?.Claims.GetValueOrDefault(\"appid\",\"\");\r\n\t\t}\" />\r\n\t\t<set-variable name=\"audience\" value=\"@(context.Request.Headers.GetValueOrDefault(\"Authorization\",\"\").Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(\"aud\",\"\"))\" />\r\n\t\t<!-- Set variables for later use -->\r\n\t\t<set-variable name=\"requestBody\" value=\"@(context.Request.Body.As<string>(preserveContent: true))\" />\r\n\t\t<!-- Extract deploymentId from URL path (/deployments/{id}/...) or fall back to\r\n\t\t     the \"model\" field in the JSON request body for routes like /responses, /models -->\r\n\t\t<set-variable name=\"deploymentId\" value=\"@{\r\n\t\t\tvar path = context.Request.Url.Path;\r\n\t\t\tvar marker = \"/deployments/\";\r\n\t\t\tvar idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);\r\n\t\t\tif (idx >= 0) {\r\n\t\t\t\tvar rest = path.Substring(idx + marker.Length);\r\n\t\t\t\tvar slash = rest.IndexOf('/');\r\n\t\t\t\tif (slash >= 0) { return rest.Substring(0, slash); }\r\n\t\t\t\treturn rest;\r\n\t\t\t}\r\n\t\t\ttry {\r\n\t\t\t\tvar body = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n\t\t\t\tif (!string.IsNullOrEmpty(body)) {\r\n\t\t\t\t\tvar json = Newtonsoft.Json.Linq.JObject.Parse(body);\r\n\t\t\t\t\tvar model = json[\"model\"]?.ToString();\r\n\t\t\t\t\tif (!string.IsNullOrEmpty(model)) { return model; }\r\n\t\t\t\t}\r\n\t\t\t} catch { }\r\n\t\t\tvar segments = path.Split('/');\r\n\t\t\tif (segments.Length > 1) { return segments[segments.Length - 1]; }\r\n\t\t\treturn \"unknown\";\r\n\t\t}\" />\r\n\t\t<!-- Acquire a token from APIM's managed identity for the Container App audience -->\r\n\t\t<authentication-managed-identity resource=\"{{ContainerAppAudience}}\" output-token-variable-name=\"msi-access-token\" ignore-error=\"false\" />\r\n\t\t<!-- Pre-check: verify client has a valid plan and is within quota BEFORE calling OpenAI -->\r\n\t\t<set-variable name=\"containerAppBaseUrl\" value=\"{{ContainerAppUrl}}\" />\r\n\t\t<send-request mode=\"new\" response-variable-name=\"precheckResponse\" timeout=\"10\" ignore-error=\"true\">\r\n\t\t\t<set-url>@((string)context.Variables[\"containerAppBaseUrl\"] + \"/api/precheck/\" + (string)context.Variables[\"clientAppId\"] + \"/\" + (string)context.Variables[\"tenantId\"] + \"?deploymentId=\" + (string)context.Variables[\"deploymentId\"])</set-url>\r\n\t\t\t<set-method>GET</set-method>\r\n\t\t\t<set-header name=\"Authorization\" exists-action=\"override\">\r\n\t\t\t\t<value>@(\"Bearer \" + (string)context.Variables[\"msi-access-token\"])</value>\r\n\t\t\t</set-header>\r\n\t\t</send-request>\r\n\t\t<choose>\r\n\t\t\t<when condition=\"@(context.Variables[\"precheckResponse\"] == null || ((IResponse)context.Variables[\"precheckResponse\"]).StatusCode == 401)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"401\" reason=\"Unauthorized\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>@{\r\n\t\t\t\t\t\tvar resp = context.Variables[\"precheckResponse\"] as IResponse;\r\n\t\t\t\t\t\treturn resp != null ? resp.Body.As<string>() : \"{\\\"error\\\":\\\"Pre-check failed — could not reach authorization service\\\"}\";\r\n\t\t\t\t\t}</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t\t<when condition=\"@(((IResponse)context.Variables[\"precheckResponse\"]).StatusCode == 429)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"429\" reason=\"Too Many Requests\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>@(((IResponse)context.Variables[\"precheckResponse\"]).Body.As<string>())</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t\t<when condition=\"@(((IResponse)context.Variables[\"precheckResponse\"]).StatusCode != 200)\">\r\n\t\t\t\t<return-response>\r\n\t\t\t\t\t<set-status code=\"500\" reason=\"Internal Server Error\" />\r\n\t\t\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header>\r\n\t\t\t\t\t<set-body>{\"error\":\"Pre-authorization check failed\"}</set-body>\r\n\t\t\t\t</return-response>\r\n\t\t\t</when>\r\n\t\t</choose>\r\n\t\t<!-- Set the backend service to the Azure OpenAI endpoint -->\r\n\t\t<set-backend-service id=\"apim-generated-policy\" backend-id=\"openAiBackend\" />\r\n\t\t<!-- Use managed identity to authenticate against the Azure Cognitive Services -->\r\n\t\t<authentication-managed-identity resource=\"https://cognitiveservices.azure.com/\" />\r\n\t\t<!-- Start of Request Transformation policy -->\r\n\t\t<!-- Capture the request body as text and add the 'stream_options' property if 'stream' is set to true -->\r\n\t\t<set-body>@{\r\n            var rawBody = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n            var requestBody = Newtonsoft.Json.Linq.JObject.Parse(rawBody);\r\n            if (requestBody[\"stream\"] != null && (bool)requestBody[\"stream\"] == true) {\r\n                requestBody[\"stream_options\"] = Newtonsoft.Json.Linq.JObject.Parse(@\"{\"\"include_usage\"\":true}\");\r\n            }\r\n            return requestBody.ToString();\r\n        }</set-body>\r\n\t\t<!-- End of Request Transformation policy -->\r\n\t</inbound>\r\n\t<backend>\r\n\t\t<base />\r\n\t</backend>\r\n\t<outbound>\r\n\t\t<base />\r\n\t\t<!-- Capture the raw response as text -->\r\n\t\t<set-variable name=\"responseBodyText\" value=\"@{\r\n            return context.Response.Body.As<string>(preserveContent: true);\r\n        }\" />\r\n\t\t<!-- Parse the response: if streaming (starts with 'data:'), extract the last chunk with a JSON payload;\r\n             otherwise parse the entire response text as JSON. -->\r\n\t\t<set-variable name=\"parsedResponse\" value=\"@{\r\n            string txt = (string)context.Variables[\"responseBodyText\"];\r\n            if (txt.TrimStart().StartsWith(\"data:\")) {\r\n                var lines = txt.Split(new[] {'\\n', '\\r'}, StringSplitOptions.RemoveEmptyEntries);\r\n                // Get the last line starting with 'data:' that contains a JSON part and is not the '[DONE]' marker\r\n                var chunkLine = lines\r\n                    .Where(l => l.Trim().StartsWith(\"data:\") && l.Contains(\"{\") && !l.Contains(\"[DONE]\"))\r\n                    .LastOrDefault();\r\n                if (chunkLine != null) {\r\n                    int index = chunkLine.IndexOf('{');\r\n                    string jsonPart = chunkLine.Substring(index);\r\n                    return Newtonsoft.Json.Linq.JObject.Parse(jsonPart);\r\n                }\r\n                return null;\r\n            } else {\r\n                return Newtonsoft.Json.Linq.JObject.Parse(txt);\r\n            }\r\n        }\" />\r\n\t\t<!-- Convert parsedResponse to string and store in a new variable -->\r\n\t\t<set-variable name=\"parsedResponseString\" value=\"@{\r\n            var parsedResponse = context.Variables.GetValueOrDefault<Newtonsoft.Json.Linq.JObject>(\"parsedResponse\");\r\n            return parsedResponse != null ? parsedResponse.ToString() : string.Empty;\r\n        }\" />\r\n\t\t<!-- Fire-and-forget: send usage data to chargeback API without waiting for response.\r\n\t\t     This eliminates latency on the response path for maximum scalability. -->\r\n\t\t<send-one-way-request mode=\"new\">\r\n\t\t\t<set-url>{{ContainerAppUrl}}/api/log</set-url>\r\n\t\t\t<set-method>POST</set-method>\r\n\t\t\t<set-header name=\"Content-Type\" exists-action=\"override\">\r\n\t\t\t\t<value>application/json</value>\r\n\t\t\t</set-header>\r\n\t\t\t<set-header name=\"Authorization\" exists-action=\"override\">\r\n\t\t\t\t<value>@(\"Bearer \" + (string)context.Variables[\"msi-access-token\"])</value>\r\n\t\t\t</set-header>\r\n\t\t\t<set-body>@{\r\n\t\t\t\tvar requestBody = context.Variables.GetValueOrDefault<string>(\"requestBody\");\r\n\t\t\t\tvar parsedResponseString = context.Variables.GetValueOrDefault<string>(\"parsedResponseString\");\r\n\t\t\t\tvar tenantId = context.Variables.GetValueOrDefault<string>(\"tenantId\");\r\n\t\t\t\tvar clientAppId = context.Variables.GetValueOrDefault<string>(\"clientAppId\");\r\n\t\t\t\tvar audience = context.Variables.GetValueOrDefault<string>(\"audience\");\r\n\t\t\t\tvar deploymentId = context.Variables.GetValueOrDefault<string>(\"deploymentId\");\r\n\t\t\t\treturn $\"{{\\\"tenantId\\\": \\\"{tenantId}\\\", \\\"clientAppId\\\": \\\"{clientAppId}\\\", \\\"audience\\\": \\\"{audience}\\\", \\\"requestBody\\\": {requestBody}, \\\"responseBody\\\": {parsedResponseString}, \\\"deploymentId\\\": \\\"{deploymentId}\\\"}}\";\r\n\t\t\t}</set-body>\r\n\t\t</send-one-way-request>\r\n\t</outbound>\r\n\t<on-error>\r\n\t\t<base />\r\n\t\t<!-- Set the error headers -->\r\n\t\t<set-header name=\"ErrorSource\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Source)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorReason\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Reason)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorMessage\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Message)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorScope\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Scope)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorSection\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Section)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorPath\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.Path)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorPolicyId\" exists-action=\"override\">\r\n\t\t\t<value>@(context.LastError.PolicyId)</value>\r\n\t\t</set-header>\r\n\t\t<set-header name=\"ErrorStatusCode\" exists-action=\"override\">\r\n\t\t\t<value>@(context.Response.StatusCode.ToString())</value>\r\n\t\t</set-header>\r\n\t</on-error>\r\n</policies>\r\n",
             "passthroughMethods": [
               "GET",
               "POST",
@@ -2502,12 +2539,13 @@
               }
             },
             {
+              "condition": "[parameters('enableJwt')]",
               "type": "Microsoft.ApiManagement/service/apis",
               "apiVersion": "2021-08-01",
-              "name": "[format('{0}/{1}', parameters('apimInstanceName'), parameters('oaiApiName'))]",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')))]",
               "properties": {
                 "displayName": "Azure OpenAI Service API",
-                "path": "openai",
+                "path": "jwt/openai",
                 "serviceUrl": "[parameters('openAiServiceUrl')]",
                 "protocols": [
                   "https"
@@ -2517,34 +2555,55 @@
             },
             {
               "copy": {
-                "name": "apimOaiApiPassthrough",
-                "count": "[length(variables('passthroughMethods'))]",
+                "name": "apimJwtOaiApiPassthrough",
+                "count": "[length(if(parameters('enableJwt'), variables('passthroughMethods'), createArray()))]",
                 "mode": "serial",
                 "batchSize": 1
               },
               "type": "Microsoft.ApiManagement/service/apis/operations",
               "apiVersion": "2021-08-01",
-              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('oaiApiName'), format('passthrough-{0}', toLower(variables('passthroughMethods')[copyIndex()])))]",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')), format('passthrough-{0}', toLower(if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()])))]",
               "properties": {
-                "displayName": "[format('Passthrough {0}', variables('passthroughMethods')[copyIndex()])]",
-                "method": "[variables('passthroughMethods')[copyIndex()]]",
+                "displayName": "[format('Passthrough {0}', if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()])]",
+                "method": "[if(parameters('enableJwt'), variables('passthroughMethods'), createArray())[copyIndex()]]",
                 "urlTemplate": "/*"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('oaiApiName'))]"
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), format('{0}-jwt', parameters('oaiApiName')))]"
               ]
             },
             {
-              "type": "Microsoft.ApiManagement/service/apis/policies",
+              "condition": "[parameters('enableKeys')]",
+              "type": "Microsoft.ApiManagement/service/apis",
               "apiVersion": "2021-08-01",
-              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), parameters('oaiApiName'), 'policy')]",
+              "name": "[format('{0}/{1}', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')))]",
               "properties": {
-                "format": "rawxml",
-                "value": "[variables('$fxv#0')]"
+                "displayName": "Azure OpenAI Key-Based API",
+                "path": "keys/openai",
+                "serviceUrl": "[parameters('openAiServiceUrl')]",
+                "protocols": [
+                  "https"
+                ],
+                "subscriptionRequired": true
+              }
+            },
+            {
+              "copy": {
+                "name": "apimKeyOaiApiPassthrough",
+                "count": "[length(if(parameters('enableKeys'), variables('passthroughMethods'), createArray()))]",
+                "mode": "serial",
+                "batchSize": 1
+              },
+              "type": "Microsoft.ApiManagement/service/apis/operations",
+              "apiVersion": "2021-08-01",
+              "name": "[format('{0}/{1}/{2}', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')), format('key-passthrough-{0}', toLower(if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()])))]",
+              "properties": {
+                "displayName": "[format('Key Passthrough {0}', if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()])]",
+                "method": "[if(parameters('enableKeys'), variables('passthroughMethods'), createArray())[copyIndex()]]",
+                "urlTemplate": "/*"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), parameters('oaiApiName'))]",
-                "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apimInstanceName'), 'openAiBackend')]"
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimInstanceName'), format('{0}-keys', parameters('oaiApiName')))]"
               ]
             }
           ]
@@ -2579,8 +2638,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14101433639388146777"
+              "version": "0.38.33.27573",
+              "templateHash": "15407664923439798157"
             }
           },
           "parameters": {
@@ -2644,8 +2703,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "4328267729054570879"
+              "version": "0.38.33.27573",
+              "templateHash": "10377564680390167978"
             }
           },
           "parameters": {
