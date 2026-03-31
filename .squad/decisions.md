@@ -49,8 +49,8 @@ This applies to dashboards, usage views, client detail pages, and export options
 **Supersedes:** v1 proposal (mcnulty-model-routing-pricing-architecture.md)  
 **Summary:** Three bodies of work revised to incorporate Zack Way's design decisions:
 1. **Storage Architecture Migration (Phase 0 — COMPLETE):** CosmosDB is durable source of truth; Redis is write-through cache. New repository pattern (`IRepository<T>`, `CachedRepository<T>` wrapper), startup migration service, cache warmup service. All endpoints refactored. 36 new tests. 129/129 tests pass.
-2. **Model Routing (Phase 1, pending):** Map accounts to known Foundry deployments (no pattern matching). Three routing modes: per-account, enforced, QoS-based. Rate limits apply to routed deployment. New `ModelRoutingPolicy` entity in repositories.
-3. **Per-Request Multiplier Pricing (Phase 2–3, pending):** `effective_cost = 1 × model_multiplier` per request (not per-token). GPT-4.1 = 1.0x, GPT-4.1-mini = 0.33x. Monthly quotas are request-based, not token-based.
+2. **Model Routing (Phase 1 — COMPLETE):** Map accounts to known Foundry deployments (no pattern matching). Three routing modes: per-account, enforced, QoS-based. Rate limits apply to routed deployment. New `ModelRoutingPolicy` entity in repositories. 41 new tests. 170/170 tests pass.
+3. **Per-Request Multiplier Pricing (Phase 2 — COMPLETE):** `effective_cost = 1 × model_multiplier` per request (not per-token). GPT-4.1 = 1.0x, GPT-4.1-mini = 0.33x. Monthly quotas are request-based, not token-based. 30 new integration tests. 200/200 tests pass.
 
 **Architectural Pattern:**
 - Write path: API → CosmosDB (persist) → Redis (update cache)
@@ -62,6 +62,13 @@ This applies to dashboards, usage views, client detail pages, and export options
 - `PrecheckEndpoints.cs` — routing decisions + rate limit enforcement
 - `ChargebackCalculator` — extend cost calculation with multipliers
 - `AuditLogDocument` / `BillingSummaryDocument` — extend with routing + multiplier fields
+
+### 2026-03-31T16:20:00Z: Empty Foundry = reject routing rules (ACCEPTED)
+**By:** Zack Way (via Copilot directive)  
+**Status:** Accepted  
+**Rationale:** If Foundry returns no deployments, routing policy validation should reject all rules. This is a degenerate case — you can't get a Foundry endpoint without deploying at least one model. Empty Foundry = misconfiguration, not a valid state to save routing policies against.  
+**Implementation:** Option A (strict). `RoutingPolicyEndpoints.ValidateDeployments` rejects empty deployment sets per `RoutingPolicyValidator` service logic. Prevents phantom deployment references. Found and validated by Bunk during B5.6 test writing.  
+**Phase:** 2 (enforcement) — validation now strictly enforced in PrecheckEndpoints routing evaluation.
 
 ## Governance
 

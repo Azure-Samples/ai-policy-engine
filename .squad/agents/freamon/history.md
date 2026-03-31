@@ -112,3 +112,37 @@
 - Deployment validation against DeploymentDiscoveryService with graceful degradation
 
 **Test results:** 129/129 tests maintained, awaiting Bunk Phase 1 test pass
+
+### Phase 2 — Enforcement: Precheck + Calculator + Log Ingest (2026-03-31)
+
+**What was done:** Implemented all 7 work items (F2.1–F2.7). Routing evaluation in the precheck hot path, deployment-scoped rate limits, multiplier billing in log ingest, extended audit/billing documents, and two new export endpoints.
+
+**Key files created:**
+- `Models/RequestSummaryResponse.cs` — response DTOs for request-summary endpoint
+- `Endpoints/RequestBillingEndpoints.cs` — GET /api/chargeback/request-summary + GET /api/export/request-billing
+
+**Key files modified:**
+- `Endpoints/PrecheckEndpoints.cs` — routing evaluation via RoutingEvaluator, in-memory policy cache (30s TTL), deployment-scoped rate limit keys, AllowedDeployments check on routed deployment, enriched response with routedDeployment/requestedDeployment/routingPolicyId
+- `Endpoints/LogIngestEndpoints.cs` — multiplier billing (effectiveRequestCost, tier tracking, overage), request counter updates on ClientPlanAssignment, billing period reset includes request counters, routing metadata in audit items
+- `Services/ChargebackCalculator.cs` — added GetTierName() and GetMultiplier() public methods
+- `Services/IChargebackCalculator.cs` — interface extended with GetTierName and GetMultiplier
+- `Models/AuditLogDocument.cs` — added RequestedDeploymentId, RoutingPolicyId, Multiplier, EffectiveRequestCost, TierName (all nullable)
+- `Models/BillingSummaryDocument.cs` — added TotalEffectiveRequests, EffectiveRequestsByTier, MultiplierOverageCost (all nullable)
+- `Models/AuditLogItem.cs` — added routing/multiplier fields for channel transport
+- `Services/AuditLogWriter.cs` — passes through new fields to AuditLogDocument
+- `Services/AuditStore.cs` — accumulates multiplier billing fields in billing summary upserts
+- `Program.cs` — maps RequestBillingEndpoints
+
+**Test factory updated:**
+- `ChargebackApiFactory.cs` — registers IRepository<ModelRoutingPolicy> with RedisBackedRepository
+
+**Patterns followed:**
+- PrecheckEndpoints uses ConcurrentDictionary in-memory cache for routing policies (30s refresh), not Redis per-request
+- RoutingEvaluator is pure static logic — adopted Bunk's existing implementation unchanged
+- Rate limit keys use deployment-scoped overload when deployment is available, fall back to legacy keys for backward compat
+- All new AuditLogDocument/BillingSummaryDocument fields are nullable — existing data stays valid
+- Multiplier billing only activates when plan.UseMultiplierBilling is true
+- Routing policy resolution: ClientPlanAssignment.ModelRoutingPolicyOverride ?? PlanData.ModelRoutingPolicyId
+- AllowedDeployments check runs on the ROUTED deployment, not the originally requested one
+
+**Test results:** 200/200 tests pass, 0 regressions

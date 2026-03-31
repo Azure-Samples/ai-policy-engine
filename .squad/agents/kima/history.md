@@ -33,3 +33,35 @@ The backend storage architecture has been refactored from Redis-only to a durabl
 - Phase 0 completes the architectural debt fix; Phase 1 onwards adds new features without storage concerns.
 
 **Test Results:** 129/129 tests pass (36 new Phase 5 tests for repositories/migration/warmup).
+
+### 2026-03-31 — Phase 1 Complete: Backend API Stable for Phase 4 Frontend Work
+
+**Phase 1 Status:** ✅ COMPLETE (Freamon + Bunk)
+
+Backend storage architecture, model routing, and multiplier pricing are complete. All API contracts finalized. Ready for frontend adaptive UI implementation.
+
+**What Kima Needs to Know for Phase 4:**
+
+- **Backend is Stable:** No breaking changes planned. All routing + pricing features are finalized and tested (200/200 tests pass).
+- **New Precheck Response Fields:** The precheck endpoint now returns `routedDeployment` (actual deployment after routing), `requestingDeployment`, and `routingPolicyId`. Frontend can use these for diagnostic dashboards.
+- **Request Summary Export Ready:** New endpoints available:
+  - `GET /api/chargeback/request-summary?clientId=...&startDate=...&endDate=...` — query request usage by period
+  - `GET /api/export/request-billing?format=csv` — download request billing data
+- **Multiplier Billing UI:** Plans now have `UseMultiplierBilling` flag. Dashboard should adapt:
+  - If ALL plans use multiplier → show only request-based views (no token UI)
+  - If ALL plans use token → show only token-based views (no multiplier UI)
+  - If MIXED → show hybrid view (both models visible)
+  - Applies to dashboards, usage views, client detail pages, export options
+- **Tier Tracking:** Clients now track `RequestsByTier` (e.g., Standard, Premium, Enterprise). Dashboard can show per-tier breakdowns and cost analysis.
+- **Request Utilization:** ClientUsageResponse includes `CurrentPeriodRequests`, `OverbilledRequests`, and `RequestUtilizationPercent`. Dashboard can show quota usage and overage alerts.
+- **Backward Compat:** All new fields are nullable. Existing dashboard code continues to work. New UI is additive.
+
+**Ready for Phase 4 Frontend Development:**
+- Plan response includes `UseMultiplierBilling`, `MonthlyRequestQuota`, `OverageRatePerRequest`
+- Client detail response includes `CurrentPeriodRequests`, `OverbilledRequests`, `RequestsByTier`, `RequestUtilizationPercent`
+- Model pricing includes `Multiplier`, `TierName`
+- Export endpoints ready for download functionality
+- No API breaking changes — pure feature additions
+
+**Test Results:** 200/200 tests pass (30 new Phase 2 integration tests from Bunk B5.7 + B5.8).
+

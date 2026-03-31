@@ -112,3 +112,32 @@
 - All tests use [Theory] for data-driven scenarios
 
 **Baseline:** 129 tests before → 170 tests after (all passing)
+
+### 2026-03-31: B5.7 + B5.8 — Phase 2 Enforcement Integration Tests
+
+**What:** Wrote 30 integration tests across 2 test files for Phase 2 enforcement (proactive — tests written from architecture spec while Freamon builds endpoint integration):
+
+- `src/Chargeback.Tests/Integration/PrecheckRoutingIntegrationTests.cs` — 12 tests: no routing policy (passthrough), matching rule returns routed deployment, no match + Passthrough, no match + Deny (blocked), client override takes precedence, AllowedDeployments validated against ROUTED deployment [Theory], rate limit keys use routed deployment, rate limits enforced against routed deployment, disabled rule skipped, fallback deployment used, client override deny blocks even when plan allows, empty AllowedDeployments allows any routed deployment
+- `src/Chargeback.Tests/Integration/MultiplierBillingIntegrationTests.cs` — 18 tests: effective cost calculation for baseline/cheap/premium [Theory], multiplier disabled skips calculation, overage detection (exceeds quota, already over, at boundary, unlimited), audit fields contain multiplier metadata, audit routing metadata preserved, cost-optimized routing reduces consumption, multiple requests accumulate, tier tracking (RequestsByTier), unknown deployment defaults to 1.0x, premium overage costs more, full routing+pricing flow, overage straddles boundary (partial overage)
+
+**Integration test approach:**
+- Tests compose `RoutingEvaluator.Evaluate()` + enforcement checks (AllowedDeployments, rate limits) to validate the full precheck-with-routing flow
+- Tests compose `ChargebackCalculator.CalculateEffectiveRequestCost()` + `CalculateMultiplierOverageCost()` + client state updates to validate the full multiplier billing lifecycle
+- `SimulateRoutedPrecheck()` helper exercises the routing → access control flow that Freamon will wire into PrecheckEndpoints
+- `SimulateMultiplierBilling()` helper exercises the effective cost → accumulation → overage → tier tracking flow for LogIngestEndpoints
+- FakeRedis used for rate limit key verification tests
+
+**Key design decisions validated by tests:**
+- AllowedDeployments must be checked against the ROUTED deployment, not the requested one
+- Rate limit Redis keys are scoped to the routed deployment
+- Client routing policy override takes precedence over plan's policy
+- Disabled routing rules are skipped in the full precheck flow
+- Multiplier billing disabled → zero effective cost, client state unchanged
+- At quota boundary (exactly at limit), no overage (boundary inclusive)
+- Premium model overage is proportionally more expensive (1.5x vs 1.0x)
+- Cost-optimized routing (premium → economy) stretches budget further
+- RequestsByTier correctly categorizes by ModelPricing.TierName
+- Unknown deployments default to 1.0x multiplier and "Standard" tier
+
+**Baseline:** 170 tests before → 200 tests after (all passing)
+

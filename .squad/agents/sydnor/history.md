@@ -37,3 +37,28 @@ The backend storage architecture has been refactored from Redis-only to a durabl
 - All future configuration entities will use the same repository pattern + caching layer.
 
 **Test Results:** 129/129 tests pass (36 new Phase 5 tests for repositories/migration/warmup).
+
+### 2026-03-31 — Phase 1 Complete: Model Routing Architecture Ready for Phase 3
+
+**Phase 1 Status:** ✅ COMPLETE (Freamon + Bunk)
+
+All model routing and per-request multiplier pricing features are complete and tested. Backend API contracts finalized. Infrastructure requirements unchanged (uses existing CosmosDB + Redis).
+
+**What Sydnor Needs to Know for Phase 3:**
+
+- **Backend is Ready:** All 7 routing enforcement endpoints ready (F2.1–F2.7). No more breaking changes — API contracts stable.
+- **Precheck Response Extended:** New fields available: `routedDeployment`, `requestedDeployment`, `routingPolicyId`. APIM policies can use these for access control decisions.
+- **Rate Limiting by Deployment:** Rate limit checks now deployment-scoped. The routed deployment is the one that gets rate-limited, not the originally requested model.
+- **Multiplier Billing Fields:** Audit trail includes pricing data: `Multiplier`, `EffectiveRequestCost`, `TierName`. APIM policies can log these for chargeback.
+- **Deployment Discovery:** All routing evaluations validate against Foundry deployments. Empty Foundry = strict validation failure (no phantom references).
+- **No New Azure Resources:** Phase 3 uses existing resources. APIM policies are stateless — they call precheck and log ingest endpoints.
+- **Backward Compat:** All new fields are nullable. Existing clients continue to work without changes.
+
+**Ready for Phase 3 Deployment:**
+- Deploy Chargeback.Api with Phase 2 enforcement active
+- Configure APIM policies to call precheck endpoint for authentication/authorization
+- APIM policies log routing + pricing metadata via log ingest endpoint
+- No schema migrations needed — CosmosDB containers already configured
+
+**Test Results:** 200/200 tests pass (30 new Phase 2 integration tests from Bunk B5.7 + B5.8).
+
