@@ -45,3 +45,70 @@
 - Namespace: `Chargeback.Tests.Repositories`
 
 **Baseline:** 93 tests before → 129 tests after (all passing)
+
+### 2026-03-31: B5.3–B5.6 — Phase 1 Routing & Multiplier Pricing Tests
+
+**What:** Wrote 41 unit tests across 4 test files for Phase 1 features (proactive — tests written from architecture spec while Freamon builds production code):
+
+- `src/Chargeback.Tests/Routing/RoutingEvaluatorTests.cs` — 13 tests: exact match, no match, priority ordering, disabled rules, Passthrough/Deny default behaviors, empty rules, null policy, fallback deployment, multiple rules, all-disabled-falls-to-default
+- `src/Chargeback.Tests/Pricing/EffectiveRequestCostTests.cs` — 9 tests: baseline/cheap/premium multipliers via [Theory], zero multiplier → 1.0, negative multiplier → 1.0, unknown deployment → 1.0, model name fallback, empty cache, deploymentId-first priority
+- `src/Chargeback.Tests/Pricing/MultiplierOverageCostTests.cs` — 11 tests: billing disabled → 0, unlimited quota → 0, within quota [Theory], at boundary, over quota, partial overage (straddles boundary), already over quota, premium model overage, cheap model fractional overage
+- `src/Chargeback.Tests/Routing/RoutingPolicyValidationTests.cs` — 8 tests: valid deployment passes, invalid deployment fails, fallback must be known, valid fallback passes, mixed valid/invalid rejects whole policy, empty Foundry list fails all, multiple invalid reports all errors, case-insensitive matching
+
+**Also created production contracts (for Freamon to adopt/adjust):**
+- `src/Chargeback.Api/Services/RoutingEvaluator.cs` — static routing evaluation (pure logic, no dependencies)
+- `src/Chargeback.Api/Services/RoutingPolicyValidator.cs` — validates routing rules against Foundry deployments
+- Extended `IChargebackCalculator` and `ChargebackCalculator` with `CalculateEffectiveRequestCost()` and `CalculateMultiplierOverageCost()`
+- Added test constructor to `ChargebackCalculator` for pre-seeding pricing cache
+
+**Key design decisions validated by tests:**
+- Routing uses exact Foundry deployment match — no glob/regex (per Zack Way decision)
+- Zero/negative multipliers default to 1.0 (safe default, not 0 which would make requests free)
+- Overage is capped at effectiveCost per request (can't overage more than the request itself)
+- At quota boundary (exactly at limit), no overage — boundary is inclusive
+- One bad deployment in a routing policy rejects the entire policy (atomic validation)
+- RoutingPolicyValidator is strict: empty Foundry deployment list fails all rules (endpoint implementation currently skips validation when empty — noted discrepancy)
+
+**Discrepancy found:** RoutingPolicyEndpoints.ValidateDeployments skips validation when knownIds.Count == 0 (line 245). RoutingPolicyValidator (and the spec) says empty Foundry list should fail all. This should be discussed with Freamon/team.
+
+**Test patterns:**
+- `RoutingEvaluator` is a static class — tests exercise pure functions directly, no mocking needed
+- `RoutingPolicyValidator` uses NSubstitute mock of `IDeploymentDiscoveryService`
+- `ChargebackCalculator` tests use new `ChargebackCalculator(Dictionary<string, ModelPricing>)` constructor for seeded pricing cache
+- Freamon's model property names: `RouteRule.RequestedDeployment`/`RoutedDeployment`, enum `RoutingBehavior` (not `DefaultRoutingBehavior`)
+
+**Baseline:** 129 tests before → 170 tests after (all passing)
+
+### 2026-03-31: B5.3–B5.6 — Phase 1 Routing & Multiplier Pricing Tests
+
+**What:** Wrote 41 unit tests across 4 test files for Phase 1 features (routing evaluation, multiplier cost calculation, and validation):
+
+- `src/Chargeback.Tests/Routing/RoutingEvaluatorTests.cs` — 13 tests: exact match, no match, priority ordering, disabled rules, Passthrough/Deny default behaviors, empty rules, null policy, fallback deployment
+- `src/Chargeback.Tests/Pricing/EffectiveRequestCostTests.cs` — 9 tests: baseline/cheap/premium multipliers via [Theory], zero/negative → 1.0 default, unknown deployment → 1.0, model name fallback, empty cache
+- `src/Chargeback.Tests/Pricing/MultiplierOverageCostTests.cs` — 11 tests: billing disabled → 0, unlimited quota → 0, within quota, at boundary (inclusive), over quota, partial overage, already over, premium/cheap models
+- `src/Chargeback.Tests/Routing/RoutingPolicyValidationTests.cs` — 8 tests: valid deployment passes, invalid fails, fallback validation, atomicity (one bad → reject all), empty Foundry (strict), case-insensitive matching
+
+**Also created production contracts (for Freamon to adopt/adjust):**
+- `src/Chargeback.Api/Services/RoutingEvaluator.cs` — static routing evaluation (pure logic)
+- `src/Chargeback.Api/Services/RoutingPolicyValidator.cs` — validates routing rules against Foundry deployments
+- Extended `IChargebackCalculator` and `ChargebackCalculator` with:
+  - `CalculateEffectiveRequestCost(string deploymentId, string? modelName)` → decimal (1.0x baseline, 0.33x cheap, 3.0x premium)
+  - `CalculateMultiplierOverageCost(decimal monthlyRequestQuota, decimal usageCount, decimal multiplier)` → decimal (0 if unlimited/disabled/within quota, charged per excess)
+
+**Key design decisions validated:**
+- Routing uses exact Foundry deployment match — no glob/regex (Zack Way decision)
+- Zero/negative multipliers default to 1.0 (safe default, not 0)
+- Overage is capped at effectiveCost per request
+- Quota boundary is inclusive (at limit exactly, no overage)
+- One bad deployment in routing policy rejects the entire policy (atomic validation)
+- Empty Foundry deployment list fails all rules (strict validation)
+
+**Discrepancy flagged:** RoutingPolicyEndpoints.ValidateDeployments skips validation when knownIds.Count == 0 (line 245). RoutingPolicyValidator (and spec) says empty Foundry list should fail all. Decision: strict rejection approved by user for Phase 2.
+
+**Test patterns:**
+- `RoutingEvaluator` is static — tests exercise pure functions directly, no mocking
+- `RoutingPolicyValidator` uses NSubstitute mock of `IDeploymentDiscoveryService`
+- `ChargebackCalculator` tests use new `ChargebackCalculator(Dictionary<string, ModelPricing>)` constructor for seeded pricing cache
+- All tests use [Theory] for data-driven scenarios
+
+**Baseline:** 129 tests before → 170 tests after (all passing)
