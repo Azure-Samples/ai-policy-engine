@@ -48,6 +48,26 @@
 - All changes are additive/backward-compatible — `UseMultiplierBilling` flag for gradual migration
 - No new storage systems — Redis for runtime config, CosmosDB for audit (existing containers)
 - Proposal written to `.squad/decisions/inbox/mcnulty-model-routing-pricing-architecture.md`
+- Revised proposal (v2) written to `.squad/decisions/inbox/mcnulty-architecture-v2.md`
+
+### 2026-03-31 — Four Design Decisions (from Zack Way) & Architecture v2
+
+**Decision 1: CosmosDB is Source of Truth, Redis is Cache Only**
+- All configuration data (plans, clients, pricing, routing policies, usage policy) MUST persist to CosmosDB. Redis is ONLY a write-through cache.
+- Architectural implication: New repository pattern (`IRepository<T>` → Cosmos persistence → `CachedRepository<T>` Redis wrapper). New `configuration` Cosmos container. One-time migration service (Redis → Cosmos on startup). Cache warming service. All endpoint refactoring to use repositories instead of direct Redis calls.
+- This is the largest body of work (Phase 0) and must complete before feature work.
+
+**Decision 2: Per-REQUEST Multiplier (not per-token)**
+- `effective_cost = 1 × model_multiplier` per request. GPT-4.1 = 1.0x, GPT-4.1-mini = 0.33x.
+- Architectural implication: Simpler calculator logic — no token division. `MonthlyRequestQuota` replaces `MonthlyUnitQuota`. `CurrentPeriodRequests` replaces `CurrentPeriodUnits`. All "unit" terminology changed to "effective requests".
+
+**Decision 3: Foundry Deployment Discovery (no pattern matching)**
+- Routing maps to specific known deployments from Foundry. No globs, no regex.
+- Architectural implication: `RouteRule.RequestedDeployment` is exact match only. All `RoutedDeployment` values validated against `IDeploymentDiscoveryService.GetDeploymentsAsync()` on create/update. Existing `DeploymentDiscoveryService` is the integration point.
+
+**Decision 4: Rate Limits on Routed Deployment**
+- RPM/TPM limits apply to the routed deployment (what hits the backend), not the requested model.
+- Architectural implication: Rate limit Redis keys include deployment ID. New key pattern: `ratelimit:rpm:{client}:{tenant}:{deploymentId}:{window}`. Precheck evaluates rate limits AFTER routing resolution.
 
 **File Paths:**
 - Models: `src/Chargeback.Api/Models/` (PlanData.cs, ClientPlanAssignment.cs, ModelPricing.cs, AuditLogDocument.cs, BillingSummaryDocument.cs)

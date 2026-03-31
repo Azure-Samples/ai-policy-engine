@@ -1,0 +1,1 @@
+squad: McNulty architecture v2 — Cosmos source of truth, per-request multiplier, Foundry deployments
