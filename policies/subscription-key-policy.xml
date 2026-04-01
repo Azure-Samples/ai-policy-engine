@@ -88,6 +88,42 @@
 				</return-response>
 			</when>
 		</choose>
+		<!-- ══════════════════════════════════════════════════════════════════════════
+		     AUTO-ROUTER — Deployment routing based on precheck response.
+
+		     How it works:
+		     1. The precheck endpoint may return a "routedDeployment" field indicating
+		        the optimal deployment for this request based on the plan's routing policy.
+		     2. If routedDeployment is present AND differs from the client's requested
+		        deployment, APIM rewrites the backend URL to use the routed deployment.
+		     3. If routedDeployment is empty/null or matches the requested deployment,
+		        the request passes through unchanged — no override occurs.
+
+		     This is an AUTO-ROUTER, not enforced rewriting:
+		     - Requests WITHOUT a specific deployment get routed by the plan's policy.
+		     - Requests WITH a specific deployment pass through as-is.
+		     - If a user asks for GPT-4, they get GPT-4. No forced downgrades.
+		     ══════════════════════════════════════════════════════════════════════════ -->
+		<!-- Extract routedDeployment from the precheck 200 response (null-safe) -->
+		<set-variable name="routedDeployment"
+			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routedDeployment"]?.ToString())" />
+		<!-- If routing produced a different deployment, rewrite the backend URL path -->
+		<choose>
+			<when condition="@(!string.IsNullOrEmpty((string)context.Variables["routedDeployment"]) &amp;&amp; (string)context.Variables["routedDeployment"] != (string)context.Variables["deploymentId"])">
+				<!-- Preserve the original deployment ID for audit/chargeback logging -->
+				<set-variable name="originalDeploymentId" value="@((string)context.Variables["deploymentId"])" />
+				<!-- Update deploymentId to the routed deployment so downstream logic
+				     (backend call, rate limiting, logging) all use the actual deployment -->
+				<set-variable name="deploymentId" value="@((string)context.Variables["routedDeployment"])" />
+				<!-- Rewrite the URL path: /deployments/{original}/ → /deployments/{routed}/ -->
+				<rewrite-uri template="@{
+					var path = context.Request.Url.Path;
+					var original = (string)context.Variables["originalDeploymentId"];
+					var routed = (string)context.Variables["routedDeployment"];
+					return path.Replace($"/deployments/{original}/", $"/deployments/{routed}/");
+				}" />
+			</when>
+		</choose>
 		<!-- Set the backend service to the Azure OpenAI endpoint -->
 		<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
 		<!-- Use managed identity to authenticate against the Azure Cognitive Services -->
@@ -156,7 +192,13 @@
 				var clientAppId = context.Variables.GetValueOrDefault<string>("clientAppId");
 				var audience = context.Variables.GetValueOrDefault<string>("audience");
 				var deploymentId = context.Variables.GetValueOrDefault<string>("deploymentId");
-				return $"{{\"tenantId\": \"{tenantId}\", \"clientAppId\": \"{clientAppId}\", \"audience\": \"{audience}\", \"requestBody\": {requestBody}, \"responseBody\": {parsedResponseString}, \"deploymentId\": \"{deploymentId}\"}}";
+				// Auto-router fields: requestedDeploymentId is the client's original ask,
+				// routedDeployment is what precheck recommended (may be empty if no routing).
+				var requestedDeploymentId = context.Variables.ContainsKey("originalDeploymentId")
+					? context.Variables.GetValueOrDefault<string>("originalDeploymentId")
+					: deploymentId;
+				var routedDeployment = context.Variables.GetValueOrDefault<string>("routedDeployment") ?? "";
+				return $"{{\"tenantId\": \"{tenantId}\", \"clientAppId\": \"{clientAppId}\", \"audience\": \"{audience}\", \"requestBody\": {requestBody}, \"responseBody\": {parsedResponseString}, \"deploymentId\": \"{deploymentId}\", \"requestedDeploymentId\": \"{requestedDeploymentId}\", \"routedDeployment\": \"{routedDeployment}\"}}";
 			}</set-body>
 		</send-one-way-request>
 	</outbound>

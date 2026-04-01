@@ -62,3 +62,32 @@ All model routing and per-request multiplier pricing features are complete and t
 
 **Test Results:** 200/200 tests pass (30 new Phase 2 integration tests from Bunk B5.7 + B5.8).
 
+### 2026-03-31 — Phase 3 Complete: APIM Auto-Router Policies (S3.1–S3.3)
+
+**Phase 3 Status:** ✅ COMPLETE (Sydnor)
+
+Both APIM policy files updated with auto-router support. Identical routing logic in both policies.
+
+**What Changed:**
+
+- **Inbound — Auto-Router Logic (after precheck, before backend):**
+  - Extracts `routedDeployment` from precheck 200 response using `Body.As<JObject>(preserveContent: true)`
+  - If `routedDeployment` is non-empty AND differs from the client's `deploymentId`: saves original as `originalDeploymentId`, updates `deploymentId`, rewrites URL path via `<rewrite-uri>`
+  - If `routedDeployment` is null/empty or matches requested deployment: no-op, existing behavior preserved
+  - Comment block explains auto-router semantics: no forced downgrades, pass-through for explicit deployments
+
+- **Outbound — Extended Log Payload:**
+  - Added `requestedDeploymentId` (original client ask) and `routedDeployment` (precheck recommendation) to the fire-and-forget `/api/log` POST
+  - `requestedDeploymentId` = `originalDeploymentId` if routing happened, else `deploymentId`
+  - `routedDeployment` = precheck value or empty string
+
+**Design Decisions:**
+- `preserveContent: true` on response body read ensures the body stream isn't consumed before backend routing
+- `&amp;&amp;` used in XML condition (proper XML entity encoding for `&&`)
+- URL rewrite uses `path.Replace()` — safe no-op when URL doesn't contain `/deployments/{id}/` (e.g., Responses API body-based model)
+- `originalDeploymentId` only set inside routing `<when>` block — log payload checks `ContainsKey` to handle both routed and non-routed paths
+
+**Files Modified:**
+- `policies/subscription-key-policy.xml` — +43 lines (S3.1 + S3.3)
+- `policies/entra-jwt-policy.xml` — +43 lines (S3.2 + S3.3)
+
