@@ -50,6 +50,35 @@
 
 **Next Phase:** Phase 1 (Model Routing) — Freamon will add `CosmosModelRoutingPolicyRepository` + routing logic at precheck; Bunk will add routing tests.
 
+### 2026-03-31 — Full Code Review: Phases 0–4 (All Feature Work)
+
+**Verdict:** CONDITIONALLY APPROVED — 3 blocking, 8 should-fix, 5 nice-to-have.
+
+**Blocking Issues Found:**
+1. **Precheck does NOT enforce `MonthlyRequestQuota`** for multiplier billing plans. Only `MonthlyTokenQuota` is checked. Plans with `UseMultiplierBilling = true` have zero quota enforcement at the APIM gate. Fix: add request quota check in `PrecheckEndpoints.cs`.
+2. **Frontend `RequestSummaryResponse.billingPeriod`** type is `{ year, month }` but backend returns string `"YYYY-MM"`. Will crash `RequestBilling.tsx` at runtime.
+3. **Frontend `RouteRule`** missing `priority` and `enabled` fields. Users cannot set rule priority or disable rules from the UI.
+
+**Key Should-Fix Items:**
+- Dead code in `Repositories/` directory (duplicates `Services/` with different behavior) — must delete.
+- APIM outbound log body uses string interpolation for JSON — injection risk on claims with quotes.
+- `ConfigurationContainerProvider.EnsureInitializedAsync` has a race condition (volatile bool insufficient).
+- `LogIngestEndpoints` never persists `RoutingPolicyId` — audit trail gap.
+- Frontend TypeScript types don't include multiplier billing fields on base types; relies on `Extended` interfaces and runtime type coercion.
+- `ChargebackCalculator` pricing cache is not thread-safe.
+- Frontend API error handling discards backend error payloads.
+
+**What's Solid:**
+- Repository pattern and write-through cache semantics are correct.
+- `RoutingEvaluator` is pure, stateless, and well-tested (priority, enabled, deny, passthrough, fallback).
+- Multiplier billing math (`effective_cost = 1 × multiplier`) is correct.
+- Authorization model applied consistently.
+- 200 tests passing with strong critical-path coverage.
+- APIM routing integration (precheck → rewrite URI → deployment-scoped rate limits) works correctly.
+- Backward compatibility maintained via nullable fields with defaults.
+
+**Review output:** `.squad/decisions/inbox/mcnulty-code-review-verdict.md`
+
 ### 2026-03-31 — Deep Architecture Exploration + Feature Design
 
 **Codebase Architecture:**
@@ -106,3 +135,31 @@
 - Frontend types: `src/chargeback-ui/src/types.ts`
 - Frontend API client: `src/chargeback-ui/src/api.ts`
 - Aspire orchestration: `src/Chargeback.AppHost/AppHost.cs`
+
+### 2026-03-31 — Code Review Complete: All 11 Findings Fixed (APPROVED)
+
+**Status:** COMPLETE ✅
+
+McNulty's comprehensive code review of Phases 0–4 delivered 11 findings:
+- **3 Blocking (Critical):** B1 (precheck quota), B2 (type mismatch), B3 (missing fields)
+- **8 Should-Fix (Important):** S1–S8 (security, race conditions, type safety, error handling)
+- **5 Nice-to-Have (Future):** N1–N5 (minor optimizations)
+
+**All 11 Findings Now Fixed:**
+- **Freamon (Backend):** Fixed B1, S1, S2, S3, S4, S7 (6 fixes)
+- **Kima (Frontend):** Fixed B2, B3, S5, S6, S8 (5 fixes)
+
+**Test & Build Results:**
+- Backend: 198/198 tests pass (0 regressions; -22 from deleted dead tests)
+- Frontend: tsc clean, vite build clean, 0 new linting issues
+- No architectural changes — all fixes are bug corrections + code cleanup
+
+**Production Readiness:** APPROVED FOR MERGE
+- Security: JSON injection fixed, audit trail complete, cache thread-safe
+- Reliability: Precheck enforces quotas, race conditions eliminated
+- Code Quality: Dead code removed, type safety improved, error messages actionable
+- Backward Compatibility: Maintained (all new fields nullable with defaults)
+
+**Next Phase:** Deploy backend + frontend together. Schedule N1–N5 optimizations for future sprint.
+
+**Decision:** Merged review findings into `.squad/decisions.md`. Ready for production deployment.

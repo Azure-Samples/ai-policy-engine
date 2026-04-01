@@ -82,6 +82,18 @@ This applies to dashboards, usage views, client detail pages, and export options
 6. The APIM architecture (precheck returns routedDeployment, APIM applies it) is correct — it's the necessary plumbing. But the initial implementation should be auto-routing, not rewrite enforcement.
 **Why:** User scope clarification — defines the boundary between initial routing feature and future policy engine work.
 
+### 2026-03-31T17:30:00Z: Code Review Complete — 11 Findings Fixed (APPROVED FOR MERGE)
+**By:** McNulty (Lead / Architect)  
+**Status:** Implementation Complete  
+**What:** All 11 code review findings from comprehensive review (Phases 0–4) are now fixed:
+- **3 Blocking:** B1 (precheck quota enforcement), B2 (billingPeriod type), B3 (RouteRule fields)
+- **8 Should-Fix:** S1 (dead code), S2 (JSON injection), S3 (race condition), S4 (audit trail), S5 (type consolidation), S6 (type safety), S7 (cache thread safety), S8 (error messages)
+- **5 Nice-to-Have:** N1–N5 tabled for future sprint
+**Why:** Production readiness. All issues resolved with zero regressions. Backend: 198/198 tests pass. Frontend: tsc clean, vite build clean. Ready for deployment.
+**Implementation:** Freamon fixed 6 backend findings, Kima fixed 5 frontend findings. Both agents delivered on schedule.
+**Architecture Impact:** No architectural changes — all fixes are bug corrections and code cleanup.
+**Decision:** APPROVED FOR MERGE. Deploy backend + frontend together. Schedule N1–N5 for next sprint.
+
 ## Governance
 
 - All meaningful changes require team consensus

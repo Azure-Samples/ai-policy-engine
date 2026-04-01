@@ -126,4 +126,26 @@ All work is done. Phase 0 (storage), Phase 1 (routing + pricing), Phase 2 (enfor
 - Custom dashboard builder
 - Audit log UI for policy change history
 
+### 2026-03-31 — Code Review Fix Pass: 5 Findings Resolved
+
+**Context:** McNulty reviewed the frontend and flagged 5 issues (2 bugs, 3 suggestions). All fixes implemented, tsc + vite build clean.
+
+**What Changed:**
+
+1. **B2 — billingPeriod type mismatch:** `RequestSummaryResponse.billingPeriod` changed from `{ year: number; month: number }` to `string` (YYYY-MM format matching backend). `RequestBilling.tsx` now displays the string directly instead of accessing `.month`/`.year`.
+
+2. **B3 — RouteRule missing fields:** Added `priority: number` and `enabled: boolean` to `RouteRule`. `RoutingPolicies.tsx` rule builder now includes a priority number input (auto-incremented on add) and an enabled checkbox (defaults to true). Existing rule display shows priority badge and enable/disable toggle.
+
+3. **S5 — ModelPricing base type consolidation:** Added `multiplier` and `tierName` to base `ModelPricing` and `ModelPricingCreateRequest`. Eliminated all `Extended` type variants (`ModelPricingExtended`, `PlanDataExtended`, `ClientAssignmentExtended`) by folding their fields into the base types (`PlanData`, `ClientAssignment`). Removed all `as Extended` casts across 7 component files.
+
+4. **S6 — Plan request type safety:** Added `modelRoutingPolicyId`, `monthlyRequestQuota`, `overageRatePerRequest`, `useMultiplierBilling` to `PlanCreateRequest` and `PlanUpdateRequest`. Plans.tsx no longer bypasses type checking via object spread.
+
+5. **S8 — Rich API error messages:** Added `parseErrorMessage()` helper to `api.ts` that extracts `error` or `message` from backend JSON responses. Applied to all 24 API functions. Users now see actionable messages (e.g., "Deployment not allowed") instead of generic "Bad Request".
+
+**Learnings:**
+- Extended types as band-aids accumulate tech debt quickly — fold fields into base types early
+- API error parsing should be a shared helper, not copy-pasted per function
+- Backend returns structured JSON errors — always parse them for the UI
+
+**Build Results:** `tsc -b` clean, `vite build` succeeds (2556 modules, 11.5s).
 

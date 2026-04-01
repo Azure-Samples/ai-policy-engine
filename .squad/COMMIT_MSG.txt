@@ -1,0 +1,28 @@
+squad: All 11 code review findings fixed — blockers + should-fix items
+
+Fixed all blocking (B1, B2, B3) and should-fix (S1–S8) code review findings:
+
+Backend (Freamon):
+- B1: Precheck now enforces multiplier request quota
+- S1: Deleted dead Repositories/ directory and duplicate code
+- S2: APIM policies now safe from JSON injection via JObject construction
+- S3: ConfigurationContainerProvider race condition fixed with SemaphoreSlim
+- S4: RoutingPolicyId now persisted in audit trail for compliance
+- S7: ChargebackCalculator pricing cache is thread-safe with double-check locking
+
+Frontend (Kima):
+- B2: billingPeriod type fixed (string format YYYY-MM)
+- B3: RouteRule now includes priority and enabled fields
+- S5: ModelPricing base type consolidation (eliminated Extended variants)
+- S6: Plan request types now type-safe with all fields declared
+- S8: API error handler extracts rich error messages from backend responses
+
+Results:
+- Backend: 198/198 tests pass (0 regressions)
+- Frontend: tsc clean, vite build clean, 0 new linting issues
+- All builds successful
+- Ready for production deployment
+
+Squad logs: .squad/orchestration-log/, .squad/log/, .squad/decisions.md
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

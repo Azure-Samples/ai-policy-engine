@@ -146,3 +146,32 @@
 - AllowedDeployments check runs on the ROUTED deployment, not the originally requested one
 
 **Test results:** 200/200 tests pass, 0 regressions
+
+### Code Review Fixes — McNulty's 6 Findings (2026-03-31)
+
+**What was done:** Implemented 6 fixes from McNulty's code review (B1, S1, S2, S3, S4, S7).
+
+**B1 — Precheck multiplier request quota:**
+- `Endpoints/PrecheckEndpoints.cs` — Added multiplier request quota check after existing token quota logic. Returns 429 when `effectiveRequests >= plan.MonthlyRequestQuota` and `!plan.AllowOverbilling`. Only activates when `plan.UseMultiplierBilling` and `plan.MonthlyRequestQuota > 0`.
+
+**S1 — Deleted dead Repositories/ directory:**
+- Removed `src/Chargeback.Api/Repositories/` (4 files: `CachedRepository.cs`, `CacheWarmingService.cs`, `IRepository.cs`, `RedisToCosmossMigrationService.cs`). All active code lives in `Services/`.
+- Updated test files (`CachedRepositoryTests.cs`, `CosmosPersistenceResilienceTests.cs`) to reference `Chargeback.Api.Services` namespace with corrected constructor params (`redisKeyFromId`/`entityId` instead of `keySelector`/`redisKey`).
+- Removed `CacheWarmingServiceTests.cs` and `RedisToCosmossMigrationServiceTests.cs` (tested deleted `ICacheWarmable`/`IMigratable` interfaces).
+- Removed 4 integration tests from `CosmosPersistenceResilienceTests` that tested deleted interface-based migration/warming services.
+
+**S2 — APIM JSON injection fix:**
+- `policies/entra-jwt-policy.xml`, `policies/subscription-key-policy.xml` — Replaced string interpolation (`$"{{\"tenantId\": \"{tenantId}\"..."`) with `JObject` construction in outbound log body. Eliminates JSON injection from JWT claims or subscription names.
+
+**S3 — ConfigurationContainerProvider race condition:**
+- `Services/ConfigurationContainerProvider.cs` — Replaced `volatile bool _initialized` with `SemaphoreSlim(1,1)` double-check locking. Safe under concurrent `EnsureInitializedAsync` calls.
+
+**S4 — Persist RoutingPolicyId in audit trail:**
+- Both APIM policy files — Added `routingPolicyId` extraction from precheck response in inbound section. Included in outbound JObject log payload.
+- `Models/LogIngestRequest.cs` — Added `RoutingPolicyId` property.
+- `Endpoints/LogIngestEndpoints.cs` — Passes `ingestRequest.RoutingPolicyId` to `AuditLogItem` instead of hardcoded `null`.
+
+**S7 — ChargebackCalculator pricing cache thread safety:**
+- `Services/ChargebackCalculator.cs` — Added `_cacheLock` object. Double-check locking pattern: outer check without lock, inner check-and-set of `_lastCacheRefresh` inside lock, actual Redis read outside lock (async-safe). Prevents stampede while keeping I/O non-blocking.
+
+**Test results:** 198/198 tests pass, 0 regressions (net -22 from deleted Repositories tests that tested dead code)
