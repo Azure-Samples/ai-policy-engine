@@ -14,6 +14,7 @@ public sealed class ChargebackCalculator : IChargebackCalculator
     // In-memory cache refreshed periodically to avoid hitting Redis on every calculation
     private Dictionary<string, ModelPricing> _pricingCache = new(StringComparer.OrdinalIgnoreCase);
     private DateTime _lastCacheRefresh = DateTime.MinValue;
+    private volatile bool _refreshInProgress;
     private static readonly TimeSpan CacheRefreshInterval = TimeSpan.FromSeconds(30);
     private const int MaxCachedPricingEntries = 512;
 
@@ -60,11 +61,16 @@ public sealed class ChargebackCalculator : IChargebackCalculator
         {
             if (DateTime.UtcNow - _lastCacheRefresh < CacheRefreshInterval)
                 return;
-            _lastCacheRefresh = DateTime.UtcNow;
+            if (_refreshInProgress)
+                return;
+            _refreshInProgress = true;
         }
 
         if (_redis is null)
+        {
+            _refreshInProgress = false;
             return;
+        }
 
         // Actual Redis read stays outside the lock (async-safe)
         try
@@ -90,10 +96,18 @@ public sealed class ChargebackCalculator : IChargebackCalculator
 
             if (cache.Count > 0)
                 _pricingCache = cache;
+
+            // Only mark refresh time AFTER successful read — a failed read should allow
+            // the next caller to retry immediately instead of suppressing for the full interval.
+            _lastCacheRefresh = DateTime.UtcNow;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to refresh pricing cache from Redis; continuing with existing cache");
+        }
+        finally
+        {
+            _refreshInProgress = false;
         }
     }
 

@@ -8,22 +8,22 @@ namespace Chargeback.Api.Services;
 /// One-time migration: scans Redis for existing plan/client/pricing/usage-policy keys
 /// and writes any missing documents to Cosmos. Idempotent — safe to run every startup.
 /// </summary>
-public sealed class RedisToCosmossMigrationService : IHostedService
+public sealed class RedisToCosmosMigrationService : IHostedService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly CosmosPlanRepository _planRepo;
     private readonly CosmosClientRepository _clientRepo;
     private readonly CosmosPricingRepository _pricingRepo;
     private readonly CosmosUsagePolicyRepository _usagePolicyRepo;
-    private readonly ILogger<RedisToCosmossMigrationService> _logger;
+    private readonly ILogger<RedisToCosmosMigrationService> _logger;
 
-    public RedisToCosmossMigrationService(
+    public RedisToCosmosMigrationService(
         IConnectionMultiplexer redis,
         CosmosPlanRepository planRepo,
         CosmosClientRepository clientRepo,
         CosmosPricingRepository pricingRepo,
         CosmosUsagePolicyRepository usagePolicyRepo,
-        ILogger<RedisToCosmossMigrationService> logger)
+        ILogger<RedisToCosmosMigrationService> logger)
     {
         _redis = redis;
         _planRepo = planRepo;

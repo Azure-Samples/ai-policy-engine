@@ -177,7 +177,7 @@ public sealed class AuditLogWriter : BackgroundService
     /// </summary>
     private static string GenerateDeterministicId(AuditLogItem item)
     {
-        var input = $"{item.ClientAppId}|{item.TenantId}|{item.DeploymentId}|{item.Timestamp:O}|{item.TotalTokens}|{item.PromptTokens}";
+        var input = $"{item.ClientAppId}|{item.TenantId}|{item.DeploymentId}|{item.Timestamp:O}|{item.TotalTokens}|{item.PromptTokens}|{item.CorrelationId}";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexString(hashBytes)[..32].ToLowerInvariant();
     }

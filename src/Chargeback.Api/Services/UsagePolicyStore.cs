@@ -27,6 +27,7 @@ public sealed class UsagePolicyStore : IUsagePolicyStore
             var settings = await _repo.GetAsync("usage-policy", ct);
             return settings is not null ? Normalize(settings) : Clone(_defaults);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to read usage policy settings; falling back to defaults");

@@ -119,7 +119,7 @@ public sealed class ChargebackApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAuditStore>(mockAuditStore);
 
             // Remove Cosmos-dependent hosted services (no real Cosmos in tests)
-            RemoveHostedService<RedisToCosmossMigrationService>(services);
+            RemoveHostedService<RedisToCosmosMigrationService>(services);
             RemoveHostedService<CacheWarmingService>(services);
 
             // Replace IRepository<T> with Redis-backed test implementations
@@ -176,7 +176,7 @@ public sealed class ChargebackApiFactory : WebApplicationFactory<Program>
         var descriptors = services.Where(d =>
             d.ServiceType == typeof(IHostedService) &&
             (d.ImplementationType == typeof(T) ||
-             d.ImplementationFactory?.Method.ReturnType == typeof(T))).ToList();
+             (d.ImplementationFactory?.Method.ReturnType?.IsAssignableFrom(typeof(T)) ?? false))).ToList();
         foreach (var d in descriptors) services.Remove(d);
     }
 

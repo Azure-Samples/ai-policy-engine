@@ -26,4 +26,7 @@ public sealed class LogIngestRequest
 
     /// <summary>Routing policy ID from precheck (persisted to audit trail).</summary>
     public string? RoutingPolicyId { get; set; }
+
+    /// <summary>APIM request ID (context.RequestId) for correlation and deduplication.</summary>
+    public string? CorrelationId { get; set; }
 }

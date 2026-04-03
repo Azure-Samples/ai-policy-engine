@@ -197,12 +197,13 @@
 					["tenantId"] = (string)context.Variables.GetValueOrDefault("tenantId", ""),
 					["clientAppId"] = (string)context.Variables.GetValueOrDefault("clientAppId", ""),
 					["audience"] = (string)context.Variables.GetValueOrDefault("audience", ""),
-					["requestBody"] = !string.IsNullOrEmpty(requestBodyRaw) ? JToken.Parse(requestBodyRaw) : null,
-					["responseBody"] = !string.IsNullOrEmpty(parsedResponseString) ? JToken.Parse(parsedResponseString) : null,
+					["requestBody"] = !string.IsNullOrEmpty(requestBodyRaw) ? (Func<JToken>)(() => { try { return JToken.Parse(requestBodyRaw); } catch { return requestBodyRaw; } })() : null,
+					["responseBody"] = !string.IsNullOrEmpty(parsedResponseString) ? (Func<JToken>)(() => { try { return JToken.Parse(parsedResponseString); } catch { return parsedResponseString; } })() : null,
 					["deploymentId"] = deploymentId ?? "",
 					["requestedDeploymentId"] = requestedDeploymentId ?? "",
 					["routedDeployment"] = context.Variables.GetValueOrDefault<string>("routedDeployment") ?? "",
-					["routingPolicyId"] = context.Variables.GetValueOrDefault<string>("routingPolicyId") ?? ""
+					["routingPolicyId"] = context.Variables.GetValueOrDefault<string>("routingPolicyId") ?? "",
+					["correlationId"] = context.RequestId.ToString()
 				};
 				return payload.ToString();
 			}</set-body>

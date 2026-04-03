@@ -28,4 +28,7 @@ public sealed class AuditLogItem
     public decimal? EffectiveRequestCost { get; set; }
     public string? TierName { get; set; }
     public decimal? MultiplierOverageCost { get; set; }
+
+    /// <summary>APIM request ID for deduplication in deterministic hashing.</summary>
+    public string? CorrelationId { get; set; }
 }

@@ -259,6 +259,15 @@ public static class RoutingPolicyEndpoints
         {
             foreach (var rule in rules)
             {
+                if (string.IsNullOrWhiteSpace(rule.RequestedDeployment))
+                {
+                    invalidDeployments.Add("<empty RequestedDeployment>");
+                }
+                else if (!knownIds.Contains(rule.RequestedDeployment))
+                {
+                    invalidDeployments.Add(rule.RequestedDeployment);
+                }
+
                 if (!string.IsNullOrWhiteSpace(rule.RoutedDeployment) && !knownIds.Contains(rule.RoutedDeployment))
                     invalidDeployments.Add(rule.RoutedDeployment);
             }

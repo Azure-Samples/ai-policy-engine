@@ -26,6 +26,16 @@ public sealed class RoutingPolicyValidator
 
         foreach (var rule in policy.Rules)
         {
+            if (string.IsNullOrWhiteSpace(rule.RequestedDeployment))
+            {
+                errors.Add("Routing rule has an empty RequestedDeployment.");
+            }
+            else if (!knownIds.Contains(rule.RequestedDeployment))
+            {
+                errors.Add(
+                    $"Routing rule requested deployment '{rule.RequestedDeployment}' is not a known Foundry deployment.");
+            }
+
             if (!knownIds.Contains(rule.RoutedDeployment))
             {
                 errors.Add(

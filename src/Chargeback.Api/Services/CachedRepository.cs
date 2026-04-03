@@ -62,11 +62,10 @@ public sealed class CachedRepository<T> : IRepository<T> where T : class
         // GetAll always goes to Cosmos (source of truth for complete listings)
         var entities = await _inner.GetAllAsync(ct);
 
-        // Refresh Redis cache for returned entities
-        foreach (var entity in entities)
-        {
-            await TryCacheEntity(entity);
-        }
+        // Refresh Redis cache for returned entities (parallel for throughput)
+        var cacheTasks = entities.Select(e => TryCacheEntity(e));
+        await Task.WhenAll(cacheTasks);
+
         return entities;
     }
 

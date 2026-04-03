@@ -306,7 +306,8 @@ public static class LogIngestEndpoints
                 Multiplier = multiplier,
                 EffectiveRequestCost = effectiveRequestCost,
                 TierName = tierName,
-                MultiplierOverageCost = multiplierOverageCost
+                MultiplierOverageCost = multiplierOverageCost,
+                CorrelationId = ingestRequest.CorrelationId
             });
 
             return Results.Ok("Log data processed and stored successfully");

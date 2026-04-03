@@ -109,7 +109,7 @@ builder.Services.AddSingleton<IRepository<ModelRoutingPolicy>>(sp =>
 builder.Services.AddSingleton<IUsagePolicyStore, UsagePolicyStore>();
 
 // Startup services: migration first, then cache warming (sequential, blocks app start)
-builder.Services.AddHostedService<RedisToCosmossMigrationService>();
+builder.Services.AddHostedService<RedisToCosmosMigrationService>();
 builder.Services.AddHostedService<CacheWarmingService>();
 
 // Audit log channel + background writer for batched Cosmos DB writes

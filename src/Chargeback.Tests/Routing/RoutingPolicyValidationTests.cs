@@ -166,8 +166,9 @@ public class RoutingPolicyValidationTests
         var result = await _validator.ValidateAsync(policy);
 
         Assert.False(result.IsValid);
-        Assert.Single(result.Errors);
-        Assert.Contains("totally-fake", result.Errors[0]);
+        Assert.Equal(2, result.Errors.Count);
+        Assert.Contains(result.Errors, e => e.Contains("gpt-3"));
+        Assert.Contains(result.Errors, e => e.Contains("totally-fake"));
     }
 
     // ─── Empty Deployment List From Foundry ─────────────────────────
@@ -227,7 +228,7 @@ public class RoutingPolicyValidationTests
         var result = await _validator.ValidateAsync(policy);
 
         Assert.False(result.IsValid);
-        Assert.Equal(3, result.Errors.Count); // 2 rules + 1 fallback
+        Assert.Equal(5, result.Errors.Count); // 2 rules × 2 (requested + routed) + 1 fallback
     }
 
     // ─── Case Insensitive Matching ─────────────────────────────────
