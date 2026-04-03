@@ -4,13 +4,13 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- Aspire -->
-    <PackageVersion Include="Aspire.Hosting.Azure.CosmosDB" Version="13.2.0" />
-    <PackageVersion Include="Aspire.Hosting.Redis" Version="13.2.0" />
-    <PackageVersion Include="Aspire.Microsoft.Azure.Cosmos" Version="13.2.0" />
-    <PackageVersion Include="Aspire.StackExchange.Redis" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Hosting.Azure.CosmosDB" Version="13.2.1" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="13.2.1" />
+    <PackageVersion Include="Aspire.Microsoft.Azure.Cosmos" Version="13.2.1" />
+    <PackageVersion Include="Aspire.StackExchange.Redis" Version="13.2.1" />
 
     <!-- Azure -->
-    <PackageVersion Include="Azure.Identity" Version="1.19.0" />
+    <PackageVersion Include="Azure.Identity" Version="1.20.0" />
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.4.0" />
     <PackageVersion Include="Microsoft.Azure.StackExchangeRedis" Version="3.3.1" />
 
@@ -22,12 +22,12 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.4.0" />
     <PackageVersion Include="Microsoft.Identity.Client" Version="4.82.1" />
-    <PackageVersion Include="Microsoft.Identity.Web" Version="4.6.0" />
+    <PackageVersion Include="Microsoft.Identity.Web" Version="4.7.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
 
     <!-- OpenTelemetry -->
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.0" />
