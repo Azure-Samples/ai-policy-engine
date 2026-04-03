@@ -7,4 +7,10 @@ public sealed class ModelPricingCreateRequest
     public decimal PromptRatePer1K { get; set; }
     public decimal CompletionRatePer1K { get; set; }
     public decimal ImageRatePer1K { get; set; }
+
+    /// <summary>Per-request billing multiplier. Null = use default (1.0).</summary>
+    public decimal? Multiplier { get; set; }
+
+    /// <summary>Pricing tier display name. Null = use default ("Standard").</summary>
+    public string? TierName { get; set; }
 }

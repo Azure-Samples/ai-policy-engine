@@ -673,10 +673,7 @@ if [[ "$SKIP_BICEP" == "true" ]]; then
     echo -e "  ${GRAY}  ⊘ Bicep deployment skipped (--skip-bicep)${NC}"
     echo ""
 else
-    info "Retrieving ACR credentials..."
-    acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv) \
-        || die "Failed to get ACR credentials."
-    success "ACR credentials retrieved"
+    info "ACR managed identity pull configured — no admin credentials needed."
 
     info "Checking soft-deleted resource collisions..."
     deleted_apim=$(az apim deletedservice list --query "[?name=='$APIM_NAME'] | [0].name" -o tsv 2>/dev/null) || true
@@ -745,8 +742,7 @@ else
             containerAppEnvName="$CONTAINER_APP_ENV_NAME" \
             containerImage="$image_tag" \
             acrLoginServer="${ACR_NAME}.azurecr.io" \
-            acrUsername="$ACR_NAME" \
-            acrPassword="$acr_password" \
+            acrName="$ACR_NAME" \
             oaiApiName="azure-openai-api" \
             funcApiName="chargeback-api" \
             enableJwt="$ENABLE_JWT" \
@@ -1001,8 +997,8 @@ phase_header "Phase 8: Entra Redirect URIs"
 
 info "Setting SPA redirect URIs on API app (used by dashboard UI)..."
 redirect_body=$(jq -n \
-    --arg u1 "https://$container_app_url/" \
-    --arg u2 "http://localhost:5173/" \
+    --arg u1 "https://$container_app_url" \
+    --arg u2 "http://localhost:5173" \
     '{"spa":{"redirectUris":[$u1,$u2]}}')
 tmp_redirect=$(mktemp)
 echo "$redirect_body" > "$tmp_redirect"
@@ -1011,7 +1007,7 @@ az rest --method PATCH \
     --headers "Content-Type=application/json" --body "@$tmp_redirect" -o none \
     || { rm -f "$tmp_redirect"; die "Failed to set redirect URIs on API app."; }
 rm -f "$tmp_redirect"
-success "API app redirect URIs: https://$container_app_url/, http://localhost:5173/"
+success "API app redirect URIs: https://$container_app_url, http://localhost:5173"
 
 info "Setting SPA redirect URIs on client app 1..."
 tmp_redirect=$(mktemp)
@@ -1021,7 +1017,7 @@ az rest --method PATCH \
     --headers "Content-Type=application/json" --body "@$tmp_redirect" -o none \
     || { rm -f "$tmp_redirect"; die "Failed to set redirect URIs on client app 1."; }
 rm -f "$tmp_redirect"
-success "Client app 1 redirect URIs: https://$container_app_url/, http://localhost:5173/"
+success "Client app 1 redirect URIs: https://$container_app_url, http://localhost:5173"
 
 echo -e "  ${GREEN}Phase 8 complete ✓${NC}"
 echo ""

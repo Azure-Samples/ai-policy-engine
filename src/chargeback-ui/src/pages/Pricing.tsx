@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { fetchPricing, updatePricing, deletePricing } from "../api"
-import type { ModelPricing, ModelPricingCreateRequest } from "../types"
+import type { ModelPricingCreateRequest, ModelPricing } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -29,6 +29,8 @@ export function Pricing() {
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [form, setForm] = useState<ModelPricingCreateRequest>({ ...emptyForm })
   const [displayName, setDisplayName] = useState("")
+  const [multiplier, setMultiplier] = useState(1.0)
+  const [tierName, setTierName] = useState("")
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
@@ -50,6 +52,8 @@ export function Pricing() {
     setEditingModelId(null)
     setForm({ ...emptyForm })
     setDisplayName("")
+    setMultiplier(1.0)
+    setTierName("")
     setDialogOpen(true)
   }
 
@@ -62,6 +66,8 @@ export function Pricing() {
       imageRatePer1K: m.imageRatePer1K,
     })
     setDisplayName(m.displayName ?? "")
+    setMultiplier(m.multiplier ?? 1.0)
+    setTierName(m.tierName ?? "")
     setDialogOpen(true)
   }
 
@@ -71,6 +77,8 @@ export function Pricing() {
       const payload: ModelPricingCreateRequest = {
         ...form,
         displayName: displayName || undefined,
+        multiplier: multiplier,
+        tierName: tierName || undefined,
       }
       const modelId = editingModelId ?? form.modelId
       await updatePricing(modelId, payload)
@@ -152,6 +160,8 @@ export function Pricing() {
                   <TableHead className="text-right">Prompt Rate</TableHead>
                   <TableHead className="text-right">Completion Rate</TableHead>
                   <TableHead className="text-right">Image Rate</TableHead>
+                  <TableHead className="text-right">Multiplier</TableHead>
+                  <TableHead>Tier</TableHead>
                   <TableHead>Last Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -174,6 +184,22 @@ export function Pricing() {
                         <>{formatRate(m.imageRatePer1K)} <span className="text-muted-foreground text-xs">/ 1K</span></>
                       ) : (
                         <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {m.multiplier !== undefined && m.multiplier !== null ? (
+                        <span className={m.multiplier < 1 ? "text-green-600 dark:text-green-400" : m.multiplier > 1 ? "text-amber-600 dark:text-amber-400" : ""}>
+                          {m.multiplier.toFixed(2)}×
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">1.00×</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {m.tierName ? (
+                        <Badge variant="secondary">{m.tierName}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -254,6 +280,29 @@ export function Pricing() {
                 min="0"
                 value={form.imageRatePer1K}
                 onChange={(e) => setForm({ ...form, imageRatePer1K: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Multiplier</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={multiplier}
+                onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Cost multiplier per request (1.0 = baseline, 0.33 = 3× cheaper)
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Tier Name</label>
+              <Input
+                value={tierName}
+                onChange={(e) => setTierName(e.target.value)}
+                placeholder="e.g. Standard, Premium, Ultra"
               />
             </div>
           </div>

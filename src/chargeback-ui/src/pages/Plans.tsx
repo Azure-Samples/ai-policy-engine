@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
-import { fetchPlans, createPlan, updatePlan, deletePlan, fetchDeployments } from "../api"
-import type { PlanData, PlanCreateRequest, DeploymentInfo } from "../types"
+import { fetchPlans, createPlan, updatePlan, deletePlan, fetchDeployments, fetchRoutingPolicies } from "../api"
+import type { PlanCreateRequest, DeploymentInfo, ModelRoutingPolicy, PlanData } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -9,7 +9,14 @@ import { Dialog, DialogHeader, DialogTitle, DialogClose } from "../components/ui
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Pencil, Trash2, Plus, ClipboardList } from "lucide-react"
 
-const emptyPlanForm: PlanCreateRequest = {
+interface PlanFormData extends PlanCreateRequest {
+  modelRoutingPolicyId?: string
+  useMultiplierBilling?: boolean
+  monthlyRequestQuota?: number
+  overageRatePerRequest?: number
+}
+
+const emptyPlanForm: PlanFormData = {
   name: "",
   monthlyRate: 0,
   monthlyTokenQuota: 0,
@@ -20,18 +27,23 @@ const emptyPlanForm: PlanCreateRequest = {
   rollUpAllDeployments: true,
   deploymentQuotas: {},
   allowedDeployments: [],
+  modelRoutingPolicyId: "",
+  useMultiplierBilling: false,
+  monthlyRequestQuota: 0,
+  overageRatePerRequest: 0,
 }
 
 export function Plans() {
   const [plans, setPlans] = useState<PlanData[]>([])
   const [availableDeployments, setAvailableDeployments] = useState<DeploymentInfo[]>([])
+  const [routingPolicies, setRoutingPolicies] = useState<ModelRoutingPolicy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Plan dialog state
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
-  const [planForm, setPlanForm] = useState<PlanCreateRequest>({ ...emptyPlanForm })
+  const [planForm, setPlanForm] = useState<PlanFormData>({ ...emptyPlanForm })
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
@@ -41,12 +53,14 @@ export function Plans() {
 
   const loadData = useCallback(async () => {
     try {
-      const [plansRes, deploymentsRes] = await Promise.all([
+      const [plansRes, deploymentsRes, policiesRes] = await Promise.all([
         fetchPlans(),
         fetchDeployments().catch(() => ({ deployments: [] })),
+        fetchRoutingPolicies().catch(() => ({ policies: [] })),
       ])
       setPlans(plansRes.plans ?? [])
       setAvailableDeployments(deploymentsRes.deployments ?? [])
+      setRoutingPolicies(policiesRes.policies ?? [])
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data")
@@ -78,13 +92,17 @@ export function Plans() {
       rollUpAllDeployments: p.rollUpAllDeployments ?? true,
       deploymentQuotas: p.deploymentQuotas ?? {},
       allowedDeployments: p.allowedDeployments ?? [],
+      modelRoutingPolicyId: p.modelRoutingPolicyId ?? "",
+      useMultiplierBilling: p.useMultiplierBilling ?? false,
+      monthlyRequestQuota: p.monthlyRequestQuota ?? 0,
+      overageRatePerRequest: p.overageRatePerRequest ?? 0,
     })
     setNewDeploymentId("")
     setNewDeploymentLimit("")
     setPlanDialogOpen(true)
   }
 
-  const buildPlanPayload = (): PlanCreateRequest => {
+  const buildPlanPayload = (): PlanFormData => {
     const rollUpAllDeployments = planForm.rollUpAllDeployments !== false
     const deploymentQuotas = { ...(planForm.deploymentQuotas ?? {}) }
     const pendingDeploymentId = newDeploymentId.trim()
@@ -104,6 +122,10 @@ export function Plans() {
       rollUpAllDeployments,
       deploymentQuotas: rollUpAllDeployments ? {} : deploymentQuotas,
       allowedDeployments: planForm.allowedDeployments ?? [],
+      modelRoutingPolicyId: planForm.modelRoutingPolicyId || undefined,
+      useMultiplierBilling: planForm.useMultiplierBilling ?? false,
+      monthlyRequestQuota: planForm.useMultiplierBilling ? (Number(planForm.monthlyRequestQuota) || 0) : undefined,
+      overageRatePerRequest: planForm.useMultiplierBilling ? (Number(planForm.overageRatePerRequest) || 0) : undefined,
     }
   }
 
@@ -147,7 +169,7 @@ export function Plans() {
     }
   }
 
-  const updateField = (field: keyof PlanCreateRequest, value: string | boolean) => {
+  const updateField = (field: keyof PlanFormData, value: string | boolean | number) => {
     setPlanForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -198,6 +220,8 @@ export function Plans() {
                   <TableHead>Overbilling</TableHead>
                   <TableHead>Cost/M Tokens</TableHead>
                   <TableHead>Allowed Deployments</TableHead>
+                  <TableHead>Billing Mode</TableHead>
+                  <TableHead>Routing Policy</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -229,6 +253,20 @@ export function Plans() {
                         <span title={p.allowedDeployments.join(", ")}>
                           <Badge variant="green">{p.allowedDeployments.length} selected</Badge>
                         </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={p.useMultiplierBilling ? "amber" : "blue"}>
+                        {p.useMultiplierBilling ? "Multiplier" : "Token"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {p.modelRoutingPolicyId ? (
+                        <Badge variant="teal">
+                          {routingPolicies.find(rp => rp.id === p.modelRoutingPolicyId)?.name ?? p.modelRoutingPolicyId}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">None</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -303,6 +341,67 @@ export function Plans() {
               className="h-4 w-4 rounded border-gray-300 accent-[#0078D4]"
             />
             <label htmlFor="allowOverbilling" className="text-sm font-medium">Allow Overbilling</label>
+          </div>
+
+          {/* Multiplier Billing Toggle */}
+          <div className="space-y-3 rounded border p-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="useMultiplierBilling"
+                checked={planForm.useMultiplierBilling ?? false}
+                onChange={(e) => updateField("useMultiplierBilling", e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 accent-[#0078D4]"
+              />
+              <label htmlFor="useMultiplierBilling" className="text-sm font-medium">Use Multiplier Billing</label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When enabled, billing uses per-request multipliers instead of per-token costs.
+              Each request's cost = 1 × model multiplier (e.g., GPT-4.1 = 1.0×, mini = 0.33×).
+            </p>
+            {planForm.useMultiplierBilling && (
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Monthly Request Quota</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={planForm.monthlyRequestQuota ?? 0}
+                    onChange={(e) => updateField("monthlyRequestQuota", e.target.value)}
+                    placeholder="e.g. 10000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Overage Rate ($/request)</label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={planForm.overageRatePerRequest ?? 0}
+                    onChange={(e) => updateField("overageRatePerRequest", e.target.value)}
+                    placeholder="e.g. 0.01"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Routing Policy Selector */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Routing Policy</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={planForm.modelRoutingPolicyId ?? ""}
+              onChange={(e) => updateField("modelRoutingPolicyId", e.target.value)}
+            >
+              <option value="">None — no auto-routing</option>
+              {routingPolicies.map(rp => (
+                <option key={rp.id} value={rp.id}>{rp.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Assign a routing policy to auto-route requests when no deployment is specified.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <input

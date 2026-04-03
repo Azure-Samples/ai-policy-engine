@@ -47,7 +47,7 @@
     "acrLoginServer": {
       "value": "<your-acr-name>.azurecr.io"
     },
-    "acrUsername": {
+    "acrName": {
       "value": "<your-acr-name>"
     },
     "entraIdTenantId": {

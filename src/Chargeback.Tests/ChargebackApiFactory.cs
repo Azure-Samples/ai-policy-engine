@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading.Channels;
 using Chargeback.Api.Models;
 using Chargeback.Api.Services;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -116,6 +118,38 @@ public sealed class ChargebackApiFactory : WebApplicationFactory<Program>
             AuditStore = mockAuditStore;
             services.AddSingleton<IAuditStore>(mockAuditStore);
 
+            // Remove Cosmos-dependent hosted services (no real Cosmos in tests)
+            RemoveHostedService<RedisToCosmosMigrationService>(services);
+            RemoveHostedService<CacheWarmingService>(services);
+
+            // Replace IRepository<T> with Redis-backed test implementations
+            // so tests that seed FakeRedis directly continue working.
+            RemoveService<IRepository<PlanData>>(services);
+            services.AddSingleton<IRepository<PlanData>>(
+                new RedisBackedRepository<PlanData>(
+                    Redis, id => RedisKeys.Plan(id), e => e.Id, RedisKeys.PlanPrefix));
+
+            RemoveService<IRepository<ClientPlanAssignment>>(services);
+            services.AddSingleton<IRepository<ClientPlanAssignment>>(
+                new RedisBackedRepository<ClientPlanAssignment>(
+                    Redis, id => $"client:{id}",
+                    e => $"{e.ClientAppId}:{e.TenantId}", RedisKeys.ClientPrefix));
+
+            RemoveService<IRepository<ModelPricing>>(services);
+            services.AddSingleton<IRepository<ModelPricing>>(
+                new RedisBackedRepository<ModelPricing>(
+                    Redis, id => RedisKeys.Pricing(id), e => e.ModelId, RedisKeys.PricingPrefix));
+
+            RemoveService<IRepository<UsagePolicySettings>>(services);
+            services.AddSingleton<IRepository<UsagePolicySettings>>(
+                new RedisBackedRepository<UsagePolicySettings>(
+                    Redis, id => $"settings:{id}", _ => "usage-policy", "settings:*"));
+
+            RemoveService<IRepository<ModelRoutingPolicy>>(services);
+            services.AddSingleton<IRepository<ModelRoutingPolicy>>(
+                new RedisBackedRepository<ModelRoutingPolicy>(
+                    Redis, id => RedisKeys.RoutingPolicy(id), e => e.Id, RedisKeys.RoutingPolicyPrefix));
+
             // Replace authentication with a test handler that auto-authenticates
             services.AddAuthentication("TestScheme")
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("TestScheme", _ => { });
@@ -135,5 +169,60 @@ public sealed class ChargebackApiFactory : WebApplicationFactory<Program>
     {
         var descriptors = services.Where(d => d.ServiceType == typeof(T)).ToList();
         foreach (var d in descriptors) services.Remove(d);
+    }
+
+    private static void RemoveHostedService<T>(IServiceCollection services) where T : class
+    {
+        var descriptors = services.Where(d =>
+            d.ServiceType == typeof(IHostedService) &&
+            (d.ImplementationType == typeof(T) ||
+             (d.ImplementationFactory?.Method.ReturnType?.IsAssignableFrom(typeof(T)) ?? false))).ToList();
+        foreach (var d in descriptors) services.Remove(d);
+    }
+
+    /// <summary>
+    /// IRepository backed directly by FakeRedis for test environments.
+    /// Preserves the pre-migration behavior where endpoints read/wrote Redis directly,
+    /// allowing tests that seed FakeRedis to continue working.
+    /// </summary>
+    private sealed class RedisBackedRepository<T>(
+        FakeRedis redis,
+        Func<string, string> keyFromId,
+        Func<T, string> entityId,
+        string scanPattern) : IRepository<T> where T : class
+    {
+        public async Task<T?> GetAsync(string id, CancellationToken ct = default)
+        {
+            var val = await redis.Database.StringGetAsync(keyFromId(id));
+            if (!val.HasValue) return null;
+            return JsonSerializer.Deserialize<T>((string)val!, JsonConfig.Default);
+        }
+
+        public async Task<List<T>> GetAllAsync(CancellationToken ct = default)
+        {
+            var keys = redis.Multiplexer.KeysFromAllServers(scanPattern);
+            var results = new List<T>();
+            foreach (var key in keys)
+            {
+                var val = await redis.Database.StringGetAsync(key);
+                if (!val.HasValue) continue;
+                var entity = JsonSerializer.Deserialize<T>((string)val!, JsonConfig.Default);
+                if (entity is not null) results.Add(entity);
+            }
+            return results;
+        }
+
+        public async Task<T> UpsertAsync(T entity, CancellationToken ct = default)
+        {
+            var id = entityId(entity);
+            var json = JsonSerializer.Serialize(entity, JsonConfig.Default);
+            await redis.Database.StringSetAsync(keyFromId(id), json);
+            return entity;
+        }
+
+        public async Task<bool> DeleteAsync(string id, CancellationToken ct = default)
+        {
+            return await redis.Database.KeyDeleteAsync(keyFromId(id));
+        }
     }
 }

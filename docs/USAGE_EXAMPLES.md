@@ -1,6 +1,6 @@
 # Usage Examples
 
-This document provides examples for calling Azure OpenAI through the API Management chargeback gateway. All examples use **Microsoft Entra ID (Azure AD) Bearer tokens** for authentication.
+This document provides examples for calling AI models through the Azure AI Gateway Policy Engine. All examples use **Microsoft Entra ID (Azure AD) Bearer tokens** for authentication.
 
 > **Note:** Replace placeholder values (`YOUR-TENANT-ID`, `YOUR-CLIENT-APP-ID`, `YOUR-CLIENT-SECRET`, `YOUR-API-APP-ID`, `your-apim`) with your actual configuration.
 

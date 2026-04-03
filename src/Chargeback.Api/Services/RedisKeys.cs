@@ -23,6 +23,15 @@ public static class RedisKeys
     public static string LogEntry(string clientAppId, string tenantId, string deploymentId) => $"log:{clientAppId}:{tenantId}:{deploymentId}";
     public static string CustomerLogPattern(string clientAppId, string tenantId) => $"log:{clientAppId}:{tenantId}:*";
 
+    public static string RoutingPolicy(string policyId) => $"routing-policy:{policyId}";
+    public const string RoutingPolicyPrefix = "routing-policy:*";
+
+    // Deployment-scoped rate limit keys (rate limits apply to routed deployment)
+    public static string RateLimitRpm(string clientAppId, string tenantId, string deploymentId, long minuteWindow)
+        => $"ratelimit:rpm:{clientAppId}:{tenantId}:{deploymentId}:{minuteWindow}";
+    public static string RateLimitTpm(string clientAppId, string tenantId, string deploymentId, long minuteWindow)
+        => $"ratelimit:tpm:{clientAppId}:{tenantId}:{deploymentId}:{minuteWindow}";
+
     // Key prefix patterns for scanning
     public const string PlanPrefix = "plan:*";
     public const string ClientPrefix = "client:*";
@@ -33,5 +42,5 @@ public static class RedisKeys
     /// <summary>
     /// Prefixes used by non-log-entry data types — used to filter them out when scanning all keys.
     /// </summary>
-    public static readonly string[] ExcludedPrefixes = ["plan:", "client:", "traces:", "pricing:", "ratelimit:", "quota:", "lock:", "settings:"];
+    public static readonly string[] ExcludedPrefixes = ["plan:", "client:", "traces:", "pricing:", "ratelimit:", "quota:", "lock:", "settings:", "routing-policy:"];
 }

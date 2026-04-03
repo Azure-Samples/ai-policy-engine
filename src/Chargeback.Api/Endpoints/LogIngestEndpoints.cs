@@ -12,7 +12,9 @@ namespace Chargeback.Api.Endpoints;
 /// </summary>
 public static class LogIngestEndpoints
 {
-    private static readonly TimeSpan ClientUpdateLockTtl = TimeSpan.FromSeconds(5);
+    // TTL must cover the full read-compute-write cycle including Cosmos latency.
+    // If the lock expires mid-operation, concurrent requests can read stale data.
+    private static readonly TimeSpan ClientUpdateLockTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ClientUpdateLockRetryDelay = TimeSpan.FromMilliseconds(25);
     private const int ClientUpdateLockMaxAttempts = 40;
 
@@ -36,6 +38,8 @@ public static class LogIngestEndpoints
     private static async Task<IResult> IngestLog(
         HttpRequest request,
         IConnectionMultiplexer redis,
+        IRepository<ClientPlanAssignment> clientRepo,
+        IRepository<PlanData> planRepo,
         IUsagePolicyStore usagePolicyStore,
         IChargebackCalculator calculator,
         ChargebackMetrics metrics,
@@ -76,7 +80,7 @@ public static class LogIngestEndpoints
         try
         {
             var db = redis.GetDatabase();
-            var usagePolicy = await usagePolicyStore.GetAsync(db);
+            var usagePolicy = await usagePolicyStore.GetAsync();
             var logCacheTtl = TimeSpan.FromDays(usagePolicy.AggregatedLogRetentionDays);
             var traceCacheTtl = TimeSpan.FromDays(usagePolicy.TraceRetentionDays);
             var lockToken = (RedisValue)Guid.NewGuid().ToString("N");
@@ -89,30 +93,42 @@ public static class LogIngestEndpoints
 
             CachedLogData? logData = null;
             ClientPlanAssignment? clientAssignment = null;
+            decimal? effectiveRequestCost = null;
+            decimal? multiplier = null;
+            string? tierName = null;
+            decimal? multiplierOverageCost = null;
 
             try
             {
                 // --- 1. Client Authorization Check ---
-                IResult? authError;
-                (clientAssignment, authError) = await AuthorizeClient(db, ingestRequest.ClientAppId, ingestRequest.TenantId, logger);
-                if (authError is not null) return authError;
+                var clientId = $"{ingestRequest.ClientAppId}:{ingestRequest.TenantId}";
+                clientAssignment = await clientRepo.GetAsync(clientId);
+                if (clientAssignment is null)
+                {
+                    logger.LogWarning("Unauthorized client: {ClientAppId}/{TenantId} — no plan assigned", ingestRequest.ClientAppId, ingestRequest.TenantId);
+                    return Results.Json(new { error = "Client not authorized — no plan assigned" }, statusCode: StatusCodes.Status401Unauthorized);
+                }
 
                 // --- 2. Plan Lookup ---
-                var (plan, planError) = await LookupPlan(db, clientAssignment!.PlanId, ingestRequest.ClientAppId, logger);
-                if (planError is not null) return planError;
+                var plan = await planRepo.GetAsync(clientAssignment.PlanId);
+                if (plan is null)
+                {
+                    logger.LogError("Plan not found: {PlanId} for client {ClientAppId}", clientAssignment.PlanId, ingestRequest.ClientAppId);
+                    return Results.Json(new { error = "Plan configuration not found" }, statusCode: StatusCodes.Status500InternalServerError);
+                }
 
                 // --- 3. Update rate limit meters (outbound — record actual token usage) ---
                 var now = DateTimeOffset.UtcNow;
                 var minuteWindow = now.ToUnixTimeSeconds() / 60;
                 var totalTokensInRequest = usage?.TotalTokens ?? 0;
 
-                await UpdateTpmCounter(db, plan!, ingestRequest.ClientAppId, ingestRequest.TenantId, minuteWindow, totalTokensInRequest, logger);
+                await UpdateTpmCounter(db, plan, ingestRequest.ClientAppId, ingestRequest.TenantId, minuteWindow, totalTokensInRequest, logger);
 
                 // --- 4. Quota Check + Overbilling ---
-                ResetBillingPeriodIfNeeded(clientAssignment!, usagePolicy.BillingCycleStartDay, DateTime.UtcNow);
+                ResetBillingPeriodIfNeeded(clientAssignment, usagePolicy.BillingCycleStartDay, DateTime.UtcNow);
 
                 var newUsage = clientAssignment.CurrentPeriodUsage + totalTokensInRequest;
-                var isOverQuota = newUsage > plan!.MonthlyTokenQuota;
+                var isOverQuota = newUsage > plan.MonthlyTokenQuota;
 
                 if (isOverQuota)
                 {
@@ -143,6 +159,40 @@ public static class LogIngestEndpoints
                 var requestCostToCustomer = logData.CostToCustomer;
                 var requestIsOverbilled = logData.IsOverbilled;
 
+                // --- 5b. Multiplier billing ---
+                effectiveRequestCost = null;
+                multiplier = null;
+                tierName = null;
+                multiplierOverageCost = null;
+
+                if (plan.UseMultiplierBilling)
+                {
+                    effectiveRequestCost = calculator.CalculateEffectiveRequestCost(logData);
+                    multiplier = calculator.GetMultiplier(logData.DeploymentId, logData.Model);
+                    tierName = calculator.GetTierName(logData.DeploymentId, logData.Model);
+
+                    // Update request counters
+                    clientAssignment.CurrentPeriodRequests += effectiveRequestCost.Value;
+                    if (!string.IsNullOrEmpty(tierName))
+                    {
+                        if (!clientAssignment.RequestsByTier.ContainsKey(tierName))
+                            clientAssignment.RequestsByTier[tierName] = 0m;
+                        clientAssignment.RequestsByTier[tierName] += effectiveRequestCost.Value;
+                    }
+
+                    // Check request-based overage
+                    if (plan.MonthlyRequestQuota > 0 && clientAssignment.CurrentPeriodRequests > plan.MonthlyRequestQuota)
+                    {
+                        var overageAmount = clientAssignment.CurrentPeriodRequests - plan.MonthlyRequestQuota;
+                        clientAssignment.OverbilledRequests = overageAmount;
+                    }
+
+                    multiplierOverageCost = calculator.CalculateMultiplierOverageCost(
+                        effectiveRequestCost.Value,
+                        clientAssignment.CurrentPeriodRequests - effectiveRequestCost.Value,
+                        plan);
+                }
+
                 // Update client assignment usage
                 clientAssignment.CurrentPeriodUsage = newUsage;
                 if (isOverQuota)
@@ -154,11 +204,14 @@ public static class LogIngestEndpoints
 
                 clientAssignment.LastUpdated = DateTime.UtcNow;
 
-                var clientKey = RedisKeys.Client(ingestRequest.ClientAppId, ingestRequest.TenantId);
-                var updatedClientValue = JsonSerializer.Serialize(clientAssignment, JsonConfig.Default);
-                await db.StringSetAsync(clientKey, updatedClientValue);
+                // Persist client assignment via repository (Cosmos → Redis cache)
+                // Extend the lock TTL before the Cosmos write to prevent expiry during I/O
+                await db.LockExtendAsync(
+                    RedisKeys.ClientUpdateLock(ingestRequest.ClientAppId, ingestRequest.TenantId),
+                    lockToken, ClientUpdateLockTtl);
+                await clientRepo.UpsertAsync(clientAssignment);
 
-                // --- Aggregate into log cache ---
+                // --- Aggregate into log cache (ephemeral — stays Redis-direct) ---
                 var cacheKey = RedisKeys.LogEntry(logData.ClientAppId, logData.TenantId, logData.DeploymentId);
                 var existingValue = await db.StringGetAsync(cacheKey);
 
@@ -184,7 +237,7 @@ public static class LogIngestEndpoints
                     "Log data cached: Key={CacheKey}, TenantId={TenantId}, ClientAppId={ClientAppId}, DeploymentId={DeploymentId}, Model={Model}, TotalTokens={TotalTokens}",
                     cacheKey, logData.TenantId, logData.ClientAppId, logData.DeploymentId, logData.Model, logData.TotalTokens);
 
-                // Record trace for client detail page
+                // Record trace for client detail page (ephemeral — stays Redis-direct)
                 var trace = new TraceRecord
                 {
                     Timestamp = DateTime.UtcNow,
@@ -247,7 +300,14 @@ public static class LogIngestEndpoints
                 CostToCustomer = logData?.CostToCustomer.ToString("F4") ?? "0.0000",
                 IsOverbilled = logData?.IsOverbilled ?? false,
                 StatusCode = 200,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                RequestedDeploymentId = ingestRequest.DeploymentId,
+                RoutingPolicyId = ingestRequest.RoutingPolicyId,
+                Multiplier = multiplier,
+                EffectiveRequestCost = effectiveRequestCost,
+                TierName = tierName,
+                MultiplierOverageCost = multiplierOverageCost,
+                CorrelationId = ingestRequest.CorrelationId
             });
 
             return Results.Ok("Log data processed and stored successfully");
@@ -298,42 +358,6 @@ public static class LogIngestEndpoints
         }
     }
 
-    private static async Task<(ClientPlanAssignment? assignment, IResult? error)> AuthorizeClient(
-        IDatabase db, string clientAppId, string tenantId, ILogger logger)
-    {
-        var clientValue = await db.StringGetAsync(RedisKeys.Client(clientAppId, tenantId));
-        if (!clientValue.HasValue)
-        {
-            logger.LogWarning("Unauthorized client: {ClientAppId}/{TenantId} — no plan assigned", clientAppId, tenantId);
-            return (null, Results.Json(new { error = "Client not authorized — no plan assigned" }, statusCode: StatusCodes.Status401Unauthorized));
-        }
-        var assignment = JsonSerializer.Deserialize<ClientPlanAssignment>((string)clientValue!, JsonConfig.Default);
-        if (assignment is null)
-        {
-            logger.LogError("Invalid client assignment payload for {ClientAppId}/{TenantId}", clientAppId, tenantId);
-            return (null, Results.Json(new { error = "Client assignment is invalid" }, statusCode: StatusCodes.Status500InternalServerError));
-        }
-        return (assignment, null);
-    }
-
-    private static async Task<(PlanData? plan, IResult? error)> LookupPlan(
-        IDatabase db, string planId, string clientAppId, ILogger logger)
-    {
-        var planValue = await db.StringGetAsync(RedisKeys.Plan(planId));
-        if (!planValue.HasValue)
-        {
-            logger.LogError("Plan not found: {PlanId} for client {ClientAppId}", planId, clientAppId);
-            return (null, Results.Json(new { error = "Plan configuration not found" }, statusCode: StatusCodes.Status500InternalServerError));
-        }
-        var plan = JsonSerializer.Deserialize<PlanData>((string)planValue!, JsonConfig.Default);
-        if (plan is null)
-        {
-            logger.LogError("Invalid plan payload: {PlanId} for client {ClientAppId}", planId, clientAppId);
-            return (null, Results.Json(new { error = "Plan configuration is invalid" }, statusCode: StatusCodes.Status500InternalServerError));
-        }
-        return (plan, null);
-    }
-
     private static async Task UpdateTpmCounter(
         IDatabase db, PlanData plan, string clientAppId, string tenantId, long minuteWindow, long totalTokens, ILogger logger)
     {
@@ -358,6 +382,9 @@ public static class LogIngestEndpoints
             assignment.CurrentPeriodUsage = 0;
             assignment.OverbilledTokens = 0;
             assignment.DeploymentUsage = new();
+            assignment.CurrentPeriodRequests = 0;
+            assignment.OverbilledRequests = 0;
+            assignment.RequestsByTier = new();
         }
     }
 }

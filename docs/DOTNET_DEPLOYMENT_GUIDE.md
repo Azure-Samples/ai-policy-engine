@@ -1,6 +1,6 @@
 # .NET 10 Deployment Guide
 
-Complete guide for deploying the Azure OpenAI Chargeback environment to Azure.
+Complete guide for deploying the Azure AI Gateway Policy Engine to Azure.
 
 ## Prerequisites
 

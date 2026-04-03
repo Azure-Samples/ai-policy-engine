@@ -70,6 +70,18 @@ public sealed class BillingSummaryDocument
     [JsonPropertyName("requestCount")]
     public long RequestCount { get; set; }
 
+    /// <summary>Total effective requests (multiplier-weighted) for this period.</summary>
+    [JsonPropertyName("totalEffectiveRequests")]
+    public decimal? TotalEffectiveRequests { get; set; }
+
+    /// <summary>Effective requests broken down by pricing tier.</summary>
+    [JsonPropertyName("effectiveRequestsByTier")]
+    public Dictionary<string, decimal>? EffectiveRequestsByTier { get; set; }
+
+    /// <summary>Total overage cost from multiplier billing for this period.</summary>
+    [JsonPropertyName("multiplierOverageCost")]
+    public decimal? MultiplierOverageCost { get; set; }
+
     [JsonPropertyName("updatedAt")]
     public DateTime UpdatedAt { get; set; }
 

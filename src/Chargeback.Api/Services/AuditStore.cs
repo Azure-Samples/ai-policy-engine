@@ -16,7 +16,8 @@ public sealed class AuditStore : IAuditStore
 
     private readonly CosmosClient _cosmosClient;
     private readonly ILogger<AuditStore> _logger;
-    private volatile bool _initialized;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private bool _initialized;
 
     public AuditStore(CosmosClient cosmosClient, ILogger<AuditStore> logger)
     {
@@ -34,8 +35,11 @@ public sealed class AuditStore : IAuditStore
     {
         if (_initialized) return;
 
+        await _initLock.WaitAsync(ct);
         try
         {
+            if (_initialized) return;
+
             var dbResponse = await _cosmosClient.CreateDatabaseIfNotExistsAsync(DatabaseName, cancellationToken: ct);
             var database = dbResponse.Database;
 
@@ -61,6 +65,10 @@ public sealed class AuditStore : IAuditStore
             _logger.LogError(ex, "Failed to initialize Cosmos DB database/containers");
             throw;
         }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task WriteBatchAsync(IReadOnlyList<AuditLogDocument> documents, CancellationToken ct = default)
@@ -70,7 +78,8 @@ public sealed class AuditStore : IAuditStore
         var tasks = new List<Task>(documents.Count);
         foreach (var doc in documents)
         {
-            tasks.Add(AuditLogs.CreateItemAsync(
+            // UpsertItemAsync is idempotent — safe for retries after partial batch success
+            tasks.Add(AuditLogs.UpsertItemAsync(
                 doc,
                 new PartitionKey(doc.CustomerKey),
                 cancellationToken: ct));
@@ -91,54 +100,102 @@ public sealed class AuditStore : IAuditStore
             var summaryId = $"{clientAppId}:{tenantId}:{deploymentId}:{period}";
             var partitionKey = new PartitionKey(customerKey);
 
-            BillingSummaryDocument summary;
-            try
+            const int maxConcurrencyRetries = 5;
+            for (var attempt = 0; attempt < maxConcurrencyRetries; attempt++)
             {
-                var existing = await BillingSummaries.ReadItemAsync<BillingSummaryDocument>(
-                    summaryId, partitionKey, cancellationToken: ct);
-                summary = existing.Resource;
-            }
-            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                var first = group.First();
-                summary = new BillingSummaryDocument
+                BillingSummaryDocument summary;
+                string? etag = null;
+
+                try
                 {
-                    Id = summaryId,
-                    CustomerKey = customerKey,
-                    ClientAppId = clientAppId,
-                    DisplayName = first.DisplayName,
-                    TenantId = first.TenantId,
-                    Audience = first.Audience,
-                    DeploymentId = deploymentId,
-                    Model = first.Model,
-                    BillingPeriod = period,
-                };
+                    var existing = await BillingSummaries.ReadItemAsync<BillingSummaryDocument>(
+                        summaryId, partitionKey, cancellationToken: ct);
+                    summary = existing.Resource;
+                    etag = existing.ETag;
+                }
+                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    var first = group.First();
+                    summary = new BillingSummaryDocument
+                    {
+                        Id = summaryId,
+                        CustomerKey = customerKey,
+                        ClientAppId = clientAppId,
+                        DisplayName = first.DisplayName,
+                        TenantId = first.TenantId,
+                        Audience = first.Audience,
+                        DeploymentId = deploymentId,
+                        Model = first.Model,
+                        BillingPeriod = period,
+                    };
+                }
+
+                foreach (var item in group)
+                {
+                    summary.PromptTokens += item.PromptTokens;
+                    summary.CompletionTokens += item.CompletionTokens;
+                    summary.TotalTokens += item.TotalTokens;
+                    summary.ImageTokens += item.ImageTokens;
+                    summary.RequestCount++;
+
+                    if (decimal.TryParse(item.CostToUs, out var costToUs))
+                        summary.CostToUs += costToUs;
+                    if (decimal.TryParse(item.CostToCustomer, out var costToCustomer))
+                        summary.CostToCustomer += costToCustomer;
+
+                    if (item.IsOverbilled)
+                        summary.IsOverbilled = true;
+
+                    // Accumulate multiplier billing fields
+                    if (item.EffectiveRequestCost.HasValue)
+                    {
+                        summary.TotalEffectiveRequests = (summary.TotalEffectiveRequests ?? 0m) + item.EffectiveRequestCost.Value;
+
+                        if (!string.IsNullOrEmpty(item.TierName))
+                        {
+                            summary.EffectiveRequestsByTier ??= new Dictionary<string, decimal>();
+                            if (!summary.EffectiveRequestsByTier.ContainsKey(item.TierName))
+                                summary.EffectiveRequestsByTier[item.TierName] = 0m;
+                            summary.EffectiveRequestsByTier[item.TierName] += item.EffectiveRequestCost.Value;
+                        }
+                    }
+
+                    if (item.MultiplierOverageCost.HasValue && item.MultiplierOverageCost.Value > 0)
+                        summary.MultiplierOverageCost = (summary.MultiplierOverageCost ?? 0m) + item.MultiplierOverageCost.Value;
+
+                    // Keep display name fresh
+                    if (!string.IsNullOrEmpty(item.DisplayName))
+                        summary.DisplayName = item.DisplayName;
+                }
+
+                summary.UpdatedAt = DateTime.UtcNow;
+
+                try
+                {
+                    var options = new ItemRequestOptions();
+                    if (etag != null)
+                    {
+                        // Optimistic concurrency: fail if another writer modified since our read
+                        options.IfMatchEtag = etag;
+                    }
+                    await BillingSummaries.UpsertItemAsync(summary, partitionKey,
+                        requestOptions: options, cancellationToken: ct);
+                    break; // success
+                }
+                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+                {
+                    // Another writer updated the document — re-read and retry
+                    _logger.LogWarning(
+                        "Billing summary ETag conflict for {SummaryId} (attempt {Attempt}/{Max}), retrying",
+                        summaryId, attempt + 1, maxConcurrencyRetries);
+
+                    if (attempt == maxConcurrencyRetries - 1)
+                    {
+                        _logger.LogError("Billing summary ETag conflict exhausted retries for {SummaryId}", summaryId);
+                        throw;
+                    }
+                }
             }
-
-            foreach (var item in group)
-            {
-                summary.PromptTokens += item.PromptTokens;
-                summary.CompletionTokens += item.CompletionTokens;
-                summary.TotalTokens += item.TotalTokens;
-                summary.ImageTokens += item.ImageTokens;
-                summary.RequestCount++;
-
-                if (decimal.TryParse(item.CostToUs, out var costToUs))
-                    summary.CostToUs += costToUs;
-                if (decimal.TryParse(item.CostToCustomer, out var costToCustomer))
-                    summary.CostToCustomer += costToCustomer;
-
-                if (item.IsOverbilled)
-                    summary.IsOverbilled = true;
-
-                // Keep display name fresh
-                if (!string.IsNullOrEmpty(item.DisplayName))
-                    summary.DisplayName = item.DisplayName;
-            }
-
-            summary.UpdatedAt = DateTime.UtcNow;
-
-            await BillingSummaries.UpsertItemAsync(summary, partitionKey, cancellationToken: ct);
         }
     }
 

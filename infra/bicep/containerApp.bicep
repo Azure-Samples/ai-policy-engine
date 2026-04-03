@@ -37,12 +37,8 @@ param cosmosEndpoint string = ''
 @description('ACR login server (e.g. myacr.azurecr.io). Leave empty to pull from public registries.')
 param acrLoginServer string = ''
 
-@description('ACR admin username. Required when acrLoginServer is set.')
-param acrUsername string = ''
-
-@secure()
-@description('ACR admin password. Required when acrLoginServer is set.')
-param acrPassword string = ''
+@description('Resource ID of the user-assigned managed identity for ACR pull. Leave empty when not using ACR.')
+param acrIdentityId string = ''
 
 @description('Minimum number of replicas (0 for scale-to-zero)')
 @minValue(0)
@@ -71,7 +67,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: !empty(acrIdentityId) ? 'SystemAssigned,UserAssigned' : 'SystemAssigned'
+    userAssignedIdentities: !empty(acrIdentityId) ? {
+      '${acrIdentityId}': {}
+    } : null
   }
   properties: {
     managedEnvironmentId: containerAppEnv.id
@@ -85,14 +84,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: !empty(acrLoginServer) ? [
         {
           server: acrLoginServer
-          username: acrUsername
-          passwordSecretRef: 'acr-password'
-        }
-      ] : []
-      secrets: !empty(acrLoginServer) ? [
-        {
-          name: 'acr-password'
-          value: acrPassword
+          identity: acrIdentityId
         }
       ] : []
     }

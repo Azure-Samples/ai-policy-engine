@@ -1,43 +1,43 @@
-using System.Text.Json;
 using Chargeback.Api.Models;
-using StackExchange.Redis;
 
 namespace Chargeback.Api.Services;
 
 public sealed class UsagePolicyStore : IUsagePolicyStore
 {
+    private readonly IRepository<UsagePolicySettings> _repo;
     private readonly UsagePolicySettings _defaults;
     private readonly ILogger<UsagePolicyStore> _logger;
 
-    public UsagePolicyStore(IConfiguration configuration, ILogger<UsagePolicyStore> logger)
+    public UsagePolicyStore(
+        IRepository<UsagePolicySettings> repo,
+        IConfiguration configuration,
+        ILogger<UsagePolicyStore> logger)
     {
+        _repo = repo;
         _logger = logger;
         _defaults = Normalize(
             configuration.GetSection("UsagePolicy").Get<UsagePolicySettings>()
             ?? new UsagePolicySettings());
     }
 
-    public async Task<UsagePolicySettings> GetAsync(IDatabase db)
+    public async Task<UsagePolicySettings> GetAsync(CancellationToken ct = default)
     {
-        var value = await db.StringGetAsync(RedisKeys.UsagePolicySettings);
-        if (!value.HasValue)
-            return Clone(_defaults);
-
         try
         {
-            var settings = JsonSerializer.Deserialize<UsagePolicySettings>((string)value!, JsonConfig.Default);
-            return settings is null ? Clone(_defaults) : Normalize(settings);
+            var settings = await _repo.GetAsync("usage-policy", ct);
+            return settings is not null ? Normalize(settings) : Clone(_defaults);
         }
-        catch (JsonException ex)
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deserialize usage policy settings; falling back to defaults");
+            _logger.LogError(ex, "Failed to read usage policy settings; falling back to defaults");
             return Clone(_defaults);
         }
     }
 
-    public async Task<UsagePolicySettings> UpdateAsync(IDatabase db, UsagePolicyUpdateRequest request)
+    public async Task<UsagePolicySettings> UpdateAsync(UsagePolicyUpdateRequest request, CancellationToken ct = default)
     {
-        var current = await GetAsync(db);
+        var current = await GetAsync(ct);
 
         if (request.BillingCycleStartDay.HasValue)
             current.BillingCycleStartDay = request.BillingCycleStartDay.Value;
@@ -47,8 +47,7 @@ public sealed class UsagePolicyStore : IUsagePolicyStore
             current.TraceRetentionDays = request.TraceRetentionDays.Value;
 
         var normalized = Normalize(current);
-        var payload = JsonSerializer.Serialize(normalized, JsonConfig.Default);
-        await db.StringSetAsync(RedisKeys.UsagePolicySettings, payload);
+        await _repo.UpsertAsync(normalized, ct);
 
         return normalized;
     }

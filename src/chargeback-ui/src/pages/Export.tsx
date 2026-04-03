@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react"
-import { Download, FileSpreadsheet, AlertTriangle, ClipboardList } from "lucide-react"
+import { Download, FileSpreadsheet, AlertTriangle, ClipboardList, Zap } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
 import { Button } from "../components/ui/button"
-import { fetchExportPeriods, downloadBillingSummary, downloadClientAudit } from "../api"
-import type { ExportPeriod, ExportClient } from "../types"
+import { fetchExportPeriods, downloadBillingSummary, downloadClientAudit, downloadRequestBilling, fetchPlans } from "../api"
+import type { ExportPeriod, ExportClient, PlanData } from "../types"
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -36,18 +36,28 @@ export function Export() {
   const [auditPeriod, setAuditPeriod] = useState<string>("")
   const [auditClient, setAuditClient] = useState<string>("")
 
+  // Request billing export state
+  const [requestBillingPeriod, setRequestBillingPeriod] = useState<string>("")
+  const [plans, setPlans] = useState<PlanData[]>([])
+  const hasMultiplierPlans = plans.some(p => p.useMultiplierBilling)
+
   useEffect(() => {
-    fetchExportPeriods()
-      .then(data => {
+    Promise.all([
+      fetchExportPeriods(),
+      fetchPlans().catch(() => ({ plans: [] })),
+    ])
+      .then(([data, plansRes]) => {
         setPeriods(data.periods)
         setCurrentPeriod(data.currentPeriod)
         setClients(data.clients)
+        setPlans(plansRes.plans ?? [])
         // Default to most recent complete month, or first available
         const defaultPeriod = data.periods.find(p => !isCurrentMonth(p, data.currentPeriod)) ?? data.periods[0]
         if (defaultPeriod) {
           const key = periodKey(defaultPeriod)
           setSummaryPeriod(key)
           setAuditPeriod(key)
+          setRequestBillingPeriod(key)
         }
         if (data.clients.length > 0) {
           setAuditClient(`${data.clients[0].clientAppId}|${data.clients[0].tenantId}`)
@@ -82,6 +92,13 @@ export function Export() {
   const summaryIsCurrentMonth = selectedSummaryPeriod ? isCurrentMonth(selectedSummaryPeriod, currentPeriod) : false
   const auditIsCurrentMonth = selectedAuditPeriod ? isCurrentMonth(selectedAuditPeriod, currentPeriod) : false
 
+  const selectedRequestBillingPeriod = useMemo(() => {
+    if (!requestBillingPeriod) return null
+    const [y, m] = requestBillingPeriod.split("-").map(Number)
+    return { year: y, month: m } as ExportPeriod
+  }, [requestBillingPeriod])
+  const requestBillingIsCurrentMonth = selectedRequestBillingPeriod ? isCurrentMonth(selectedRequestBillingPeriod, currentPeriod) : false
+
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
 
@@ -108,6 +125,19 @@ export function Export() {
       await downloadClientAudit(clientAppId, tenantId, selectedAuditPeriod.year, selectedAuditPeriod.month)
     } catch (err: any) {
       setDownloadError(err?.message ?? "Download failed")
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const handleRequestBillingExport = async () => {
+    if (!selectedRequestBillingPeriod) return
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await downloadRequestBilling(selectedRequestBillingPeriod.year, selectedRequestBillingPeriod.month)
+    } catch (err: unknown) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed")
     } finally {
       setDownloading(false)
     }
@@ -259,6 +289,60 @@ export function Export() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Request Billing Export Card — adaptive: only shown when multiplier billing plans exist */}
+          {hasMultiplierPlans && (
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Request Billing Export
+                </CardTitle>
+                <CardDescription>
+                  Download a request-based billing report with multiplier costs, effective requests,
+                  and tier breakdowns for all clients using multiplier billing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label htmlFor="request-billing-period" className="block text-sm font-medium mb-1">
+                    Billing Period
+                  </label>
+                  <select
+                    id="request-billing-period"
+                    value={requestBillingPeriod}
+                    onChange={e => setRequestBillingPeriod(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {periods.map(p => (
+                      <option key={periodKey(p)} value={periodKey(p)}>
+                        {formatPeriod(p)}
+                        {isCurrentMonth(p, currentPeriod) ? " (current)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {requestBillingIsCurrentMonth && (
+                  <div className="flex items-start gap-2 rounded-md bg-amber-50 p-3 text-amber-800 text-sm">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      Data for {selectedRequestBillingPeriod ? formatPeriod(selectedRequestBillingPeriod) : ""} is incomplete — the current month has not ended.
+                    </span>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleRequestBillingExport}
+                  className="gap-2"
+                  disabled={!selectedRequestBillingPeriod || downloading}
+                >
+                  <Download className="h-4 w-4" />
+                  Export Request Billing
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

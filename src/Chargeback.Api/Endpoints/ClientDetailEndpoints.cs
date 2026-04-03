@@ -33,20 +33,18 @@ public static class ClientDetailEndpoints
     private static async Task<IResult> GetClientUsage(
         string clientAppId,
         string tenantId,
-        IConnectionMultiplexer redis,
+        IRepository<ClientPlanAssignment> clientRepo,
+        IRepository<PlanData> planRepo,
         IUsagePolicyStore usagePolicyStore,
+        IConnectionMultiplexer redis,
         ILogger<ClientUsageResponse> logger)
     {
         try
         {
-            var db = redis.GetDatabase();
-            var usagePolicy = await usagePolicyStore.GetAsync(db);
+            var usagePolicy = await usagePolicyStore.GetAsync();
 
-            var clientValue = await db.StringGetAsync(RedisKeys.Client(clientAppId, tenantId));
-            if (!clientValue.HasValue)
-                return Results.NotFound(new { error = $"Customer '{clientAppId}/{tenantId}' not found" });
-
-            var assignment = JsonSerializer.Deserialize<ClientPlanAssignment>((string)clientValue!, JsonConfig.Default);
+            var clientId = $"{clientAppId}:{tenantId}";
+            var assignment = await clientRepo.GetAsync(clientId);
             if (assignment is null)
                 return Results.NotFound(new { error = $"Customer '{clientAppId}/{tenantId}' not found" });
 
@@ -57,13 +55,17 @@ public static class ClientDetailEndpoints
                 assignment.CurrentPeriodUsage = 0;
                 assignment.OverbilledTokens = 0;
                 assignment.DeploymentUsage = new();
+                assignment.CurrentPeriodRequests = 0;
+                assignment.OverbilledRequests = 0;
+                assignment.RequestsByTier = new();
             }
 
             PlanData? plan = null;
-            var planValue = await db.StringGetAsync(RedisKeys.Plan(assignment.PlanId));
-            if (planValue.HasValue)
-                plan = JsonSerializer.Deserialize<PlanData>((string)planValue!, JsonConfig.Default);
+            if (!string.IsNullOrEmpty(assignment.PlanId))
+                plan = await planRepo.GetAsync(assignment.PlanId);
 
+            // Log data and rate limits are ephemeral — stay Redis-direct
+            var db = redis.GetDatabase();
             var logKeys = redis.KeysFromAllServers(RedisKeys.CustomerLogPattern(clientAppId, tenantId));
             var logs = new List<LogEntry>();
             var usageByModel = new Dictionary<string, long>();
@@ -126,7 +128,14 @@ public static class ClientDetailEndpoints
                 CurrentTpm = tpmValue.HasValue ? (long)tpmValue : 0,
                 CurrentRpm = rpmValue.HasValue ? (long)rpmValue : 0,
                 TotalCostToUs = totalCostToUs,
-                TotalCostToCustomer = totalCostToCustomer
+                TotalCostToCustomer = totalCostToCustomer,
+                CurrentPeriodRequests = assignment.CurrentPeriodRequests,
+                OverbilledRequests = assignment.OverbilledRequests,
+                RequestsByTier = assignment.RequestsByTier,
+                MonthlyRequestQuota = plan?.MonthlyRequestQuota ?? 0,
+                RequestUtilizationPercent = plan is not null && plan.MonthlyRequestQuota > 0
+                    ? Math.Round(assignment.CurrentPeriodRequests / plan.MonthlyRequestQuota * 100, 2)
+                    : -1
             };
 
             return Results.Json(response, JsonConfig.Default);
@@ -146,6 +155,7 @@ public static class ClientDetailEndpoints
     {
         try
         {
+            // Traces are ephemeral — Redis-only
             var db = redis.GetDatabase();
             var entries = await db.ListRangeAsync(RedisKeys.Traces(clientAppId, tenantId), 0, 99);
 

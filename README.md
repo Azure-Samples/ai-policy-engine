@@ -1,8 +1,8 @@
-# Azure API Management OpenAI Chargeback Environment
+# Azure AI Gateway Policy Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Azure](https://img.shields.io/badge/Azure-0078D4?logo=microsoft-azure&logoColor=white)](https://azure.microsoft.com)
-[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://openai.com)
+[![AI Models](https://img.shields.io/badge/AI_Models-412991?logo=openai&logoColor=white)](https://learn.microsoft.com/en-us/azure/ai-services/openai/)
 [![Bicep](https://img.shields.io/badge/Bicep-0078D4?logo=microsoft-azure&logoColor=white)](https://docs.microsoft.com/azure/azure-resource-manager/bicep/)
 [![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)](https://www.terraform.io)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com)
@@ -11,13 +11,25 @@
 
 ## TL;DR
 
-Enterprise-ready solution for Azure OpenAI usage tracking and chargeback through Azure API Management. A single ASP.NET Minimal API handles log ingestion, cost calculation, billing plan management, and real-time dashboard streaming — orchestrated by .NET Aspire and secured with Entra ID JWT bearer tokens.
+**Azure AI Gateway Policy Engine** — APIM-based AAA (Authentication, Authorization, Accounting) for AI workloads, inspired by telecom/RADIUS principles. Enterprise-ready solution for teams who need to authenticate, authorize, and account for AI API utilization with durable storage, intelligent routing, and adaptive billing.
+
+A single ASP.NET Minimal API handles authentication/authorization pre-checks, model routing decisions, cost calculation, multiplier-based billing, and real-time dashboard streaming — orchestrated by .NET Aspire with CosmosDB as the source of truth and Redis as a high-performance cache.
 
 **🚀 Quick Deploy**: `git clone → ./scripts/setup-azure.ps1 → done`
 
-**💰 What you get**: Real-time usage tracking, per-customer billing plans with quotas and rate limits (where a "customer" is any client app + tenant combination), overbilling support, per-deployment quotas, deployment access control (allowlist per plan/client), WebSocket live dashboard, durable Cosmos DB audit trail, monthly billing exports, DLP policy validation via Purview
+**💰 What you get**: 
+- Authentication & authorization at the API gateway (APIM pre-checks)
+- Intelligent model routing to optimal deployments based on plan policies
+- Per-request multiplier pricing with monthly quotas and overage tracking
+- Durable configuration storage in CosmosDB with Redis caching
+- Adaptive billing UI that matches your billing model (token/multiplier/hybrid)
+- Bill-back reporting per client with tier breakdown and CSV export
+- WebSocket live dashboard with real-time metrics
+- Comprehensive test suite (198+ tests including routing benchmarks)
 
-**🏗️ Tech Stack**: .NET 10, Azure Container Apps, ASP.NET Minimal APIs, .NET Aspire, React/TypeScript, Azure Managed Redis, Cosmos DB, Bicep/Terraform, OpenTelemetry + Azure Monitor, Microsoft Purview (Agent 365)
+**🏗️ Tech Stack**: .NET 10, Azure Container Apps, ASP.NET Minimal APIs, .NET Aspire, React/TypeScript, Azure Managed Redis, CosmosDB, Azure API Management, Bicep/Terraform, OpenTelemetry + Azure Monitor, Microsoft Purview
+
+**⚙️ Internal Naming Note**: The codebase uses "Chargeback" as the internal project name (legacy naming, rename to "GatewayPolicy" pending in a future release). All namespaces, containers, and project folders will be updated in the next phase.
 
 ## Quick Start
 
@@ -25,8 +37,8 @@ Enterprise-ready solution for Azure OpenAI usage tracking and chargeback through
 
 ```bash
 # Clone and run (requires .NET 10 SDK + Docker for Redis)
-git clone https://github.com/your-org/apim-openai-chargeback-environment.git
-cd apim-openai-chargeback-environment/src
+git clone https://github.com/your-org/azure-ai-gateway-policy-engine.git
+cd azure-ai-gateway-policy-engine/src
 dotnet run --project Chargeback.AppHost
 ```
 
@@ -98,71 +110,146 @@ Each demo client can specify its own `TenantId`. If omitted, it inherits the glo
 
 | Challenge | Impact | Our Solution |
 |-----------|--------|--------------|
-| **No per-tenant usage tracking** | Cost overruns, no chargeback | ✅ JWT claim extraction (`tid`, `aud`, `azp`) — billing keyed on client+tenant combination |
-| **SaaS apps serving multiple customers** | Single app ID can't distinguish tenants | ✅ Combined `clientAppId:tenantId` customer key — each tenant gets independent quotas, rate limits, and billing |
-| **No quota or rate enforcement** | Uncontrolled OpenAI spend | ✅ Per-customer monthly quotas, TPM/RPM limits enforced *before* requests reach OpenAI |
-| **Subscription key auth (disabled)** | Weak identity, no tenant isolation | ✅ Subscription keys disabled; Entra ID JWT bearer tokens with automatic claim-based routing |
-| **No real-time visibility** | Delayed cost reporting | ✅ WebSocket streaming + React dashboard for live cost tracking |
-| **Manual deployment** | Inconsistent environments | ✅ Bicep IaC + .NET Aspire for local orchestration |
+| **No per-tenant AI usage tracking** | Cost overruns, no chargeback | ✅ JWT claim extraction (`tid`, `aud`, `azp`) — billing keyed on client+tenant combination |
+| **SaaS apps serving multiple AI consumers** | Single app ID can't distinguish tenants | ✅ Combined `clientAppId:tenantId` customer key — each tenant gets independent quotas, rate limits, and billing |
+| **No quota or rate enforcement at the gate** | Uncontrolled AI API spend | ✅ Per-customer monthly quotas, request/token limits enforced *before* requests reach the backend |
+| **Weak identity & weak deployment control** | No tenant isolation, overspend on wrong deployments | ✅ Entra ID JWT bearer auth + model routing to optimal deployments based on plan policies |
+| **No configuration durability** | Redis-only storage loses config on cache flush/upgrade | ✅ CosmosDB as durable source of truth, Redis as high-speed write-through cache |
+| **No intelligent model routing** | Manual per-client model lists, no auto-optimization | ✅ Auto-router selects best deployment based on plan routing policies + Foundry discovery |
+| **Inflexible billing** | Per-token billing doesn't match all use cases | ✅ Per-request multiplier pricing (GHCP-style) with hybrid token+multiplier support |
+| **No real-time visibility** | Delayed cost reporting, surprise bills | ✅ WebSocket streaming + adaptive React dashboard that shows your billing model |
+| **Inconsistent deployment** | Manual provisioning, environment drift | ✅ Bicep/Terraform IaC + .NET Aspire for reproducible local and cloud deployments |
 
-## Architecture
+## Architecture Overview
 
 ```mermaid
 graph LR
     A[Client Apps] -->|Bearer Token| B[APIM Gateway]
-    B -->|Outbound Policy| C[Chargeback.Api]
-    B --> D[Azure OpenAI]
-    C --> E[Azure Managed Redis]
-    C --> F[Azure Monitor]
-    C --> G[Microsoft Purview]
-    C --> I[Cosmos DB]
-    E --> H[React Dashboard]
-    C -->|WebSocket| H
+    B -->|Inbound: Pre-check<br/>Auth + Route + Rate Limit| C[Chargeback.Api]
+    B --> D[AI Models<br/>OpenAI, Foundry, etc]
+    C --> E[Azure Managed Redis<br/>Hot Cache]
+    C --> F[CosmosDB<br/>Source of Truth]
+    C --> G[Azure Monitor]
+    C --> H[Microsoft Purview]
+    F --> E
+    E --> I[React Dashboard]
+    C -->|WebSocket| I
 ```
 
-A single **Azure Container App** (`Chargeback.Api`) hosts all chargeback functionality:
+**Core Architecture**: A single **Azure Container App** (`Chargeback.Api`) hosts all gateway policy logic:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | React SPA dashboard |
-| `/api/log` | POST | APIM outbound policy calls this to record usage |
-| `/api/precheck/{clientAppId}/{tenantId}` | GET | APIM inbound policy calls this to check quota, rate limits, and deployment access |
-| `/api/deployments` | GET | List available Azure OpenAI deployments from the Foundry resource |
-| `/api/usage` | GET | Aggregated usage summaries |
-| `/api/logs` | GET | Individual request log entries |
-| `/chargeback` | GET | Total chargeback amount with itemized data |
-| `/api/plans` | GET/POST/PUT/DELETE | Billing plan CRUD |
-| `/api/clients` | GET | List all customer assignments |
-| `/api/clients/{clientAppId}/{tenantId}` | PUT/DELETE | Customer assignment management (client+tenant) |
-| `/api/clients/{clientAppId}/{tenantId}/usage` | GET | Per-customer usage report |
-| `/api/clients/{clientAppId}/{tenantId}/traces` | GET | Per-customer request traces |
-| `/api/pricing` | GET/PUT/DELETE | Model cost rate management |
-| `/api/quotas` | GET/PUT/DELETE | Per-client quota overrides |
-| `/api/export/available-periods` | GET | Available billing periods and clients for export (requires `Chargeback.Export` role) |
-| `/api/export/billing-summary` | GET | Monthly billing summary CSV for all customers (requires `Chargeback.Export` role) |
-| `/api/export/client-audit` | GET | Customer-specific audit trail CSV (requires `Chargeback.Export` role) |
-| `/ws/logs` | WS | WebSocket endpoint for real-time updates |
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **API Gateway** | Azure API Management (StandardV2) | Entra JWT validation, policy enforcement, traffic control |
+| **Backend Engine** | ASP.NET 10 Minimal APIs | Authentication pre-checks, authorization decisions, model routing, billing calculations |
+| **Orchestration** | .NET Aspire | Local development with all dependencies in containers |
+| **Hot Cache** | Azure Managed Redis | Write-through cache for plans, clients, pricing, routing policies, rate limits, usage |
+| **Durable Store** | Azure CosmosDB | Source of truth for all configuration; audit logs and billing records for compliance |
+| **Dashboard** | React + TypeScript SPA | Five-page UI served from same container; real-time WebSocket updates |
+| **Observability** | OpenTelemetry + Azure Monitor | Distributed tracing, custom metrics, structured logging |
+| **Compliance** | Microsoft Purview | DLP policy validation and audit emission |
 
-**Core Components**:
-- 🔐 **API Management** — StandardV2 gateway with Entra JWT validation, inbound pre-check, outbound log forwarding
-- ⚡ **Chargeback.Api** — ASP.NET Minimal API for log ingestion, billing, cost calculation, and dashboard
-- 💾 **Azure Managed Redis** — Hot cache for real-time log data, plan/client assignments, and rate limiting
-- 🔑 **Deployment access control** — Per-plan and per-client deployment allowlists
-- 🗄️ **Cosmos DB** — Durable audit trail for financial record-keeping (36-month retention), batched writes via `Channel<T>` + `BackgroundService`
-- 📊 **React/TypeScript SPA** — Multi-page dashboard with billing management and real-time streaming
-- 🔭 **OpenTelemetry + Azure Monitor** — Distributed tracing, custom metrics, structured logging
-- 📘 **Log Analytics Workbook** — Prebuilt KQL dashboard deployed with infrastructure
-- 🛡️ **Microsoft Purview** — DLP policy validation and audit emission
+**Request & Decision Flow:**
+1. Client sends request to APIM with Bearer token (Entra ID JWT)
+2. APIM validates token and extracts claims (`tid`, `appid`, `aud`)
+3. APIM calls `/api/precheck/{clientAppId}/{tenantId}` — our engine checks:
+   - ✅ Plan assignment for this customer
+   - ✅ Model routing policy (selects optimal deployment)
+   - ✅ Monthly request/token quotas
+   - ✅ Rate limits (RPM/TPM) on routed deployment
+   - ✅ Deployment access (allowlist per plan/client)
+4. If check fails → return 401/403/429, request blocked at APIM
+5. If check passes → return routed deployment + token; APIM forwards to backend
+6. Backend processes request
+7. APIM outbound policy captures response, calls `/api/log` (fire-and-forget)
+8. `/api/log` records usage, updates quotas, calculates cost with model multipliers
+
+All decisions are cached in Redis for sub-millisecond latency; all configuration persists to CosmosDB for durability.
+
+## Key Features
+
+### 🔐 Authentication & Authorization at the Gate
+- Entra ID JWT bearer tokens with multi-tenant support
+- Pre-check endpoint validates client, plan, deployment access, and quotas BEFORE backend receives the request
+- No subscription keys — pure identity-driven access control
+
+### 🚀 Intelligent Model Routing (Auto-Router)
+- Automatically routes requests to optimal deployments based on plan routing policies
+- Integrates with AI model discovery services (e.g., Foundry endpoints)
+- Three routing modes:
+  - **Per-account**: Different routing rules per customer (clientAppId:tenantId)
+  - **Enforced**: Fallback routing when preferred deployment is unavailable
+  - **QoS-based**: Route based on load and quota availability
+- Rate limits (RPM/TPM) apply to the routed deployment, not the originally requested model
+
+### 💰 Per-Request Multiplier Pricing (GHCP-style)
+- Flexible billing based on model tier, not just token count
+- Example: GPT-4.1 = 1.0x (baseline), GPT-4.1-mini = 0.33x
+- Every request costs: `1 × model_multiplier` in effective requests
+- Monthly quotas tracked as "effective requests", not tokens
+- Hybrid mode: Mix token-based and multiplier-based models in the same plan
+
+### 🗄️ CosmosDB Source of Truth + Redis Cache
+- **Durable Configuration**: All plans, clients, pricing, routing policies, and usage policies persist to CosmosDB
+- **High-Performance Cache**: Redis holds a write-through cache of all configuration for sub-millisecond lookups
+- **Automatic Warmup**: On startup, configuration is loaded from CosmosDB and populated into Redis
+- **Cache Coherence**: All writes go to CosmosDB first, then update Redis — no stale cache issues
+- **36-Month Audit Trail**: Cosmos DB stores all request logs and billing records for compliance and bill-back reporting
+
+### 📊 Adaptive Billing Dashboard
+- React SPA that adapts to your billing model:
+  - **Token-only plans**: Shows token counts, token quotas, token usage charts
+  - **Multiplier-only plans**: Shows request counts, request quotas, model tier breakdowns
+  - **Hybrid plans**: Shows both billing modes side-by-side
+- No clutter — the UI hides irrelevant billing metrics based on plan configuration
+- Real-time WebSocket updates for live metrics
+
+### 📋 Bill-Back Reporting
+- **Per-client consumption tracking**: Effective requests, token usage, model tier breakdown
+- **Monthly billing exports**: CSV downloads with tier-level detail
+- **Audit trail per customer**: Complete request log for any client+tenant combination
+- **Role-based access**: Export requires `Chargeback.Export` app role
+
+### ⚡ APIM Policy Enforcement at the Gateway
+- Precheck-based authentication + routing + rate limiting
+- All quota and rate-limit checks happen BEFORE the backend request
+- Requests hitting rate limits are rejected at APIM (429 Too Many Requests)
+- Deployments not in the allowlist are rejected (403 Forbidden)
+
+### 🧪 Comprehensive Test Suite
+- **198+ tests** covering critical paths, routing, pricing, quota enforcement
+- **Routing benchmarks** validating auto-router performance
+- Unit tests, integration tests, and end-to-end scenarios
+- Zero regressions through continuous validation
+
+### 🏗️ Production-Ready Infrastructure
+- **Bicep & Terraform IaC** — Both paths deploy identical infrastructure
+- **Azure Managed Redis** — TLS-enabled, Entra-only auth, DDoS protection
+- **Azure CosmosDB** — Multi-region capable, point-in-time recovery, audit logging
+- **Azure Container Apps** — Managed Kubernetes, auto-scaling, managed identity
+- **Aspire Orchestration** — Single `dotnet run` for local development with all dependencies in containers
 
 ## Dashboard
 
 The React SPA provides five pages:
 
-- **Dashboard** — KPI cards (total cost, tokens, requests), top 4 clients by utilization, usage charts over time, paginated usage table, and a live request log
-- **Clients** — Client assignment management with tenant ID column, plan badges, usage progress bars, and deployment access override
-- **Plans** — Billing plan CRUD with monthly quota limits, rate limits (requests/min), overbilling toggle, per-deployment quotas, and deployment access control (allowed deployments picker)
-- **Pricing** — Model cost rate management (cost per 1K input/output tokens per model)
-- **Export** — Two report types: **Billing Summary** (rolled-up per client for a month) and **Client Audit Trail** (every request for a specific client). Period/client selector with current-month warning. Requires `Chargeback.Export` app role.
+- **Dashboard** — KPI cards (total cost, requests), top clients by utilization, usage charts, live request log, adaptive billing metrics
+- **Clients** — Client assignment management with plan badges, quota progress bars, deployment access overrides
+- **Plans** — Billing plan CRUD with:
+  - Monthly quota limits (request or token based)
+  - Rate limits (requests/min or tokens/min)
+  - Per-model multipliers (if using multiplier billing)
+  - Overbilling toggle for runover support
+  - Per-deployment quotas and access controls
+  - Routing policy assignment (auto-router configuration)
+- **Routing Policies** — Configure model routing rules:
+  - Map deployments per customer
+  - Set priority and fallback behavior
+  - Enable/disable rules without deletion
+- **Export** — Two report types:
+  - **Billing Summary**: Rolled-up per-client usage for a month
+  - **Client Audit Trail**: Every request for a specific client
+  - Requires `Chargeback.Export` app role
 
 ## Authentication
 
@@ -244,37 +331,28 @@ The export endpoints require the `Chargeback.Export` app role. To set this up:
 
 The App Registration can then use client credentials flow to obtain a token and call export endpoints without access to admin endpoints (plans, clients, pricing, etc.).
 
-## Usage Example
+## API Endpoints
 
-```bash
-# Obtain a token from Entra ID (use the Gateway app audience)
-TOKEN=$(az account get-access-token --resource api://your-gateway-app-id --query accessToken -o tsv)
-
-# Call Azure OpenAI through APIM
-curl -X POST https://your-apim.azure-api.net/openai/deployments/gpt-4.1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
-```
-
-The APIM outbound policy automatically forwards the response payload and JWT claims to `Chargeback.Api` for cost tracking.
-
-## Key Features
-
-- 🚀 **Single Container App**: All chargeback logic in one ASP.NET Minimal API
-- 🏢 **Multi-Tenant Billing**: Combined `clientAppId:tenantId` customer key — one SaaS app can have per-tenant quotas, rate limits, and billing
-- 💰 **Billing Plan System**: Create plans with monthly quotas, rate limits, overbilling, and per-deployment quotas
-- 📊 **Per-Customer Tracking**: Assign client+tenant combinations to plans and track usage against quota limits
-- ⚡ **Rate Limiting & Quota Enforcement**: APIM inbound pre-check blocks requests when quota or rate limits are exceeded
-- 📡 **Real-Time Dashboard**: WebSocket streaming to a five-page React/TypeScript SPA
-- 🔭 **Full Observability**: OpenTelemetry via Aspire ServiceDefaults + Azure Monitor
-- 🛡️ **DLP Compliance**: Microsoft Purview integration for policy validation and audit
-- 🏗️ **Aspire Orchestration**: Single `dotnet run` for local development with all dependencies
-- 🔒 **Zero Subscription Keys**: Entra ID JWT bearer auth end-to-end
-- 🔑 **Deployment Access Control**: Allowlist-based per-plan and per-client deployment restrictions
-- 🗄️ **Durable Audit Trail**: Cosmos DB stores every request for 36 months with partition key `/customerKey` and batched writes via `Channel<T>` + `BackgroundService`
-- 📋 **Financial Exports**: Monthly billing summaries and per-client audit trail CSV exports with role-based access control
-- 🏗️ **Dual IaC Support**: Both Bicep and Terraform configurations included
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | React SPA dashboard |
+| `/api/precheck/{clientAppId}/{tenantId}` | GET | Pre-check: verify customer plan, quotas, rate limits, deployment access, and routing decision |
+| `/api/log` | POST | Log usage (called by APIM outbound policy) — updates quotas, calculates cost |
+| `/api/routing-policies` | GET/POST/PUT/DELETE | Manage model routing policies (auto-router configuration) |
+| `/api/deployments` | GET | List available AI model deployments from discovery service |
+| `/api/usage` | GET | Aggregated usage summaries across all customers |
+| `/api/logs` | GET | Individual request log entries with filtering/pagination |
+| `/api/clients` | GET | List all customer (clientAppId:tenantId) assignments |
+| `/api/clients/{clientAppId}/{tenantId}` | GET/PUT/DELETE | Customer assignment management |
+| `/api/clients/{clientAppId}/{tenantId}/usage` | GET | Per-customer usage report with effective requests, tokens, tier breakdown |
+| `/api/clients/{clientAppId}/{tenantId}/traces` | GET | Per-customer request traces and audit trail |
+| `/api/plans` | GET/POST/PUT/DELETE | Billing plan CRUD (create, update, delete plans) |
+| `/api/pricing` | GET/PUT/DELETE | Model pricing and multiplier management |
+| `/api/quotas` | GET/PUT/DELETE | Per-client quota overrides (exceptions to plan limits) |
+| `/api/export/available-periods` | GET | Available billing periods and clients for export (role: `Chargeback.Export`) |
+| `/api/export/billing-summary` | GET | Monthly billing summary CSV for all customers (role: `Chargeback.Export`) |
+| `/api/export/client-audit` | GET | Customer-specific audit trail CSV with per-model breakdown (role: `Chargeback.Export`) |
+| `/ws/logs` | WS | WebSocket endpoint for real-time usage updates |
 
 ## Observability
 
@@ -302,46 +380,65 @@ The Chargeback API integrates with the **Microsoft Agent Framework Purview SDK**
 
 Purview evaluates content against organizational DLP policies before processing and emits audit events for compliance reporting.
 
-## Repository Structure
+## Project Structure
 
 ```
 src/
-├── Chargeback.slnx                 # Solution file
-├── Chargeback.AppHost/             # .NET Aspire orchestrator
-├── Chargeback.ServiceDefaults/     # OpenTelemetry + Azure Monitor configuration
-├── Chargeback.Api/                 # ASP.NET Minimal API
-│   ├── Endpoints/                  # LogIngest, Dashboard, Plans, Clients, Pricing endpoints
-│   ├── Models/                     # Request/response DTOs
-│   └── Services/                   # ChargebackCalculator, Metrics, Purview
-├── Chargeback.Tests/               # Unit and integration tests
-├── Chargeback.Benchmarks/          # BenchmarkDotNet performance tests
-├── Chargeback.LoadTest/            # Load testing project
-└── chargeback-ui/                  # React/TypeScript dashboard (5 pages)
+├── Chargeback.slnx                    # Solution file
+├── Chargeback.AppHost/                # .NET Aspire orchestrator — local dev environment with all services
+├── Chargeback.ServiceDefaults/        # OpenTelemetry + Azure Monitor configuration, shared by all services
+├── Chargeback.Api/                    # ASP.NET Minimal API — core policy engine
+│   ├── Endpoints/                     # API endpoints (PreCheck, RoutingPolicy, RequestBilling, Export, etc.)
+│   ├── Models/                        # Request/response DTOs, domain models
+│   ├── Services/                      # ChargebackCalculator, RoutingEvaluator, Repositories (IRepository pattern)
+│   ├── Repositories/                  # CosmosDB persistence layer (Plans, Clients, Pricing, Routing, etc.)
+│   └── Program.cs                     # API configuration, dependency injection
+├── Chargeback.Tests/                  # Unit and integration tests (198+ tests, 100% critical path coverage)
+├── Chargeback.Benchmarks/             # BenchmarkDotNet performance tests (routing, pricing calculations)
+├── Chargeback.LoadTest/               # Load testing project
+└── chargeback-ui/                     # React/TypeScript dashboard (5 pages, adaptive billing UI)
+    ├── src/types.ts                   # TypeScript interfaces for API contracts
+    ├── src/api.ts                     # API client with error handling
+    ├── src/pages/                     # Dashboard, Clients, Plans, Routing, Export pages
+    └── src/components/                # Shared UI components
+
 demo/
-├── DemoClient.cs                   # Agent Framework demo traffic generator (file-based app)
-├── .env.sample                     # Environment variable template
+├── DemoClient.cs                      # Agent Framework demo traffic generator (file-based app)
+├── .env.sample                        # Environment variable template
+
 policies/
-├── entra-jwt-policy.xml            # APIM policy (Entra JWT + precheck + log forwarding)
+├── entra-jwt-policy.xml               # APIM policy — JWT validation + precheck + log forwarding
+└── subscription-key-policy.xml        # (Legacy) subscription key policy
+
 infra/
-├── bicep/                          # Bicep IaC modules
-│   ├── main.bicep                  # Main deployment template
-│   ├── containerApp.bicep          # Azure Container App
-│   ├── appInsights.bicep           # Application Insights + Log Analytics
-│   ├── redisCache.bicep            # Azure Managed Redis
-│   ├── apimInstance.bicep          # APIM instance
-│   └── ...                         # Additional Bicep modules
-├── terraform/                      # Terraform IaC modules
-│   ├── main.tf                     # Root orchestration
-│   ├── providers.tf                # azurerm, azuread, azapi providers
-│   ├── variables.tf                # Input variables
-│   ├── modules/                    # 6 modules: monitoring, data, ai_services, identity, compute, gateway
-│   └── register-secondary-tenant.ps1
+├── bicep/                             # Bicep IaC modules
+│   ├── main.bicep                     # Main deployment template
+│   ├── containerApp.bicep             # Azure Container App for Chargeback.Api
+│   ├── appInsights.bicep              # Application Insights + Log Analytics
+│   ├── cosmosAccount.bicep            # Azure CosmosDB account + containers
+│   ├── redisCache.bicep               # Azure Managed Redis
+│   ├── apimInstance.bicep             # Azure API Management instance
+│   ├── keyVault.bicep                 # Azure Key Vault
+│   └── logAnalyticsWorkbook.bicep     # Azure Monitor workbook dashboard
+└── terraform/                         # Terraform IaC modules (6 modules: monitoring, data, ai_services, identity, compute, gateway)
+    ├── main.tf                        # Root orchestration
+    ├── providers.tf                   # azurerm, azuread, azapi providers
+    ├── variables.tf                   # Input variables
+    ├── modules/                       # Modular infrastructure
+    └── register-secondary-tenant.ps1  # Multi-tenant setup
+
 scripts/
-├── setup-azure.ps1                 # Automated Azure deployment script
-├── deploy-container.ps1            # Build and deploy container to ACR (also verifies Entra config)
-├── seed-data.ps1                   # Seed plans and client assignments into Redis/Cosmos
-└── deploy-functionapp-test.ps1     # Bicep testing patterns (reference)
-docs/                               # Documentation
+├── setup-azure.ps1                    # One-command deployment script (Bicep or Terraform)
+├── deploy-container.ps1               # Build and deploy container to ACR + verify Entra config
+├── seed-data.ps1                      # Seed plans and client assignments into CosmosDB/Redis
+└── deploy-functionapp-test.ps1        # Bicep testing patterns (reference)
+
+docs/                                  # Documentation
+├── ARCHITECTURE.md                    # Detailed system design
+├── DOTNET_DEPLOYMENT_GUIDE.md         # Full deployment instructions
+├── USAGE_EXAMPLES.md                  # API usage examples
+├── FAQ.md                             # Frequently asked questions
+└── README.md                          # (this file)
 ```
 
 ## Infrastructure
@@ -447,7 +544,7 @@ When running via Aspire, connection strings and service discovery are configured
 ✅ Limited only by the Azure Container App request size limit (default 100 MB).
 
 **❓ How long is data retained?**
-✅ Azure Managed Redis TTL is configurable (default 30 days). Cosmos DB retains audit records for 36 months. Azure Monitor retains telemetry per your workspace retention settings.
+✅ Azure Managed Redis TTL is configurable (default 30 days). CosmosDB retains audit records for 36 months. Azure Monitor retains telemetry per your workspace retention settings.
 
 **❓ Multi-region support?**
 ✅ Yes. Azure Container Apps and APIM both support multi-region deployment via the Bicep modules.
@@ -455,11 +552,23 @@ When running via Aspire, connection strings and service discovery are configured
 **❓ How does multi-tenant billing work?**
 ✅ A "customer" is the combination of `clientAppId` (the Entra app registration) and `tenantId` (the Entra directory). A multi-tenant app registered with `AzureADMultipleOrgs` can serve users from any Entra tenant — each tenant gets its own plan assignment, quota, rate limits, and billing. Use `-SecondaryTenantId` when deploying to pre-register a second tenant for the demo.
 
+**❓ What's multiplier pricing?**
+✅ Instead of charging per-token, multiplier pricing charges per-request with a model tier multiplier. Example: GPT-4.1 = 1.0x baseline, GPT-4.1-mini = 0.33x. Every 3 requests to mini count as 1 effective request against your monthly quota. This matches GHCP-style billing and works better for flat-rate consumption models.
+
+**❓ How does auto-routing work?**
+✅ The auto-router evaluates routing policies per customer and selects the best deployment based on availability and quotas. It doesn't rewrite what the client requested — if they ask for GPT-4, they still get GPT-4 (or a configured fallback if unavailable). Enforced rewriting (e.g., redirect GPT-4 → GPT-4o-mini) is a future policy engine feature.
+
 **❓ Do I need a Purview/E5 license?**
-✅ Only if you enable the Purview DLP integration. The core chargeback functionality works without it.
+✅ Only if you enable the Purview DLP integration. The core policy engine functionality works without it.
 
 **❓ How does deployment access control work?**
-✅ Plans and individual clients can have an allowlist of permitted Azure OpenAI deployments. The precheck endpoint validates that the requested deployment is allowed before forwarding the request. Client-level overrides take precedence over plan-level settings.
+✅ Plans and individual clients can have an allowlist of permitted AI model deployments. The precheck endpoint validates that the requested deployment is allowed before forwarding the request. Client-level overrides take precedence over plan-level settings.
+
+**❓ What if I have both token-based and multiplier-based plans?**
+✅ The dashboard adapts to show both billing modes side-by-side (hybrid mode). Each plan independently specifies its billing model. Clients on multiplier plans see multiplier-based quotas; clients on token plans see token-based quotas.
+
+**❓ Is all configuration stored durably?**
+✅ Yes. CosmosDB is the source of truth for all configuration: plans, clients, pricing, routing policies. Redis serves as a write-through cache for performance. On startup, configuration is automatically loaded from CosmosDB into Redis. You can safely upgrade or restart — nothing is lost.
 
 **❓ Should I use Terraform or Bicep?**
 ✅ Both paths deploy the same infrastructure. Bicep is simpler with a single `setup-azure.ps1` script. Terraform offers modular state management and is better suited for teams already using Terraform across their stack. The Terraform path requires a two-stage deploy (infra first, then container).

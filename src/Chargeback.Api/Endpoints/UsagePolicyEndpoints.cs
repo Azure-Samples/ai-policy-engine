@@ -1,6 +1,5 @@
 using Chargeback.Api.Models;
 using Chargeback.Api.Services;
-using StackExchange.Redis;
 
 namespace Chargeback.Api.Endpoints;
 
@@ -29,14 +28,12 @@ public static class UsagePolicyEndpoints
     }
 
     private static async Task<IResult> GetUsagePolicy(
-        IConnectionMultiplexer redis,
         IUsagePolicyStore usagePolicyStore,
         ILogger<UsagePolicySettings> logger)
     {
         try
         {
-            var db = redis.GetDatabase();
-            var settings = await usagePolicyStore.GetAsync(db);
+            var settings = await usagePolicyStore.GetAsync();
             return Results.Json(settings, JsonConfig.Default);
         }
         catch (Exception ex)
@@ -48,7 +45,6 @@ public static class UsagePolicyEndpoints
 
     private static async Task<IResult> UpdateUsagePolicy(
         UsagePolicyUpdateRequest request,
-        IConnectionMultiplexer redis,
         IUsagePolicyStore usagePolicyStore,
         ILogger<UsagePolicySettings> logger)
     {
@@ -61,8 +57,7 @@ public static class UsagePolicyEndpoints
             if (request.TraceRetentionDays is < 1 or > 365)
                 return Results.BadRequest("traceRetentionDays must be between 1 and 365");
 
-            var db = redis.GetDatabase();
-            var settings = await usagePolicyStore.UpdateAsync(db, request);
+            var settings = await usagePolicyStore.UpdateAsync(request);
             return Results.Json(settings, JsonConfig.Default);
         }
         catch (Exception ex)

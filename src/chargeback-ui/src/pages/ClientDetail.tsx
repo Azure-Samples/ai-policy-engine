@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from "react"
-import { fetchClientUsage, fetchClientTraces } from "../api"
-import type { ClientUsageResponse, TraceRecord } from "../types"
+import { fetchClientUsage, fetchClientTraces, fetchPlans } from "../api"
+import type { ClientUsageResponse, TraceRecord, PlanData } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Progress } from "../components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { ArrowLeft, DollarSign, TrendingUp, Coins, AlertTriangle, Gauge } from "lucide-react"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend } from "recharts"
+import { ArrowLeft, DollarSign, TrendingUp, Coins, AlertTriangle, Gauge, Zap } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend, PieChart, Pie } from "recharts"
 import { useTheme } from "../context/ThemeProvider"
 
 const BAR_COLORS = ["#0078D4", "#00B7C3", "#107C10", "#FFB900", "#D13438", "#8764B8", "#005A9E", "#106EBE"]
@@ -21,18 +21,21 @@ interface ClientDetailProps {
 export function ClientDetail({ clientAppId, tenantId, onBack }: ClientDetailProps) {
   const [usage, setUsage] = useState<ClientUsageResponse | null>(null)
   const [traces, setTraces] = useState<TraceRecord[]>([])
+  const [allPlans, setAllPlans] = useState<PlanData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { resolvedTheme } = useTheme()
 
   const loadData = useCallback(async () => {
     try {
-      const [usageRes, tracesRes] = await Promise.all([
+      const [usageRes, tracesRes, plansRes] = await Promise.all([
         fetchClientUsage(clientAppId, tenantId),
         fetchClientTraces(clientAppId, tenantId),
+        fetchPlans().catch(() => ({ plans: [] })),
       ])
       setUsage(usageRes)
       setTraces(tracesRes.traces ?? [])
+      setAllPlans(plansRes.plans ?? [])
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load client data")
@@ -53,6 +56,9 @@ export function ClientDetail({ clientAppId, tenantId, onBack }: ClientDetailProp
   // Derived values
   const assignment = usage?.assignment
   const plan = usage?.plan
+  const extPlan = plan ? allPlans.find(p => p.id === plan.id) ?? plan : null
+  const isMultiplierBilling = extPlan?.useMultiplierBilling ?? false
+  const extAssignment = assignment
   const quota = plan?.monthlyTokenQuota ?? 0
   const currentUsage = assignment?.currentPeriodUsage ?? 0
   const quotaPct = quota > 0 ? (currentUsage / quota) * 100 : 0
@@ -61,6 +67,18 @@ export function ClientDetail({ clientAppId, tenantId, onBack }: ClientDetailProp
   const rpmLimit = plan?.requestsPerMinuteLimit ?? 0
   const currentTpm = usage?.currentTpm ?? 0
   const currentRpm = usage?.currentRpm ?? 0
+
+  // Request billing derived values
+  const requestQuota = extPlan?.monthlyRequestQuota ?? 0
+  const currentRequests = extAssignment?.currentPeriodRequests ?? 0
+  const requestPct = requestQuota > 0 ? (currentRequests / requestQuota) * 100 : 0
+  const overbilledRequests = extAssignment?.overbilledRequests ?? 0
+  const requestsByTier = extAssignment?.requestsByTier ?? {}
+
+  const TIER_PIE_COLORS = ["#0078D4", "#FFB900", "#D13438", "#8764B8", "#00B7C3", "#107C10"]
+  const tierChartData = Object.entries(requestsByTier)
+    .filter(([, count]) => count > 0)
+    .map(([tier, count]) => ({ name: tier, value: count }))
 
   // Chart data
   const modelChartData = Object.entries(usage?.usageByModel ?? {}).map(([model, tokens]) => ({
@@ -245,6 +263,118 @@ export function ClientDetail({ clientAppId, tenantId, onBack }: ClientDetailProp
           </CardContent>
         </Card>
       </div>
+
+      {/* Request Billing Section — shown when plan uses multiplier billing */}
+      {isMultiplierBilling && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Zap className="h-5 w-5 text-[#0078D4]" />
+            Request Billing
+          </h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Request Quota</CardTitle>
+                <Zap className="h-4 w-4 text-[#0078D4]" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">{requestPct.toFixed(1)}%</div>
+                <Progress value={currentRequests} max={requestQuota || 1} className="mt-2" />
+                <p className="text-xs text-muted-foreground mt-1 font-mono">
+                  {currentRequests.toLocaleString()} / {requestQuota.toLocaleString()} requests
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Overbilled Requests</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-[#D13438]" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">{overbilledRequests.toLocaleString()}</div>
+                {overbilledRequests > 0 && <Badge variant="red" className="mt-2">Over Quota</Badge>}
+              </CardContent>
+            </Card>
+
+            {/* Tier Breakdown Pie */}
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Requests by Tier</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {tierChartData.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground text-sm">No tier data yet.</div>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <ResponsiveContainer width="50%" height={120}>
+                      <PieChart>
+                        <Pie
+                          data={tierChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={30}
+                          outerRadius={55}
+                          dataKey="value"
+                          paddingAngle={2}
+                        >
+                          {tierChartData.map((entry, i) => (
+                            <Cell key={entry.name} fill={TIER_PIE_COLORS[i % TIER_PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-1">
+                      {tierChartData.map((entry, i) => (
+                        <div key={entry.name} className="flex items-center gap-2 text-sm">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: TIER_PIE_COLORS[i % TIER_PIE_COLORS.length] }}
+                          />
+                          <span>{entry.name}</span>
+                          <span className="font-mono text-muted-foreground">{entry.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Requests by Model Table */}
+          {usage?.usageByModel && Object.keys(usage.usageByModel).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Requests by Model</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Model</TableHead>
+                      <TableHead className="text-right">Requests</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(usage.usageByModel)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([model, count]) => (
+                        <TableRow key={model}>
+                          <TableCell>
+                            <code className="rounded bg-muted px-2 py-1 text-xs font-mono">{model}</code>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">{count.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

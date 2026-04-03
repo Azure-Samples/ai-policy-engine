@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Chargeback.Api.Services;
 
@@ -11,6 +12,7 @@ public static class JsonConfig
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
-        WriteIndented = false
+        WriteIndented = false,
+        Converters = { new JsonStringEnumConverter() }
     };
 }

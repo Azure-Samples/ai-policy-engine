@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Azure API Management OpenAI Chargeback Environment is a single **ASP.NET Minimal API** (.NET 10) running on **Azure Container Apps**, fronted by **Azure API Management** with **Entra ID JWT validation**. **Redis** provides all state storage (plans, clients, usage, traces, pricing, rate limits). A **React SPA dashboard** is served from the same container.
+**Azure AI Gateway Policy Engine** is a single **ASP.NET Minimal API** (.NET 10) running on **Azure Container Apps**, fronted by **Azure API Management** with **Entra ID JWT validation**. **CosmosDB** serves as the durable source of truth for all configuration (plans, clients, pricing, routing policies). **Redis** provides a high-performance write-through cache. A **React SPA dashboard** is served from the same container.
 
 ## Component Diagram
 
@@ -14,27 +14,28 @@ graph LR
 
     subgraph Azure
         B[APIM Gateway]
-        C[Chargeback API<br/>ASP.NET Minimal API<br/>on Container Apps]
-        D[Azure OpenAI]
-        E[Redis Cache]
-        F[Azure Monitor<br/>OpenTelemetry]
-        G[Microsoft Purview<br/>Audit]
+        C[Gateway Policy Engine<br/>ASP.NET Minimal API<br/>on Container Apps]
+        D[AI Models<br/>OpenAI, Foundry, etc]
+        E[Redis Cache<br/>Write-Through]
+        F[CosmosDB<br/>Source of Truth]
+        G[Azure Monitor<br/>OpenTelemetry]
+        H[Microsoft Purview<br/>Audit]
     end
 
     subgraph Dashboard
-        H[React SPA<br/>same container]
+        I[React SPA<br/>same container]
     end
 
     A -- "Bearer Token" --> B
-    B -- "inbound: precheck" --> C
+    B -- "inbound: precheck<br/>Auth + Route + RateLimit" --> C
     B -- "managed identity" --> D
     B -- "outbound: fire-and-forget" --> C
-    C --> E
-    C --> F
+    C -- "read/write" --> E
+    C -- "read/write" --> F
+    F -- "cache warm-up" --> E
     C --> G
-    H <--> C
-
-    E -.- |"plans, clients,<br/>usage, traces,<br/>pricing, rate limits"| C
+    C --> H
+    I <--> C
 ```
 
 ## Request Flow
@@ -42,12 +43,17 @@ graph LR
 1. **Client sends request** to APIM with a Bearer token (Entra ID JWT).
 2. **APIM validates JWT** using the Entra OpenID Connect metadata endpoint.
 3. **APIM extracts claims** — `tid` (tenant), `appid`/`azp` (client identity), `aud` (audience).
-4. **APIM calls the precheck endpoint** (`/api/precheck/{clientAppId}/{tenantId}`) — the Chargeback API checks the customer's plan, quota, and rate limits against Redis.
-5. **If precheck returns 401/429**, APIM returns the error to the client. The request is blocked before reaching OpenAI.
-6. **If precheck returns 200**, APIM forwards the request to Azure OpenAI using its managed identity.
-7. **Azure OpenAI responds** with the completion/chat result.
+4. **APIM calls the precheck endpoint** (`/api/precheck/{clientAppId}/{tenantId}`) — the Gateway Policy Engine checks:
+   - ✅ Customer plan assignment (from Redis cache, backed by CosmosDB)
+   - ✅ Model routing policy (selects optimal deployment)
+   - ✅ Monthly quotas (request or token based, per plan configuration)
+   - ✅ Rate limits (RPM/TPM on routed deployment)
+   - ✅ Deployment access (allowlist per plan/client)
+5. **If precheck returns 401/403/429**, APIM returns the error to the client. The request is blocked before reaching the backend.
+6. **If precheck returns 200**, APIM forwards the request to the AI model using its managed identity.
+7. **Backend responds** with the result.
 8. **APIM outbound policy** captures the response and sends a fire-and-forget POST to `/api/log`.
-9. **`/api/log` records usage** — updates token quotas, tracks per-deployment usage, records a trace entry, and calculates customer cost for overbilled tokens. Usage is tracked per customer (`clientAppId:tenantId`), enabling per-tenant billing for multi-tenant SaaS applications.
+9. **`/api/log` records usage** — updates quotas, tracks per-deployment usage, calculates cost with model multipliers, records audit log entry. Usage is tracked per customer (`clientAppId:tenantId`), enabling per-tenant billing for multi-tenant SaaS applications. All writes go to CosmosDB first (durable), then update Redis cache.
 10. **Client receives the OpenAI response** (unmodified).
 
 ## Data Model

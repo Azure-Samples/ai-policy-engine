@@ -69,6 +69,16 @@ This `deploymentId` is used for per-model quota tracking and usage attribution.
 
 The precheck also handles `null` responses (e.g., network failure reaching the Container App) by returning 401 with a descriptive error message.
 
+### 1.4 Auto-Router (Deployment Routing)
+
+After a successful precheck (200), the policy extracts the optional `routedDeployment` field from the precheck response. If `routedDeployment` is present and differs from the client's requested deployment:
+
+1. Saves the original deployment as `originalDeploymentId` for audit logging
+2. Updates `deploymentId` to the routed deployment
+3. Rewrites the backend URL path (`/deployments/{original}/` → `/deployments/{routed}/`)
+
+If `routedDeployment` is null/empty or matches the requested deployment, no routing occurs — the request passes through unchanged. This is an **auto-router**, not enforced rewriting: users who ask for GPT-4 get GPT-4.
+
 ### 1.5 Backend Configuration & Authentication
 
 ```xml
@@ -79,7 +89,7 @@ The precheck also handles `null` responses (e.g., network failure reaching the C
 - Routes the request to the pre-configured `openAiBackend` backend (defined in `infra/bicep/apimOaiApi.bicep`).
 - Authenticates to Azure OpenAI via APIM's **managed identity** with the Cognitive Services resource scope — **no API keys are used**.
 
-### 1.6 Request Body Transformation
+### 1.7 Request Body Transformation
 
 ```xml
 <set-body>@{
@@ -134,7 +144,9 @@ Sends a **one-way (fire-and-forget)** POST to the Chargeback API's `/api/log` en
 | `audience` | `"subscription-key"` (static) |
 | `requestBody` | Original client request |
 | `responseBody` | Parsed OpenAI response (with usage data) |
-| `deploymentId` | Extracted model/deployment name |
+| `deploymentId` | Extracted model/deployment name (may be routed) |
+| `requestedDeploymentId` | Original deployment the client requested |
+| `routedDeployment` | Deployment recommended by precheck (empty if no routing) |
 
 **Key design choice**: `send-one-way-request` means the client gets the OpenAI response immediately without waiting for logging to complete. This eliminates latency overhead on the response path.
 
@@ -225,9 +237,11 @@ Client Request (with Ocp-Apim-Subscription-Key header)
 │     ├─ 401 → block (not authorized)          │
 │     ├─ 429 → block (over quota)              │
 │     └─ 200 → continue                        │
-│  5. Set backend → openAiBackend              │
-│  6. Auth via managed identity                │
-│  7. Inject stream_options if streaming       │
+│  5. Auto-router: if routedDeployment         │
+│     differs, rewrite backend URL             │
+│  6. Set backend → openAiBackend              │
+│  7. Auth via managed identity                │
+│  8. Inject stream_options if streaming       │
 └───────────────┬──────────────────────────────┘
                 ▼
          Azure OpenAI

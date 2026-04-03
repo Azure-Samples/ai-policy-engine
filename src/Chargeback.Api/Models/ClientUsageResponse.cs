@@ -10,4 +10,13 @@ public sealed class ClientUsageResponse
     public long CurrentRpm { get; set; }
     public decimal TotalCostToUs { get; set; }
     public decimal TotalCostToCustomer { get; set; }
+
+    // Request-based usage (multiplier billing)
+    public decimal CurrentPeriodRequests { get; set; }
+    public decimal OverbilledRequests { get; set; }
+    public Dictionary<string, decimal> RequestsByTier { get; set; } = new();
+    public decimal MonthlyRequestQuota { get; set; }
+
+    /// <summary>Request utilization percentage (0–100). -1 = unlimited quota.</summary>
+    public decimal RequestUtilizationPercent { get; set; }
 }

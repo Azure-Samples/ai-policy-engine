@@ -702,10 +702,7 @@ if ($SkipBicep) {
     Write-Host ""
 } else {
     try {
-        Write-Host "  Retrieving ACR credentials..." -ForegroundColor Gray
-        $acrPassword = az acr credential show --name $AcrName --query "passwords[0].value" -o tsv
-        if ($LASTEXITCODE -ne 0) { throw "Failed to get ACR credentials." }
-        Write-Host "    ✓ ACR credentials retrieved" -ForegroundColor Green
+        Write-Host "  ACR managed identity pull configured — no admin credentials needed." -ForegroundColor Gray
 
         Write-Host "  Checking soft-deleted resource collisions..." -ForegroundColor Gray
         $deletedApim = az apim deletedservice list --query "[?name=='$ApimName'] | [0].name" -o tsv 2>$null
@@ -780,8 +777,7 @@ if ($SkipBicep) {
                 containerAppEnvName=$ContainerAppEnvName `
                 containerImage=$imageTag `
                 acrLoginServer="$($AcrName).azurecr.io" `
-                acrUsername=$AcrName `
-                acrPassword=$acrPassword `
+                acrName=$AcrName `
                 oaiApiName="azure-openai-api" `
                 funcApiName="chargeback-api" `
                 enableJwt=$($EnableJwt.ToString().ToLower()) `
@@ -1078,23 +1074,31 @@ Write-Host "  Phase 8: Entra Redirect URIs" -ForegroundColor Yellow
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Yellow
 
 try {
-    Write-Host "  Setting SPA redirect URIs on client app 1..." -ForegroundColor Gray
-    $redirectBody = @{
-        spa = @{
-            redirectUris = @(
-                "https://$containerAppUrl/"
-                "http://localhost:5173/"
-            )
-        }
-    } | ConvertTo-Json -Depth 3 -Compress
+    # The frontend SPA (MSAL) uses the API app's client ID and sends
+    # window.location.origin as the redirect URI (no trailing slash).
+    # Entra ID performs exact matching, so URIs must not have trailing slashes.
+    $spaRedirectUris = @(
+        "https://$containerAppUrl"
+        "http://localhost:5173"
+    )
+    $redirectBody = @{ spa = @{ redirectUris = $spaRedirectUris } } | ConvertTo-Json -Depth 3 -Compress
     $redirectFile = Join-Path $env:TEMP "redirect-body.json"
     [System.IO.File]::WriteAllText($redirectFile, $redirectBody, [System.Text.UTF8Encoding]::new($false))
 
+    # API app — this is the app the dashboard SPA uses as its MSAL clientId
+    Write-Host "  Setting SPA redirect URIs on API app (used by dashboard UI)..." -ForegroundColor Gray
+    az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" `
+        --headers "Content-Type=application/json" --body "@$redirectFile" -o none
+    if ($LASTEXITCODE -ne 0) { throw "Failed to set redirect URIs on API app." }
+    Write-Host "    ✓ API app redirect URIs: https://$containerAppUrl, http://localhost:5173" -ForegroundColor Green
+
+    # Client app 1 — also needs the redirect for delegated auth flows
+    Write-Host "  Setting SPA redirect URIs on client app 1..." -ForegroundColor Gray
     az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$client1ObjId" `
         --headers "Content-Type=application/json" --body "@$redirectFile" -o none
     Remove-Item $redirectFile -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "Failed to set redirect URIs on client app 1." }
-    Write-Host "    ✓ Redirect URIs: https://$containerAppUrl/, http://localhost:5173/" -ForegroundColor Green
+    Write-Host "    ✓ Client app 1 redirect URIs: https://$containerAppUrl, http://localhost:5173" -ForegroundColor Green
 
     Write-Host "  Phase 8 complete ✓" -ForegroundColor Green
     Write-Host ""

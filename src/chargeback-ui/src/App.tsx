@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useIsAuthenticated, useMsal } from "@azure/msal-react"
 import { InteractionStatus } from "@azure/msal-browser"
 import { Layout } from "./components/Layout"
@@ -8,15 +8,43 @@ import { Plans } from "./pages/Plans"
 import { Pricing } from "./pages/Pricing"
 import { Export } from "./pages/Export"
 import { ClientDetail } from "./pages/ClientDetail"
+import { RoutingPolicies } from "./pages/RoutingPolicies"
+import { RequestBilling } from "./pages/RequestBilling"
 import { loginRequest } from "./auth/msalConfig"
+import { fetchPlans } from "./api"
+import type { PlanData, BillingMode } from "./types"
 import { Button } from "./components/ui/button"
 import { Activity, LogIn } from "lucide-react"
 
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [selectedClient, setSelectedClient] = useState<{ clientAppId: string; tenantId: string } | null>(null)
+  const [plans, setPlans] = useState<PlanData[]>([])
   const isAuthenticated = useIsAuthenticated()
   const { instance, inProgress } = useMsal()
+
+  const loadPlans = useCallback(async () => {
+    try {
+      const res = await fetchPlans()
+      setPlans(res.plans ?? [])
+    } catch {
+      // Plans may not be loaded yet — billing mode defaults to token
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAuthenticated) loadPlans()
+  }, [isAuthenticated, loadPlans])
+
+  // Adaptive billing mode
+  const billingMode: BillingMode = useMemo(() => {
+    if (plans.length === 0) return 'token'
+    const hasMultiplier = plans.some(p => p.useMultiplierBilling)
+    const hasToken = plans.some(p => !p.useMultiplierBilling)
+    if (hasMultiplier && hasToken) return 'hybrid'
+    if (hasMultiplier) return 'multiplier'
+    return 'token'
+  }, [plans])
 
   if (inProgress !== InteractionStatus.None) {
     return (
@@ -49,18 +77,20 @@ function App() {
 
   if (selectedClient) {
     return (
-      <Layout activeTab={activeTab} onTabChange={(tab) => { setSelectedClient(null); setActiveTab(tab); }}>
+      <Layout activeTab={activeTab} onTabChange={(tab) => { setSelectedClient(null); setActiveTab(tab); }} billingMode={billingMode}>
         <ClientDetail clientAppId={selectedClient.clientAppId} tenantId={selectedClient.tenantId} onBack={() => setSelectedClient(null)} />
       </Layout>
     )
   }
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+    <Layout activeTab={activeTab} onTabChange={setActiveTab} billingMode={billingMode}>
       {activeTab === "dashboard" && <Dashboard onSelectClient={(clientAppId, tenantId) => setSelectedClient({ clientAppId, tenantId })} />}
       {activeTab === "clients" && <Clients onSelectClient={(clientAppId, tenantId) => setSelectedClient({ clientAppId, tenantId })} />}
       {activeTab === "plans" && <Plans />}
       {activeTab === "pricing" && <Pricing />}
+      {activeTab === "routing" && <RoutingPolicies />}
+      {activeTab === "requests" && <RequestBilling onSelectClient={(clientAppId, tenantId) => setSelectedClient({ clientAppId, tenantId })} />}
       {activeTab === "export" && <Export />}
     </Layout>
   )

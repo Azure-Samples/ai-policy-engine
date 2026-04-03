@@ -12,7 +12,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     type: 'SystemAssigned'
   }
   properties: {
-    disableLocalAuth: false
+    disableLocalAuth: true
     databaseAccountOfferType: 'Standard'
     capabilities: [
       {

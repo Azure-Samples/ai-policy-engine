@@ -23,4 +23,10 @@ public sealed class LogIngestRequest
 
     /// <summary>Parsed response body from Azure OpenAI.</summary>
     public OpenAiResponseBody? ResponseBody { get; set; }
+
+    /// <summary>Routing policy ID from precheck (persisted to audit trail).</summary>
+    public string? RoutingPolicyId { get; set; }
+
+    /// <summary>APIM request ID (context.RequestId) for correlation and deduplication.</summary>
+    public string? CorrelationId { get; set; }
 }

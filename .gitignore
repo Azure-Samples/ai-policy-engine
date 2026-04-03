@@ -92,4 +92,14 @@ src/Chargeback.LoadTest/reports/
 
 .agentic/
 .agentic-dev.json
+
+# Copilot agent configuration (local tooling, not part of the product)
+.copilot/
+.github/agents/
 .github/skills/
+.github/workflows/squad-*.yml
+.github/workflows/sync-squad-labels.yml
+.gitattributes
+
+# Squad AI team state (local tooling, not part of the product)
+.squad/

@@ -30,7 +30,7 @@ public sealed class LogDataService : ILogDataService
     public async Task<List<LogEntry>> GetBillingPeriodSummariesAsync(ILogger logger, CancellationToken ct = default)
     {
         var db = _redis.GetDatabase();
-        var policy = await _usagePolicyStore.GetAsync(db);
+        var policy = await _usagePolicyStore.GetAsync(ct);
         var periodStart = BillingPeriodCalculator.GetCurrentPeriodStartUtc(DateTime.UtcNow, policy.BillingCycleStartDay);
 
         // Determine which YYYY-MM periods overlap the current billing cycle.

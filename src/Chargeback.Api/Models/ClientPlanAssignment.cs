@@ -7,6 +7,8 @@ namespace Chargeback.Api.Models;
 /// </summary>
 public sealed class ClientPlanAssignment
 {
+    public string Id { get; set; } = string.Empty;
+    public string PartitionKey { get; set; } = "client";
     public string ClientAppId { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
     public string PlanId { get; set; } = string.Empty;
@@ -21,6 +23,18 @@ public sealed class ClientPlanAssignment
     /// <summary>Allowed deployment IDs for this customer. Empty list = inherit from plan.
     /// When non-empty, overrides the plan's AllowedDeployments list.</summary>
     public List<string> AllowedDeployments { get; set; } = [];
+
+    /// <summary>Optional routing policy override. Null = inherit from plan.</summary>
+    public string? ModelRoutingPolicyOverride { get; set; }
+
+    /// <summary>Request count for the current billing period (multiplier billing).</summary>
+    public decimal CurrentPeriodRequests { get; set; }
+
+    /// <summary>Requests beyond quota that were overbilled.</summary>
+    public decimal OverbilledRequests { get; set; }
+
+    /// <summary>Request usage broken down by pricing tier for the current period.</summary>
+    public Dictionary<string, decimal> RequestsByTier { get; set; } = new();
 
     /// <summary>Current requests per minute (populated dynamically, not persisted).</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]

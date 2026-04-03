@@ -4,14 +4,16 @@ import { useMsal } from "@azure/msal-react"
 import { useTheme } from "../context/ThemeProvider"
 import { Button } from "./ui/button"
 import { DropdownMenu, DropdownMenuItem } from "./ui/dropdown-menu"
+import type { BillingMode } from "../types"
 
 interface LayoutProps {
   children: ReactNode
   activeTab: string
   onTabChange: (tab: string) => void
+  billingMode?: BillingMode
 }
 
-export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
+export function Layout({ children, activeTab, onTabChange, billingMode = 'token' }: LayoutProps) {
   const { resolvedTheme, setTheme, theme } = useTheme()
   const { instance, accounts } = useMsal()
   const account = accounts[0]
@@ -21,6 +23,9 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
     { id: "clients", label: "Clients" },
     { id: "plans", label: "Plans" },
     { id: "pricing", label: "Pricing" },
+    { id: "routing", label: "Routing" },
+    // Adaptive: show Request Billing only when at least one plan uses multiplier billing
+    ...(billingMode !== 'token' ? [{ id: "requests", label: "Request Billing" }] : []),
     { id: "export", label: "Export" },
   ]
 

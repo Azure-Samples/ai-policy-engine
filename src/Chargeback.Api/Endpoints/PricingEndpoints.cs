@@ -1,28 +1,27 @@
-using System.Text.Json;
 using Chargeback.Api.Models;
 using Chargeback.Api.Services;
-using StackExchange.Redis;
 
 namespace Chargeback.Api.Endpoints;
 
 /// <summary>
-/// CRUD endpoints for model pricing configuration stored in Redis.
+/// CRUD endpoints for model pricing configuration.
+/// Backed by Cosmos (source of truth) + Redis cache via IRepository.
 /// </summary>
 public static class PricingEndpoints
 {
     private static readonly Dictionary<string, ModelPricing> DefaultPricing = new()
     {
-        ["gpt-5.2"] = new() { ModelId = "gpt-5.2", DisplayName = "GPT-5.2", PromptRatePer1K = 0.03m, CompletionRatePer1K = 0.12m },
-        ["gpt-5.3-codex"] = new() { ModelId = "gpt-5.3-codex", DisplayName = "GPT-5.3 Codex", PromptRatePer1K = 0.035m, CompletionRatePer1K = 0.14m },
-        ["gpt-4.1"] = new() { ModelId = "gpt-4.1", DisplayName = "GPT-4.1", PromptRatePer1K = 0.02m, CompletionRatePer1K = 0.08m },
-        ["gpt-4.1-mini"] = new() { ModelId = "gpt-4.1-mini", DisplayName = "GPT-4.1 Mini", PromptRatePer1K = 0.004m, CompletionRatePer1K = 0.016m },
-        ["gpt-4.1-nano"] = new() { ModelId = "gpt-4.1-nano", DisplayName = "GPT-4.1 Nano", PromptRatePer1K = 0.001m, CompletionRatePer1K = 0.004m },
-        ["gpt-4o"] = new() { ModelId = "gpt-4o", DisplayName = "GPT-4o", PromptRatePer1K = 0.03m, CompletionRatePer1K = 0.06m },
-        ["gpt-4o-mini"] = new() { ModelId = "gpt-4o-mini", DisplayName = "GPT-4o Mini", PromptRatePer1K = 0.005m, CompletionRatePer1K = 0.015m },
-        ["gpt-4"] = new() { ModelId = "gpt-4", DisplayName = "GPT-4", PromptRatePer1K = 0.02m, CompletionRatePer1K = 0.05m },
-        ["gpt-oss-120b"] = new() { ModelId = "gpt-oss-120b", DisplayName = "GPT-OSS 120B", PromptRatePer1K = 0.008m, CompletionRatePer1K = 0.032m },
-        ["text-embedding-3-large"] = new() { ModelId = "text-embedding-3-large", DisplayName = "Text Embedding 3 Large", PromptRatePer1K = 0.001m, CompletionRatePer1K = 0.002m },
-        ["dall-e-3"] = new() { ModelId = "dall-e-3", DisplayName = "DALL-E 3", ImageRatePer1K = 0.009m },
+        ["gpt-5.2"] = new() { ModelId = "gpt-5.2", DisplayName = "GPT-5.2", PromptRatePer1K = 0.03m, CompletionRatePer1K = 0.12m, Multiplier = 3.0m, TierName = "Premium" },
+        ["gpt-5.3-codex"] = new() { ModelId = "gpt-5.3-codex", DisplayName = "GPT-5.3 Codex", PromptRatePer1K = 0.035m, CompletionRatePer1K = 0.14m, Multiplier = 3.5m, TierName = "Premium" },
+        ["gpt-4.1"] = new() { ModelId = "gpt-4.1", DisplayName = "GPT-4.1", PromptRatePer1K = 0.02m, CompletionRatePer1K = 0.08m, Multiplier = 1.0m, TierName = "Standard" },
+        ["gpt-4.1-mini"] = new() { ModelId = "gpt-4.1-mini", DisplayName = "GPT-4.1 Mini", PromptRatePer1K = 0.004m, CompletionRatePer1K = 0.016m, Multiplier = 0.33m, TierName = "Standard" },
+        ["gpt-4.1-nano"] = new() { ModelId = "gpt-4.1-nano", DisplayName = "GPT-4.1 Nano", PromptRatePer1K = 0.001m, CompletionRatePer1K = 0.004m, Multiplier = 0.1m, TierName = "Economy" },
+        ["gpt-4o"] = new() { ModelId = "gpt-4o", DisplayName = "GPT-4o", PromptRatePer1K = 0.03m, CompletionRatePer1K = 0.06m, Multiplier = 1.0m, TierName = "Standard" },
+        ["gpt-4o-mini"] = new() { ModelId = "gpt-4o-mini", DisplayName = "GPT-4o Mini", PromptRatePer1K = 0.005m, CompletionRatePer1K = 0.015m, Multiplier = 0.33m, TierName = "Standard" },
+        ["gpt-4"] = new() { ModelId = "gpt-4", DisplayName = "GPT-4", PromptRatePer1K = 0.02m, CompletionRatePer1K = 0.05m, Multiplier = 1.0m, TierName = "Standard" },
+        ["gpt-oss-120b"] = new() { ModelId = "gpt-oss-120b", DisplayName = "GPT-OSS 120B", PromptRatePer1K = 0.008m, CompletionRatePer1K = 0.032m, Multiplier = 0.5m, TierName = "Economy" },
+        ["text-embedding-3-large"] = new() { ModelId = "text-embedding-3-large", DisplayName = "Text Embedding 3 Large", PromptRatePer1K = 0.001m, CompletionRatePer1K = 0.002m, Multiplier = 0.1m, TierName = "Economy" },
+        ["dall-e-3"] = new() { ModelId = "dall-e-3", DisplayName = "DALL-E 3", ImageRatePer1K = 0.009m, Multiplier = 2.0m, TierName = "Premium" },
     };
 
     public static IEndpointRouteBuilder MapPricingEndpoints(this IEndpointRouteBuilder routes)
@@ -53,49 +52,26 @@ public static class PricingEndpoints
     }
 
     private static async Task<IResult> GetPricing(
-        IConnectionMultiplexer redis,
+        IRepository<ModelPricing> pricingRepo,
         ILogger<ModelPricingResponse> logger)
     {
         try
         {
-            var db = redis.GetDatabase();
-            var keys = redis.KeysFromAllServers(RedisKeys.PricingPrefix);
+            var models = await pricingRepo.GetAllAsync();
 
             // Seed defaults on first run
-            if (keys.Length == 0)
+            if (models.Count == 0)
             {
-                logger.LogInformation("No pricing keys found — seeding defaults");
-                foreach (var (modelId, pricing) in DefaultPricing)
+                logger.LogInformation("No pricing found — seeding defaults");
+                foreach (var (_, pricing) in DefaultPricing)
                 {
                     pricing.UpdatedAt = DateTime.UtcNow;
-                    var cacheKey = RedisKeys.Pricing(modelId);
-                    var cacheValue = JsonSerializer.Serialize(pricing, JsonConfig.Default);
-                    await db.StringSetAsync(cacheKey, cacheValue);
+                    await pricingRepo.UpsertAsync(pricing);
                 }
-
-                keys = redis.KeysFromAllServers(RedisKeys.PricingPrefix);
+                models = await pricingRepo.GetAllAsync();
             }
 
-            logger.LogInformation("Fetched {KeyCount} pricing keys from Redis", keys.Length);
-
-            var models = new List<ModelPricing>();
-            foreach (var key in keys)
-            {
-                var value = await db.StringGetAsync(key);
-                if (!value.HasValue) continue;
-
-                try
-                {
-                    var pricing = JsonSerializer.Deserialize<ModelPricing>((string)value!, JsonConfig.Default);
-                    if (pricing is not null)
-                        models.Add(pricing);
-                }
-                catch (JsonException ex)
-                {
-                    logger.LogError(ex, "Failed to deserialize pricing for key {Key}", key);
-                }
-            }
-
+            logger.LogInformation("Fetched {Count} pricing models", models.Count);
             return Results.Json(new ModelPricingResponse { Models = models }, JsonConfig.Default);
         }
         catch (Exception ex)
@@ -108,7 +84,7 @@ public static class PricingEndpoints
     private static async Task<IResult> UpsertPricing(
         string modelId,
         ModelPricingCreateRequest body,
-        IConnectionMultiplexer redis,
+        IRepository<ModelPricing> pricingRepo,
         ILogger<ModelPricing> logger)
     {
         try
@@ -123,16 +99,15 @@ public static class PricingEndpoints
                 PromptRatePer1K = body.PromptRatePer1K,
                 CompletionRatePer1K = body.CompletionRatePer1K,
                 ImageRatePer1K = body.ImageRatePer1K,
+                Multiplier = body.Multiplier ?? 1.0m,
+                TierName = body.TierName ?? "Standard",
                 UpdatedAt = DateTime.UtcNow
             };
 
-            var db = redis.GetDatabase();
-            var cacheKey = RedisKeys.Pricing(modelId);
-            var cacheValue = JsonSerializer.Serialize(pricing, JsonConfig.Default);
-            await db.StringSetAsync(cacheKey, cacheValue);
+            var persisted = await pricingRepo.UpsertAsync(pricing);
 
             logger.LogInformation("Pricing upserted: ModelId={ModelId}", modelId);
-            return Results.Json(pricing, JsonConfig.Default);
+            return Results.Json(persisted, JsonConfig.Default);
         }
         catch (Exception ex)
         {
@@ -143,14 +118,12 @@ public static class PricingEndpoints
 
     private static async Task<IResult> DeletePricing(
         string modelId,
-        IConnectionMultiplexer redis,
+        IRepository<ModelPricing> pricingRepo,
         ILogger<ModelPricing> logger)
     {
         try
         {
-            var db = redis.GetDatabase();
-            var cacheKey = RedisKeys.Pricing(modelId);
-            var deleted = await db.KeyDeleteAsync(cacheKey);
+            var deleted = await pricingRepo.DeleteAsync(modelId);
 
             if (!deleted)
                 return Results.NotFound(new { error = $"Pricing for model '{modelId}' not found" });

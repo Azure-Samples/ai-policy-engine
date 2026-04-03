@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
-import { fetchPlans, fetchClients, assignClient, removeClient, fetchDeployments } from "../api"
-import type { PlanData, ClientAssignment, DeploymentInfo } from "../types"
+import { fetchPlans, fetchClients, assignClient, removeClient, fetchDeployments, fetchRoutingPolicies } from "../api"
+import type { DeploymentInfo, ModelRoutingPolicy, PlanData, ClientAssignment } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -14,6 +14,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
   const [plans, setPlans] = useState<PlanData[]>([])
   const [clients, setClients] = useState<ClientAssignment[]>([])
   const [availableDeployments, setAvailableDeployments] = useState<DeploymentInfo[]>([])
+  const [routingPolicies, setRoutingPolicies] = useState<ModelRoutingPolicy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -27,6 +28,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
   const [clientPlanId, setClientPlanId] = useState("")
   const [clientDisplayName, setClientDisplayName] = useState("")
   const [clientAllowedDeployments, setClientAllowedDeployments] = useState<string[]>([])
+  const [clientRoutingPolicyOverride, setClientRoutingPolicyOverride] = useState("")
   const [authType, setAuthType] = useState<"key-based" | "entra-id">("entra-id")
   const [tenantType, setTenantType] = useState<"first-party" | "third-party">("first-party")
   const [subscriptionName, setSubscriptionName] = useState("")
@@ -35,14 +37,16 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
 
   const loadData = useCallback(async () => {
     try {
-      const [plansRes, clientsRes, deploymentsRes] = await Promise.all([
+      const [plansRes, clientsRes, deploymentsRes, policiesRes] = await Promise.all([
         fetchPlans(),
         fetchClients(),
         fetchDeployments().catch(() => ({ deployments: [] })),
+        fetchRoutingPolicies().catch(() => ({ policies: [] })),
       ])
       setPlans(plansRes.plans ?? [])
       setClients(clientsRes.clients ?? [])
       setAvailableDeployments(deploymentsRes.deployments ?? [])
+      setRoutingPolicies(policiesRes.policies ?? [])
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data")
@@ -60,6 +64,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
     setClientPlanId(plans.length > 0 ? plans[0].id : "")
     setClientDisplayName("")
     setClientAllowedDeployments([])
+    setClientRoutingPolicyOverride("")
     setAuthType("entra-id")
     setTenantType("first-party")
     setSubscriptionName("")
@@ -73,6 +78,7 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
     setClientPlanId(c.planId)
     setClientDisplayName(c.displayName)
     setClientAllowedDeployments(c.allowedDeployments ?? [])
+    setClientRoutingPolicyOverride(c.modelRoutingPolicyOverride ?? "")
     if (c.tenantId === "key-based") {
       setAuthType("key-based")
       setSubscriptionName(c.clientAppId)
@@ -175,6 +181,8 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
                   <TableHead>Usage</TableHead>
                   <TableHead>Deployment Usage</TableHead>
                   <TableHead>Allowed Deployments</TableHead>
+                  <TableHead>Request Usage</TableHead>
+                  <TableHead>Routing Override</TableHead>
                   <TableHead>Overbilled Tokens</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
@@ -226,6 +234,38 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
                           <span title={c.allowedDeployments.join(", ")}>
                             <Badge variant="green">{c.allowedDeployments.length} selected</Badge>
                           </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {plan?.useMultiplierBilling ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Progress value={c.currentPeriodRequests ?? 0} max={plan.monthlyRequestQuota || 1} className="w-20" />
+                              <span className="text-xs font-mono">
+                                {(c.currentPeriodRequests ?? 0).toLocaleString()} / {(plan.monthlyRequestQuota ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                            {c.requestsByTier && Object.keys(c.requestsByTier).length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(c.requestsByTier).map(([tier, count]) => (
+                                  <Badge key={tier} variant="secondary" className="text-xs">
+                                    {tier}: {count.toLocaleString()}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Token billing</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {c.modelRoutingPolicyOverride ? (
+                          <Badge variant="teal">
+                            {routingPolicies.find(rp => rp.id === c.modelRoutingPolicyOverride)?.name ?? c.modelRoutingPolicyOverride}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Plan default</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -396,6 +436,22 @@ export function Clients({ onSelectClient }: { onSelectClient?: (clientAppId: str
                 })}
               </div>
             )}
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Routing Policy Override</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={clientRoutingPolicyOverride}
+              onChange={(e) => setClientRoutingPolicyOverride(e.target.value)}
+            >
+              <option value="">Inherit from plan</option>
+              {routingPolicies.map(rp => (
+                <option key={rp.id} value={rp.id}>{rp.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Override the plan's routing policy for this client. Leave empty to use the plan default.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setClientDialogOpen(false)}>Cancel</Button>

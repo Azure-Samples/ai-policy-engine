@@ -1,6 +1,6 @@
 import { InteractionRequiredAuthError, PublicClientApplication, type SilentRequest } from "@azure/msal-browser";
 import { msalConfig, loginRequest } from "./auth/msalConfig";
-import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse } from "./types";
+import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse, RoutingPoliciesResponse, ModelRoutingPolicy, ModelRoutingPolicyCreateRequest, ModelRoutingPolicyUpdateRequest, RequestSummaryResponse } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -69,27 +69,32 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   return res;
 }
 
+async function parseErrorMessage(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return body?.error || body?.message || `${fallback}: ${res.statusText}`;
+}
+
 export async function fetchUsageSummary(): Promise<UsageSummaryResponse> {
   const res = await authFetch(`${API_BASE}/api/usage`);
-  if (!res.ok) throw new Error(`Failed to fetch usage summary: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch usage summary"));
   return res.json();
 }
 
 export async function fetchRequestLogs(): Promise<RequestLogsResponse> {
   const res = await authFetch(`${API_BASE}/api/logs`);
-  if (!res.ok) throw new Error(`Failed to fetch request logs: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch request logs"));
   return res.json();
 }
 
 export async function fetchChargeback(): Promise<ChargebackResponse> {
   const res = await authFetch(`${API_BASE}/chargeback`);
-  if (!res.ok) throw new Error(`Failed to fetch chargeback: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch chargeback"));
   return res.json();
 }
 
 export async function fetchQuotas(): Promise<QuotasResponse> {
   const res = await authFetch(`${API_BASE}/api/quotas`);
-  if (!res.ok) throw new Error(`Failed to fetch quotas: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch quotas"));
   return res.json();
 }
 
@@ -98,7 +103,7 @@ export async function updateQuota(clientAppId: string, data: QuotaUpdateRequest)
     method: "PUT",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to update quota: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to update quota"));
   return res.json();
 }
 
@@ -106,12 +111,12 @@ export async function deleteQuota(clientAppId: string): Promise<void> {
   const res = await authFetch(`${API_BASE}/api/quotas/${encodeURIComponent(clientAppId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to delete quota: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to delete quota"));
 }
 
 export async function fetchPlans(): Promise<PlansResponse> {
   const res = await authFetch(`${API_BASE}/api/plans`);
-  if (!res.ok) throw new Error(`Failed to fetch plans: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch plans"));
   return res.json();
 }
 
@@ -120,7 +125,7 @@ export async function createPlan(data: PlanCreateRequest): Promise<PlanData> {
     method: "POST",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to create plan: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to create plan"));
   return res.json();
 }
 
@@ -129,7 +134,7 @@ export async function updatePlan(planId: string, data: PlanUpdateRequest): Promi
     method: "PUT",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to update plan: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to update plan"));
   return res.json();
 }
 
@@ -137,12 +142,12 @@ export async function deletePlan(planId: string): Promise<void> {
   const res = await authFetch(`${API_BASE}/api/plans/${encodeURIComponent(planId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to delete plan: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to delete plan"));
 }
 
 export async function fetchClients(): Promise<ClientsResponse> {
   const res = await authFetch(`${API_BASE}/api/clients`);
-  if (!res.ok) throw new Error(`Failed to fetch clients: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch clients"));
   return res.json();
 }
 
@@ -151,7 +156,7 @@ export async function assignClient(clientAppId: string, tenantId: string, data: 
     method: "PUT",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to assign client: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to assign client"));
   return res.json();
 }
 
@@ -159,24 +164,24 @@ export async function removeClient(clientAppId: string, tenantId: string): Promi
   const res = await authFetch(`${API_BASE}/api/clients/${encodeURIComponent(clientAppId)}/${encodeURIComponent(tenantId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to remove client: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to remove client"));
 }
 
 export async function fetchClientUsage(clientAppId: string, tenantId: string): Promise<ClientUsageResponse> {
   const res = await authFetch(`${API_BASE}/api/clients/${encodeURIComponent(clientAppId)}/${encodeURIComponent(tenantId)}/usage`);
-  if (!res.ok) throw new Error(`Failed to fetch client usage: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch client usage"));
   return res.json();
 }
 
 export async function fetchClientTraces(clientAppId: string, tenantId: string): Promise<ClientTracesResponse> {
   const res = await authFetch(`${API_BASE}/api/clients/${encodeURIComponent(clientAppId)}/${encodeURIComponent(tenantId)}/traces`);
-  if (!res.ok) throw new Error(`Failed to fetch client traces: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch client traces"));
   return res.json();
 }
 
 export async function fetchPricing(): Promise<ModelPricingResponse> {
   const res = await authFetch(`${API_BASE}/api/pricing`);
-  if (!res.ok) throw new Error(`Failed to fetch pricing: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch pricing"));
   return res.json();
 }
 
@@ -185,13 +190,13 @@ export async function updatePricing(modelId: string, data: ModelPricingCreateReq
     method: "PUT",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to update pricing: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to update pricing"));
   return res.json();
 }
 
 export async function deletePricing(modelId: string): Promise<void> {
   const res = await authFetch(`${API_BASE}/api/pricing/${encodeURIComponent(modelId)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`Failed to delete pricing: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to delete pricing"));
 }
 
 export function exportCsvUrl(): string {
@@ -200,25 +205,25 @@ export function exportCsvUrl(): string {
 
 export async function fetchDeployments(): Promise<DeploymentsResponse> {
   const res = await authFetch(`${API_BASE}/api/deployments`);
-  if (!res.ok) throw new Error(`Failed to fetch deployments: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch deployments"));
   return res.json();
 }
 
 export async function fetchExportPeriods(): Promise<ExportPeriodsResponse> {
   const res = await authFetch(`${API_BASE}/api/export/available-periods`);
-  if (!res.ok) throw new Error(`Failed to fetch export periods: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch export periods"));
   return res.json();
 }
 
 export async function downloadBillingSummary(year: number, month: number): Promise<void> {
   const res = await authFetch(`${API_BASE}/api/export/billing-summary?year=${year}&month=${month}`);
-  if (!res.ok) throw new Error(`Failed to download billing summary: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to download billing summary"));
   await triggerBlobDownload(res);
 }
 
 export async function downloadClientAudit(clientAppId: string, tenantId: string, year: number, month: number): Promise<void> {
   const res = await authFetch(`${API_BASE}/api/export/client-audit?clientAppId=${encodeURIComponent(clientAppId)}&tenantId=${encodeURIComponent(tenantId)}&year=${year}&month=${month}`);
-  if (!res.ok) throw new Error(`Failed to download client audit: ${res.statusText}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to download client audit"));
   await triggerBlobDownload(res);
 }
 
@@ -235,6 +240,65 @@ async function triggerBlobDownload(res: Response): Promise<void> {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// --- Phase 4: Model Routing & Multiplier Billing API ---
+
+export async function fetchRoutingPolicies(): Promise<RoutingPoliciesResponse> {
+  const res = await authFetch(`${API_BASE}/api/routing-policies`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch routing policies"));
+  return res.json();
+}
+
+export async function fetchRoutingPolicy(policyId: string): Promise<ModelRoutingPolicy> {
+  const res = await authFetch(`${API_BASE}/api/routing-policies/${encodeURIComponent(policyId)}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch routing policy"));
+  return res.json();
+}
+
+export async function createRoutingPolicy(data: ModelRoutingPolicyCreateRequest): Promise<ModelRoutingPolicy> {
+  const res = await authFetch(`${API_BASE}/api/routing-policies`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to create routing policy"));
+  return res.json();
+}
+
+export async function updateRoutingPolicy(policyId: string, data: ModelRoutingPolicyUpdateRequest): Promise<ModelRoutingPolicy> {
+  const res = await authFetch(`${API_BASE}/api/routing-policies/${encodeURIComponent(policyId)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to update routing policy"));
+  return res.json();
+}
+
+export async function deleteRoutingPolicy(policyId: string): Promise<void> {
+  const res = await authFetch(`${API_BASE}/api/routing-policies/${encodeURIComponent(policyId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to delete routing policy"));
+}
+
+export async function fetchRequestSummary(year?: number, month?: number): Promise<RequestSummaryResponse> {
+  const params = new URLSearchParams();
+  if (year !== undefined) params.set("year", String(year));
+  if (month !== undefined) params.set("month", String(month));
+  const qs = params.toString();
+  const res = await authFetch(`${API_BASE}/api/chargeback/request-summary${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch request summary"));
+  return res.json();
+}
+
+export async function downloadRequestBilling(year?: number, month?: number): Promise<void> {
+  const params = new URLSearchParams();
+  if (year !== undefined) params.set("year", String(year));
+  if (month !== undefined) params.set("month", String(month));
+  const qs = params.toString();
+  const res = await authFetch(`${API_BASE}/api/export/request-billing${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to download request billing"));
+  await triggerBlobDownload(res);
 }
 
 export { msalInstance, msalReady };

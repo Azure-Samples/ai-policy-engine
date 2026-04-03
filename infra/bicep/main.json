@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.38.33.27573",
-      "templateHash": "1357575036701063122"
+      "version": "0.39.26.7824",
+      "templateHash": "4448819957253312403"
     }
   },
   "parameters": {
@@ -96,18 +96,11 @@
         "description": "ACR login server for Container App image pull (e.g. myacr.azurecr.io)."
       }
     },
-    "acrUsername": {
+    "acrName": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "ACR admin username."
-      }
-    },
-    "acrPassword": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "ACR admin password."
+        "description": "ACR resource name for AcrPull role assignment. Required when acrLoginServer is set."
       }
     },
     "storageAccountName": {
@@ -748,6 +741,14 @@
   },
   "resources": [
     {
+      "condition": "[not(empty(parameters('acrName')))]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('id-{0}', parameters('containerAppName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "deployKeyVault",
@@ -770,8 +771,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "17073851250405597348"
+              "version": "0.39.26.7824",
+              "templateHash": "15964264015551791169"
             }
           },
           "parameters": {
@@ -830,8 +831,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "7535139409263685923"
+              "version": "0.39.26.7824",
+              "templateHash": "18077580272308483573"
             }
           },
           "parameters": {
@@ -887,8 +888,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "16397573082268915873"
+              "version": "0.39.26.7824",
+              "templateHash": "316560326544021551"
             }
           },
           "parameters": {
@@ -954,8 +955,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "2643602553427271851"
+              "version": "0.39.26.7824",
+              "templateHash": "13210066655456182457"
             }
           },
           "parameters": {
@@ -1043,8 +1044,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "9217513881809328621"
+              "version": "0.39.26.7824",
+              "templateHash": "7799847541466511501"
             }
           },
           "parameters": {
@@ -1072,7 +1073,7 @@
                 "type": "SystemAssigned"
               },
               "properties": {
-                "disableLocalAuth": false,
+                "disableLocalAuth": true,
                 "databaseAccountOfferType": "Standard",
                 "capabilities": [
                   {
@@ -1235,8 +1236,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "857010764948303441"
+              "version": "0.39.26.7824",
+              "templateHash": "13445984782848973576"
             }
           },
           "parameters": {
@@ -1315,8 +1316,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "10305432726697593832"
+              "version": "0.39.26.7824",
+              "templateHash": "14271995425647155581"
             }
           },
           "parameters": {
@@ -1401,8 +1402,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "16556541193762110583"
+              "version": "0.39.26.7824",
+              "templateHash": "12890373827018962559"
             }
           },
           "parameters": {
@@ -1449,7 +1450,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Daily tokens and cost-to-us (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "timechart",
@@ -1465,7 +1466,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Top clients by cost (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend clientAppId = tostring(dimensions.ClientAppId), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize Requests = count(), TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by clientAppId\n| top 20 by TotalCostToUs desc\n",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend clientAppId = tostring(dimensions.ClientAppId), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), TotalTokens = sum(totalTokens), TotalCostToUs = round(sum(costToUs), 4) by clientAppId\r\n| top 20 by TotalCostToUs desc\r\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "table",
@@ -1481,7 +1482,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Request status breakdown (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\n| extend statusCode = toint(dimensions.StatusCode), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\n| summarize Requests = count(), Tokens = sum(totalTokens), CostToUs = round(sum(costToUs), 4) by statusCode\n| order by statusCode asc\n",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has \"Usage trace exported\"\r\n| extend dimensions = todynamic(coalesce(column_ifexists(\"Properties\", dynamic(null)), column_ifexists(\"CustomDimensions\", dynamic(null))))\r\n| extend statusCode = toint(dimensions.StatusCode), totalTokens = tolong(dimensions.TotalTokens), costToUs = todouble(dimensions.CostToUs)\r\n| summarize Requests = count(), Tokens = sum(totalTokens), CostToUs = round(sum(costToUs), 4) by statusCode\r\n| order by statusCode asc\r\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "barchart",
@@ -1497,7 +1498,7 @@
                   "content": {
                     "version": "KqlItem/1.0",
                     "title": "Quota / rate-limit event timeline (30 days)",
-                    "query": "union isfuzzy=true AppTraces, traces\n| where TimeGenerated >= ago(30d)\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has_any (\"Rate limit exceeded\", \"Quota exceeded\", \"Over quota\")\n| summarize EventCount = count() by Event = tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))), bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n",
+                    "query": "union isfuzzy=true AppTraces, traces\r\n| where TimeGenerated >= ago(30d)\r\n| where tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))) has_any (\"Rate limit exceeded\", \"Quota exceeded\", \"Over quota\")\r\n| summarize EventCount = count() by Event = tostring(column_ifexists(\"Message\", column_ifexists(\"message\", \"\"))), bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "visualization": "timechart",
@@ -1601,12 +1602,7 @@
           "acrLoginServer": {
             "value": "[parameters('acrLoginServer')]"
           },
-          "acrUsername": {
-            "value": "[parameters('acrUsername')]"
-          },
-          "acrPassword": {
-            "value": "[parameters('acrPassword')]"
-          },
+          "acrIdentityId": "[if(not(empty(parameters('acrName'))), createObject('value', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('containerAppName')))), createObject('value', ''))]",
           "minReplicas": {
             "value": 1
           },
@@ -1620,8 +1616,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12440229574038070092"
+              "version": "0.39.26.7824",
+              "templateHash": "18420531783176905658"
             }
           },
           "parameters": {
@@ -1711,18 +1707,11 @@
                 "description": "ACR login server (e.g. myacr.azurecr.io). Leave empty to pull from public registries."
               }
             },
-            "acrUsername": {
+            "acrIdentityId": {
               "type": "string",
               "defaultValue": "",
               "metadata": {
-                "description": "ACR admin username. Required when acrLoginServer is set."
-              }
-            },
-            "acrPassword": {
-              "type": "securestring",
-              "defaultValue": "",
-              "metadata": {
-                "description": "ACR admin password. Required when acrLoginServer is set."
+                "description": "Resource ID of the user-assigned managed identity for ACR pull. Leave empty when not using ACR."
               }
             },
             "minReplicas": {
@@ -1760,7 +1749,8 @@
               "name": "[parameters('containerAppName')]",
               "location": "[parameters('location')]",
               "identity": {
-                "type": "SystemAssigned"
+                "type": "[if(not(empty(parameters('acrIdentityId'))), 'SystemAssigned,UserAssigned', 'SystemAssigned')]",
+                "userAssignedIdentities": "[if(not(empty(parameters('acrIdentityId'))), createObject(format('{0}', parameters('acrIdentityId')), createObject()), null())]"
               },
               "properties": {
                 "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppEnvName'))]",
@@ -1771,8 +1761,7 @@
                     "transport": "http",
                     "allowInsecure": false
                   },
-                  "registries": "[if(not(empty(parameters('acrLoginServer'))), createArray(createObject('server', parameters('acrLoginServer'), 'username', parameters('acrUsername'), 'passwordSecretRef', 'acr-password')), createArray())]",
-                  "secrets": "[if(not(empty(parameters('acrLoginServer'))), createArray(createObject('name', 'acr-password', 'value', parameters('acrPassword'))), createArray())]"
+                  "registries": "[if(not(empty(parameters('acrLoginServer'))), createArray(createObject('server', parameters('acrLoginServer'), 'identity', parameters('acrIdentityId'))), createArray())]"
                 },
                 "template": {
                   "containers": [
@@ -1880,8 +1869,10 @@
         "[resourceId('Microsoft.Resources/deployments', variables('resolvedAiServiceName'))]",
         "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]",
         "[resourceId('Microsoft.Resources/deployments', 'deployAppInsights')]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('containerAppName')))]",
         "[resourceId('Microsoft.Resources/deployments', 'deployCosmosAccount')]",
         "[resourceId('Microsoft.Resources/deployments', 'deployRedisCache')]",
+        "[resourceId('Microsoft.Resources/deployments', 'assignAcrPullRoleToContainerApp')]",
         "[resourceId('Microsoft.Resources/deployments', 'deployStorageAccount')]"
       ]
     },
@@ -1908,8 +1899,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "18082009403777612425"
+              "version": "0.39.26.7824",
+              "templateHash": "8153761212001386508"
             }
           },
           "parameters": {
@@ -2024,8 +2015,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "10010308081297755697"
+              "version": "0.39.26.7824",
+              "templateHash": "248767910648140539"
             }
           },
           "parameters": {
@@ -2156,8 +2147,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12652607929097930662"
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
             }
           },
           "parameters": {
@@ -2209,8 +2200,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12652607929097930662"
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
             }
           },
           "parameters": {
@@ -2263,8 +2254,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "5399757726845206364"
+              "version": "0.39.26.7824",
+              "templateHash": "1338441632118870611"
             }
           },
           "parameters": {
@@ -2309,7 +2300,7 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
           },
           "roleDefinitionId": {
-            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]"
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roles').security.keyVaultSecretsUser)]"
           }
         },
         "template": {
@@ -2318,8 +2309,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12652607929097930662"
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
             }
           },
           "parameters": {
@@ -2362,7 +2353,7 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
           },
           "roleDefinitionId": {
-            "value": "[format('/subscriptions/{0}/providers/Microsoft.Authorization/roleDefinitions/{1}', subscription().subscriptionId, variables('roles').ai.cognitiveServicesUser)]"
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roles').ai.cognitiveServicesOpenAIUser)]"
           }
         },
         "template": {
@@ -2371,8 +2362,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12652607929097930662"
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
             }
           },
           "parameters": {
@@ -2402,9 +2393,10 @@
       ]
     },
     {
+      "condition": "[not(empty(parameters('acrName')))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "assignContainerAppRoleToApim",
+      "name": "assignAcrPullRoleToContainerApp",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -2412,10 +2404,10 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deployApimInstance'), '2025-04-01').outputs.clientId.value]"
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('containerAppName'))), '2023-01-31').principalId]"
           },
           "roleDefinitionId": {
-            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roles').containers.acrPull)]"
           }
         },
         "template": {
@@ -2424,8 +2416,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "12652607929097930662"
+              "version": "0.39.26.7824",
+              "templateHash": "1016576043138759447"
             }
           },
           "parameters": {
@@ -2451,7 +2443,7 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'deployApimInstance')]"
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('containerAppName')))]"
       ]
     },
     {
@@ -2486,8 +2478,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "16240781146342215937"
+              "version": "0.39.26.7824",
+              "templateHash": "1651741229471111993"
             }
           },
           "parameters": {
@@ -2584,7 +2576,11 @@
                 "protocols": [
                   "https"
                 ],
-                "subscriptionRequired": true
+                "subscriptionRequired": true,
+                "subscriptionKeyParameterNames": {
+                  "header": "api-key",
+                  "query": "api-key"
+                }
               }
             },
             {
@@ -2638,8 +2634,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "15407664923439798157"
+              "version": "0.39.26.7824",
+              "templateHash": "14101433639388146777"
             }
           },
           "parameters": {
@@ -2703,8 +2699,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.38.33.27573",
-              "templateHash": "10377564680390167978"
+              "version": "0.39.26.7824",
+              "templateHash": "4328267729054570879"
             }
           },
           "parameters": {

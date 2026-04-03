@@ -415,7 +415,8 @@ public class EndpointTests : IClassFixture<ChargebackApiFactory>
         _factory.Redis.SeedString(RedisKeys.Client("bad-client", "tenant-1"), "null");
 
         var response = await _client.PostAsJsonAsync("/api/log", CreateLogRequest("bad-client"), JsonOpts);
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        // With the repository pattern, corrupted data deserializes to null → treated as "client not found" (401)
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

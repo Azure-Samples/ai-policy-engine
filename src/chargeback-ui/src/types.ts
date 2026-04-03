@@ -77,6 +77,10 @@ export interface PlanData {
   rollUpAllDeployments: boolean;
   deploymentQuotas: Record<string, number>;
   allowedDeployments: string[];
+  modelRoutingPolicyId?: string;
+  monthlyRequestQuota?: number;
+  overageRatePerRequest?: number;
+  useMultiplierBilling?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +96,10 @@ export interface PlanCreateRequest {
   rollUpAllDeployments?: boolean;
   deploymentQuotas?: Record<string, number>;
   allowedDeployments?: string[];
+  modelRoutingPolicyId?: string;
+  monthlyRequestQuota?: number;
+  overageRatePerRequest?: number;
+  useMultiplierBilling?: boolean;
 }
 
 export interface PlanUpdateRequest {
@@ -105,6 +113,10 @@ export interface PlanUpdateRequest {
   rollUpAllDeployments?: boolean;
   deploymentQuotas?: Record<string, number>;
   allowedDeployments?: string[];
+  modelRoutingPolicyId?: string;
+  monthlyRequestQuota?: number;
+  overageRatePerRequest?: number;
+  useMultiplierBilling?: boolean;
 }
 
 export interface ClientAssignment {
@@ -119,6 +131,11 @@ export interface ClientAssignment {
   allowedDeployments: string[];
   currentRpm?: number;
   currentTpm?: number;
+  modelRoutingPolicyOverride?: string;
+  currentPeriodRequests?: number;
+  overbilledRequests?: number;
+  requestsByTier?: Record<string, number>;
+  requestUtilizationPercent?: number;
   lastUpdated: string;
 }
 
@@ -170,6 +187,8 @@ export interface ModelPricing {
   promptRatePer1K: number;
   completionRatePer1K: number;
   imageRatePer1K: number;
+  multiplier: number;
+  tierName: string;
   updatedAt: string;
 }
 
@@ -179,6 +198,8 @@ export interface ModelPricingCreateRequest {
   promptRatePer1K: number;
   completionRatePer1K: number;
   imageRatePer1K: number;
+  multiplier?: number;
+  tierName?: string;
 }
 
 export interface ModelPricingResponse {
@@ -213,3 +234,71 @@ export interface DeploymentInfo {
 export interface DeploymentsResponse {
   deployments: DeploymentInfo[];
 }
+
+// --- Phase 4: Model Routing & Multiplier Billing ---
+
+export type RoutingBehavior = 'Passthrough' | 'Deny';
+
+export interface RouteRule {
+  requestedDeployment: string;
+  routedDeployment: string;
+  priority: number;
+  enabled: boolean;
+}
+
+export interface ModelRoutingPolicy {
+  id: string;
+  name: string;
+  description?: string;
+  defaultBehavior: RoutingBehavior;
+  fallbackDeployment?: string;
+  rules: RouteRule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModelRoutingPolicyCreateRequest {
+  name: string;
+  description?: string;
+  defaultBehavior: RoutingBehavior;
+  fallbackDeployment?: string;
+  rules: RouteRule[];
+}
+
+export interface ModelRoutingPolicyUpdateRequest {
+  name?: string;
+  description?: string;
+  defaultBehavior?: RoutingBehavior;
+  fallbackDeployment?: string;
+  rules?: RouteRule[];
+}
+
+export interface RoutingPoliciesResponse {
+  policies: ModelRoutingPolicy[];
+}
+
+// Request summary types — must match backend RequestSummaryResponse.cs
+export interface RequestSummaryClient {
+  clientAppId: string;
+  tenantId: string;
+  displayName: string;
+  totalEffectiveRequests: number;
+  effectiveRequestsByTier: Record<string, number>;
+  multiplierOverageCost: number;
+  rawRequestCount: number;
+}
+
+export interface RequestSummaryTotals {
+  totalEffectiveRequests: number;
+  effectiveRequestsByTier: Record<string, number>;
+  totalMultiplierOverageCost: number;
+  totalRawRequests: number;
+}
+
+export interface RequestSummaryResponse {
+  billingPeriod: string;
+  clients: RequestSummaryClient[];
+  totals: RequestSummaryTotals;
+}
+
+export type BillingMode = 'token' | 'multiplier' | 'hybrid';

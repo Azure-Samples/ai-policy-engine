@@ -20,4 +20,15 @@ public sealed class AuditLogItem
     public bool IsOverbilled { get; set; }
     public int StatusCode { get; set; } = 200;
     public DateTime Timestamp { get; set; }
+
+    // Routing + multiplier billing fields
+    public string? RequestedDeploymentId { get; set; }
+    public string? RoutingPolicyId { get; set; }
+    public decimal? Multiplier { get; set; }
+    public decimal? EffectiveRequestCost { get; set; }
+    public string? TierName { get; set; }
+    public decimal? MultiplierOverageCost { get; set; }
+
+    /// <summary>APIM request ID for deduplication in deterministic hashing.</summary>
+    public string? CorrelationId { get; set; }
 }

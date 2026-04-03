@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Channels;
 using Chargeback.Api.Models;
 
@@ -113,9 +115,12 @@ public sealed class AuditLogWriter : BackgroundService
 
     private async Task FlushBatchWithRetryAsync(List<AuditLogItem> batch, CancellationToken ct)
     {
+        // Build documents with deterministic IDs ONCE before the retry loop.
+        // Deterministic IDs ensure retries are idempotent — partial success + retry
+        // won't create duplicate billing records.
         var documents = batch.Select(item => new AuditLogDocument
         {
-            Id = Guid.NewGuid().ToString("N"),
+            Id = GenerateDeterministicId(item),
             CustomerKey = $"{item.ClientAppId}:{item.TenantId}",
             ClientAppId = item.ClientAppId,
             TenantId = item.TenantId,
@@ -131,7 +136,12 @@ public sealed class AuditLogWriter : BackgroundService
             IsOverbilled = item.IsOverbilled,
             StatusCode = item.StatusCode,
             Timestamp = item.Timestamp,
-            BillingPeriod = $"{item.Timestamp:yyyy-MM}"
+            BillingPeriod = $"{item.Timestamp:yyyy-MM}",
+            RequestedDeploymentId = item.RequestedDeploymentId,
+            RoutingPolicyId = item.RoutingPolicyId,
+            Multiplier = item.Multiplier,
+            EffectiveRequestCost = item.EffectiveRequestCost,
+            TierName = item.TierName
         }).ToList();
 
         for (var attempt = 1; attempt <= MaxRetries; attempt++)
@@ -159,5 +169,16 @@ public sealed class AuditLogWriter : BackgroundService
                     MaxRetries, batch.Count);
             }
         }
+    }
+
+    /// <summary>
+    /// Generates a deterministic document ID from the audit item's identity fields.
+    /// Same input always produces the same ID, making retries idempotent.
+    /// </summary>
+    private static string GenerateDeterministicId(AuditLogItem item)
+    {
+        var input = $"{item.ClientAppId}|{item.TenantId}|{item.DeploymentId}|{item.Timestamp:O}|{item.TotalTokens}|{item.PromptTokens}|{item.CorrelationId}";
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hashBytes)[..32].ToLowerInvariant();
     }
 }

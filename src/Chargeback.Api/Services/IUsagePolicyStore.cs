@@ -1,10 +1,9 @@
 using Chargeback.Api.Models;
-using StackExchange.Redis;
 
 namespace Chargeback.Api.Services;
 
 public interface IUsagePolicyStore
 {
-    Task<UsagePolicySettings> GetAsync(IDatabase db);
-    Task<UsagePolicySettings> UpdateAsync(IDatabase db, UsagePolicyUpdateRequest request);
+    Task<UsagePolicySettings> GetAsync(CancellationToken ct = default);
+    Task<UsagePolicySettings> UpdateAsync(UsagePolicyUpdateRequest request, CancellationToken ct = default);
 }

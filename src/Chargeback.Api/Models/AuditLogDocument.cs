@@ -59,6 +59,26 @@ public sealed class AuditLogDocument
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; }
 
+    /// <summary>Original deployment the client requested (before routing).</summary>
+    [JsonPropertyName("requestedDeploymentId")]
+    public string? RequestedDeploymentId { get; set; }
+
+    /// <summary>Routing policy that was applied (null = no routing).</summary>
+    [JsonPropertyName("routingPolicyId")]
+    public string? RoutingPolicyId { get; set; }
+
+    /// <summary>Per-request billing multiplier applied (null = not using multiplier billing).</summary>
+    [JsonPropertyName("multiplier")]
+    public decimal? Multiplier { get; set; }
+
+    /// <summary>Effective request cost after multiplier (null = not using multiplier billing).</summary>
+    [JsonPropertyName("effectiveRequestCost")]
+    public decimal? EffectiveRequestCost { get; set; }
+
+    /// <summary>Pricing tier name for the deployment/model (null = not using multiplier billing).</summary>
+    [JsonPropertyName("tierName")]
+    public string? TierName { get; set; }
+
     /// <summary>
     /// Billing period in YYYY-MM format for efficient querying.
     /// </summary>

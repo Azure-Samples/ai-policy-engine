@@ -23,11 +23,11 @@
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.4.0" />
     <PackageVersion Include="Microsoft.Identity.Client" Version="4.82.1" />
     <PackageVersion Include="Microsoft.Identity.Web" Version="4.6.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
 
     <!-- OpenTelemetry -->
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.0" />
