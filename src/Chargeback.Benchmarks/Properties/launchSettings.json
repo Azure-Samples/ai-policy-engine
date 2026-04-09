@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Chargeback.Benchmarks": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:52043;http://localhost:52044"
+    }
+  }
+}
