@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.options\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Options.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.options\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Options.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Logging.Abstractions.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Logging.Abstractions.targets')" />
+    <Import Project="$(NuGetPackageRoot)system.clientmodel\1.10.0\buildTransitive\net10.0\System.ClientModel.targets" Condition="Exists('$(NuGetPackageRoot)system.clientmodel\1.10.0\buildTransitive\net10.0\System.ClientModel.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.configuration.binder\10.0.5\buildTransitive\netstandard2.0\Microsoft.Extensions.Configuration.Binder.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.configuration.binder\10.0.5\buildTransitive\netstandard2.0\Microsoft.Extensions.Configuration.Binder.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.configuration.usersecrets\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Configuration.UserSecrets.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.configuration.usersecrets\10.0.5\buildTransitive\net8.0\Microsoft.Extensions.Configuration.UserSecrets.targets')" />
+    <Import Project="$(NuGetPackageRoot)azure.core\1.52.0\buildTransitive\net10.0\Azure.Core.targets" Condition="Exists('$(NuGetPackageRoot)azure.core\1.52.0\buildTransitive\net10.0\Azure.Core.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.azure.cosmos\3.54.0\buildTransitive\netstandard2.0\Microsoft.Azure.Cosmos.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.azure.cosmos\3.54.0\buildTransitive\netstandard2.0\Microsoft.Azure.Cosmos.targets')" />
+    <Import Project="$(NuGetPackageRoot)azure.identity\1.20.0\buildTransitive\net10.0\Azure.Identity.targets" Condition="Exists('$(NuGetPackageRoot)azure.identity\1.20.0\buildTransitive\net10.0\Azure.Identity.targets')" />
+    <Import Project="$(NuGetPackageRoot)aspire.hosting\13.2.2\buildTransitive\net8.0\Aspire.Hosting.targets" Condition="Exists('$(NuGetPackageRoot)aspire.hosting\13.2.2\buildTransitive\net8.0\Aspire.Hosting.targets')" />
+    <Import Project="$(NuGetPackageRoot)aspire.hosting.orchestration.win-x64\13.2.1\buildTransitive\Aspire.Hosting.Orchestration.win-x64.targets" Condition="Exists('$(NuGetPackageRoot)aspire.hosting.orchestration.win-x64\13.2.1\buildTransitive\Aspire.Hosting.Orchestration.win-x64.targets')" />
+    <Import Project="$(NuGetPackageRoot)aspire.hosting.azure\13.2.2\buildTransitive\Aspire.Hosting.Azure.targets" Condition="Exists('$(NuGetPackageRoot)aspire.hosting.azure\13.2.2\buildTransitive\Aspire.Hosting.Azure.targets')" />
+    <Import Project="$(NuGetPackageRoot)aspire.hosting.apphost\13.2.1\build\Aspire.Hosting.AppHost.targets" Condition="Exists('$(NuGetPackageRoot)aspire.hosting.apphost\13.2.1\build\Aspire.Hosting.AppHost.targets')" />
+    <Import Project="$(NuGetPackageRoot)aspire.dashboard.sdk.win-x64\13.2.1\buildTransitive\Aspire.Dashboard.Sdk.win-x64.targets" Condition="Exists('$(NuGetPackageRoot)aspire.dashboard.sdk.win-x64\13.2.1\buildTransitive\Aspire.Dashboard.Sdk.win-x64.targets')" />
+  </ImportGroup>
+</Project>

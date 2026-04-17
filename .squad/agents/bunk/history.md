@@ -346,3 +346,46 @@ All work is done. Phase 0–5 complete. 222 total tests passing. Backend storage
 **Test Results:** 225 total tests (221 pass, 4 skip). No regressions. All 9 active tests pass on first run.
 
 **Key Learning:** When a code path is not yet injectable/mockable (like PurviewGraphClient inline construction), focus test efforts on the exception handling paths and fail-safe behavior instead of trying to force integration tests. Document the refactor needed for future comprehensive coverage.
+
+### 2026-04-17 — Agent365 Observability Tests
+
+**What:** Added 10 unit tests for Freamon's new Agent365 Observability integration (InvokeAgent and Inference scope instrumentation). Created new test file `src/Chargeback.Tests/Agent365ServiceTests.cs`.
+
+**Test Coverage:**
+
+- **NoOpAgent365ObservabilityService (2 tests):**
+  - StartInvokeAgentScope_ReturnsNull — verify stub returns null
+  - StartInferenceScope_ReturnsNull — verify stub returns null
+
+- **DI Registration (4 tests):**
+  - AddAgent365Observability_WithoutConfig_RegistersNoOp — no env var → NoOp registered
+  - AddAgent365Observability_WithFalseConfig_RegistersNoOp — `ENABLE_A365_OBSERVABILITY_EXPORTER=false` → NoOp
+  - AddAgent365Observability_WithInvalidConfig_RegistersNoOp — invalid bool → NoOp (safe default)
+  - AddAgent365Observability_WithExporterEnabled_RegistersRealService — `ENABLE_A365_OBSERVABILITY_EXPORTER=true` → real service
+
+- **Agent365ObservabilityService Stub Implementation (4 tests):**
+  - StartInvokeAgentScope_ReturnsNullStub — verify stub implementation returns null without crash
+  - StartInferenceScope_ReturnsNullStub — verify stub implementation returns null without crash
+  - StartInvokeAgentScope_WithNullOptionalParams_ReturnsNullStub — null clientDisplayName/correlationId/promptContent → no crash
+  - StartInferenceScope_WithNullDisplayName_ReturnsNullStub — null clientDisplayName → no crash
+
+**Implementation Verified:**
+- `IAgent365ObservabilityService` interface with `StartInvokeAgentScope` and `StartInferenceScope`
+- `Agent365ObservabilityService` real impl (stubs returning null pending SDK API stabilization)
+- `NoOpAgent365ObservabilityService` always returns null (disabled state)
+- `Agent365ServiceExtensions.AddAgent365Observability()` with `ENABLE_A365_OBSERVABILITY_EXPORTER` toggle
+- DI correctly routes to NoOp when env var not set/false/invalid, real service when true
+
+**Edge Cases Tested:**
+- Invalid env var values (non-boolean) → default to NoOp (safe fallback)
+- Null optional parameters (clientDisplayName, correlationId, promptContent) → no crash
+- NoOp service always safe (no network calls, no exceptions)
+
+**Test Pattern:**
+- New file `Agent365ServiceTests.cs` (separate from `PurviewServiceTests.cs` for clarity)
+- Use `Host.CreateEmptyApplicationBuilder` with in-memory configuration for DI tests
+- Directly test `NoOpAgent365ObservabilityService` and `Agent365ObservabilityService` constructors for stub behavior
+- Use NSubstitute for `TokenCredential` and `ILogger<T>` mocks
+
+**Baseline:** 221 tests before → 231 tests after (10 new, all passing; 4 skipped)
+
