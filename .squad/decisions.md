@@ -263,6 +263,16 @@ This applies to dashboards, usage views, client detail pages, and export options
 - **Risk Assessment:** Beta SDK (API may change), Frontier preview access required (not all tenants), Agent identity provisioning workflow unclear (mitigation: start lightweight)
 - **Reference Document:** See .squad/decisions/inbox/mcnulty-agent365-architecture.md for full architecture analysis (60+ sections covering SDK structure, observability data model, integration patterns, migration path, identity model analysis, and comprehensive Q&A)
 
+### 2026-04-17T16:33:20Z: Microsoft Agent365 Observability SDK Integration (Phase 1)
+**By:** Freamon (Backend Dev) under guidance from Zack Way  
+**Status:** Implemented  
+**What:** Add Agent365 Observability SDK v0.1.75-beta alongside existing OpenTelemetry and Purview DLP. Pure additive integration. Instrument Precheck + ContentCheck endpoints with `InvokeAgentScope` and LogIngest endpoint with `InferenceScope`. Use ClientAppId as lightweight agent identity. Opt-in via `ENABLE_A365_OBSERVABILITY_EXPORTER` env var (default: false).  
+**Why:** Provide agent-specific telemetry patterns for AI workloads; infrastructure for future A365 backend integration when SDK stabilizes.  
+**How:** Service abstraction (`IAgent365ObservabilityService`) with stub implementation (TODO markers) and no-op fallback. DI registration. Scope wrapping in endpoint handlers. Correlation ID from `X-Correlation-ID` header.  
+**Trade-offs:** Stub implementation (SDK v0.1.75-beta lacks public scope creation APIs; full implementation deferred to v0.2.x+). No per-client toggle (host-level only). No M365 identity provisioning. Config CRUD not instrumented (focused on hot path).  
+**Testing:** 225 tests (221 pass, 4 skipped); zero regressions.  
+**Future:** Upgrade SDK, implement token acquisition, add integration tests, enforce correlation ID.
+
 ## Governance
 
 - All meaningful changes require team consensus

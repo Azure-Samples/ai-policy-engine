@@ -12,6 +12,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Aspire service defaults: OpenTelemetry, health checks, service discovery, resilience
 builder.AddServiceDefaults();
 
+// Agent365 Observability SDK integration (OpenTelemetry-based)
+builder.AddAgent365Observability();
+
 // Configure HTTP JSON options for minimal API model binding (enum as string, camelCase)
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
