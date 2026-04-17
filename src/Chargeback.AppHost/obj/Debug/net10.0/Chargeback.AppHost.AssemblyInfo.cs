@@ -10,20 +10,10 @@
 using System;
 using System.Reflection;
 
-[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("853ae56e-d4c0-4e86-b87d-ef05a57d4800")]
-[assembly: System.Reflection.AssemblyMetadata("dcpclipath", ("C:\\Users\\zackway\\.nuget\\packages\\aspire.hosting.orchestration.win-x64\\13.2.1\\tool" +
-    "s\\dcp.exe"))]
-[assembly: System.Reflection.AssemblyMetadata("dcpextensionpaths", ("C:\\Users\\zackway\\.nuget\\packages\\aspire.hosting.orchestration.win-x64\\13.2.1\\tool" +
-    "s\\ext\\"))]
-[assembly: System.Reflection.AssemblyMetadata("apphostprojectpath", "D:\\github\\Azure-Samples\\ai-policy-engine\\src\\Chargeback.AppHost")]
-[assembly: System.Reflection.AssemblyMetadata("apphostprojectname", "Chargeback.AppHost.csproj")]
-[assembly: System.Reflection.AssemblyMetadata("aspiredashboardpath", ("C:\\Users\\zackway\\.nuget\\packages\\aspire.dashboard.sdk.win-x64\\13.2.1\\tools\\Aspire" +
-    ".Dashboard.exe"))]
-[assembly: System.Reflection.AssemblyMetadataAttribute("apphostprojectbaseintermediateoutputpath", "D:\\github\\Azure-Samples\\ai-policy-engine\\src\\Chargeback.AppHost\\obj\\")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("Chargeback.AppHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+056263730e3248c20119030acce6e5112e074f98")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e86e41315b5682df9e7ef8917dfe7f0f2e25e2d2")]
 [assembly: System.Reflection.AssemblyProductAttribute("Chargeback.AppHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Chargeback.AppHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

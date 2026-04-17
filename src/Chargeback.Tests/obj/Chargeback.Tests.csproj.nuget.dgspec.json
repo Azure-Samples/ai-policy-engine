@@ -71,15 +71,9 @@
               "version": "[1.20.0, )",
               "versionCentrallyManaged": true
             },
-            "Microsoft.Agents.A365.Observability": {
-              "target": "Package",
-              "version": "[0.1.75-beta, )",
-              "versionCentrallyManaged": true
-            },
             "Microsoft.Agents.A365.Observability.Runtime": {
               "target": "Package",
-              "version": "[0.1.75-beta, )",
-              "versionCentrallyManaged": true
+              "version": "(, )"
             },
             "Microsoft.Agents.AI.Purview": {
               "target": "Package",
@@ -111,8 +105,6 @@
             "Azure.Monitor.OpenTelemetry.AspNetCore": "1.4.0",
             "BenchmarkDotNet": "0.15.8",
             "coverlet.collector": "8.0.1",
-            "Microsoft.Agents.A365.Observability": "0.1.75-beta",
-            "Microsoft.Agents.A365.Observability.Runtime": "0.1.75-beta",
             "Microsoft.Agents.AI": "1.0.0",
             "Microsoft.Agents.AI.Purview": "1.0.0-rc6",
             "Microsoft.AspNetCore.Mvc.Testing": "10.0.5",
@@ -676,8 +668,6 @@
             "Azure.Monitor.OpenTelemetry.AspNetCore": "1.4.0",
             "BenchmarkDotNet": "0.15.8",
             "coverlet.collector": "8.0.1",
-            "Microsoft.Agents.A365.Observability": "0.1.75-beta",
-            "Microsoft.Agents.A365.Observability.Runtime": "0.1.75-beta",
             "Microsoft.Agents.AI": "1.0.0",
             "Microsoft.Agents.AI.Purview": "1.0.0-rc6",
             "Microsoft.AspNetCore.Mvc.Testing": "10.0.5",
@@ -1255,8 +1245,6 @@
             "Azure.Monitor.OpenTelemetry.AspNetCore": "1.4.0",
             "BenchmarkDotNet": "0.15.8",
             "coverlet.collector": "8.0.1",
-            "Microsoft.Agents.A365.Observability": "0.1.75-beta",
-            "Microsoft.Agents.A365.Observability.Runtime": "0.1.75-beta",
             "Microsoft.Agents.AI": "1.0.0",
             "Microsoft.Agents.AI.Purview": "1.0.0-rc6",
             "Microsoft.AspNetCore.Mvc.Testing": "10.0.5",

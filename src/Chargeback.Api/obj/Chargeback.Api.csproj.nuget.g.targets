@@ -1,14 +1,2 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
-    <Import Project="$(NuGetPackageRoot)system.clientmodel\1.10.0\buildTransitive\net10.0\System.ClientModel.targets" Condition="Exists('$(NuGetPackageRoot)system.clientmodel\1.10.0\buildTransitive\net10.0\System.ClientModel.targets')" />
-    <Import Project="$(NuGetPackageRoot)azure.core\1.52.0\buildTransitive\net10.0\Azure.Core.targets" Condition="Exists('$(NuGetPackageRoot)azure.core\1.52.0\buildTransitive\net10.0\Azure.Core.targets')" />
-    <Import Project="$(NuGetPackageRoot)azure.identity\1.20.0\buildTransitive\net10.0\Azure.Identity.targets" Condition="Exists('$(NuGetPackageRoot)azure.identity\1.20.0\buildTransitive\net10.0\Azure.Identity.targets')" />
-    <Import Project="$(NuGetPackageRoot)microsoft.extensions.telemetry.abstractions\10.4.0\buildTransitive\net8.0\Microsoft.Extensions.Telemetry.Abstractions.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.telemetry.abstractions\10.4.0\buildTransitive\net8.0\Microsoft.Extensions.Telemetry.Abstractions.targets')" />
-    <Import Project="$(NuGetPackageRoot)microsoft.extensions.http.resilience\10.4.0\buildTransitive\net8.0\Microsoft.Extensions.Http.Resilience.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.http.resilience\10.4.0\buildTransitive\net8.0\Microsoft.Extensions.Http.Resilience.targets')" />
-    <Import Project="$(NuGetPackageRoot)microsoft.azure.cosmos\3.54.0\buildTransitive\netstandard2.0\Microsoft.Azure.Cosmos.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.azure.cosmos\3.54.0\buildTransitive\netstandard2.0\Microsoft.Azure.Cosmos.targets')" />
-    <Import Project="$(NuGetPackageRoot)microsoft.aspnetcore.openapi\10.0.5\build\Microsoft.AspNetCore.OpenApi.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.aspnetcore.openapi\10.0.5\build\Microsoft.AspNetCore.OpenApi.targets')" />
-    <Import Project="$(NuGetPackageRoot)aspire.stackexchange.redis\13.2.2\buildTransitive\net10.0\Aspire.StackExchange.Redis.targets" Condition="Exists('$(NuGetPackageRoot)aspire.stackexchange.redis\13.2.2\buildTransitive\net10.0\Aspire.StackExchange.Redis.targets')" />
-    <Import Project="$(NuGetPackageRoot)aspire.microsoft.azure.cosmos\13.2.2\buildTransitive\net10.0\Aspire.Microsoft.Azure.Cosmos.targets" Condition="Exists('$(NuGetPackageRoot)aspire.microsoft.azure.cosmos\13.2.2\buildTransitive\net10.0\Aspire.Microsoft.Azure.Cosmos.targets')" />
-  </ImportGroup>
-</Project>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" />

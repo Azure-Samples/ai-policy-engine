@@ -37,13 +37,9 @@ public static class PrecheckEndpoints
         IRepository<ModelRoutingPolicy> routingPolicyRepo,
         IUsagePolicyStore usagePolicyStore,
         IConnectionMultiplexer redis,
-        IAgent365ObservabilityService observability,
         ILogger<PlanData> logger)
     {
-        var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
-        using var scope = observability.StartInvokeAgentScope(clientAppId, tenantId, null, correlationId, null);
-
-        // 1. Check client assignment exists (reads from Redis cache via CachedRepository)
+        // 1. Checkclient assignment exists (reads from Redis cache via CachedRepository)
         var clientId = $"{clientAppId}:{tenantId}";
         var assignment = await clientRepo.GetAsync(clientId);
         if (assignment is null)
@@ -241,17 +237,13 @@ public static class PrecheckEndpoints
         HttpContext context,
         IRepository<ClientPlanAssignment> clientRepo,
         IPurviewAuditService purviewAuditService,
-        IAgent365ObservabilityService observability,
         ILogger<PlanData> logger,
         CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(context.Request.Body);
         var content = await reader.ReadToEndAsync(cancellationToken);
 
-        var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
-        using var scope = observability.StartInvokeAgentScope(clientAppId, tenantId, null, correlationId, content);
-
-        var clientId = $"{clientAppId}:{tenantId}";
+        var clientId= $"{clientAppId}:{tenantId}";
         var assignment = await clientRepo.GetAsync(clientId);
 
         string clientDisplayName = clientAppId;

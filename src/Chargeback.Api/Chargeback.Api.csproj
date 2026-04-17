@@ -18,7 +18,6 @@
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Microsoft.Azure.StackExchangeRedis" />
     <PackageReference Include="Microsoft.Agents.AI.Purview" />
-    <PackageReference Include="Microsoft.Agents.A365.Observability" />
     <PackageReference Include="Microsoft.Agents.A365.Observability.Runtime" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Identity.Web" />

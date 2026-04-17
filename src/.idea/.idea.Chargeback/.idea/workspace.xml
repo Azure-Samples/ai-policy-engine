@@ -11,30 +11,6 @@
   <component name="ChangeListManager">
     <list default="true" id="8ad49813-146b-4a8b-8bec-bc23fd097b54" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/../.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/../.github/workflows/ci.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/Services/Agent365ObservabilityService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/Services/Agent365ObservabilityService.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/Services/Agent365ServiceExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/Services/Agent365ServiceExtensions.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.AssemblyInfoInputs.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.csproj.AssemblyReference.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.csproj.AssemblyReference.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.sourcelink.json" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Api/obj/Debug/net10.0/Chargeback.Api.sourcelink.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.AppHost/obj/Debug/net10.0/Chargeback.AppHost.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.AppHost/obj/Debug/net10.0/Chargeback.AppHost.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.AppHost/obj/Debug/net10.0/Chargeback.AppHost.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.AppHost/obj/Debug/net10.0/Chargeback.AppHost.AssemblyInfoInputs.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.AssemblyInfoInputs.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.csproj.AssemblyReference.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Benchmarks/obj/Debug/net10.0/Chargeback.Benchmarks.csproj.AssemblyReference.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.LoadTest/obj/Debug/net10.0/Chargeback.LoadTest.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.LoadTest/obj/Debug/net10.0/Chargeback.LoadTest.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.LoadTest/obj/Debug/net10.0/Chargeback.LoadTest.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.LoadTest/obj/Debug/net10.0/Chargeback.LoadTest.AssemblyInfoInputs.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/bin/Debug/net10.0/Chargeback.ServiceDefaults.dll" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/bin/Debug/net10.0/Chargeback.ServiceDefaults.dll" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/bin/Debug/net10.0/Chargeback.ServiceDefaults.pdb" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/bin/Debug/net10.0/Chargeback.ServiceDefaults.pdb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.AssemblyInfoInputs.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.dll" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.dll" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.pdb" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.pdb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.sourcelink.json" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/Chargeback.ServiceDefaults.sourcelink.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/ref/Chargeback.ServiceDefaults.dll" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/ref/Chargeback.ServiceDefaults.dll" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/refint/Chargeback.ServiceDefaults.dll" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.ServiceDefaults/obj/Debug/net10.0/refint/Chargeback.ServiceDefaults.dll" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Tests/obj/Debug/net10.0/Chargeback.Tests.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Tests/obj/Debug/net10.0/Chargeback.Tests.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Chargeback.Tests/obj/Debug/net10.0/Chargeback.Tests.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/Chargeback.Tests/obj/Debug/net10.0/Chargeback.Tests.AssemblyInfoInputs.cache" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -215,7 +191,7 @@
       <option name="presentableId" value="Default" />
       <updated>1774981081263</updated>
       <workItem from="1774981084528" duration="600000" />
-      <workItem from="1776434945129" duration="1236000" />
+      <workItem from="1776434945129" duration="1718000" />
     </task>
     <servers />
   </component>

@@ -44,8 +44,7 @@ public static class LogIngestEndpoints
         IChargebackCalculator calculator,
         ChargebackMetrics metrics,
         IPurviewAuditService purviewAudit,
-        IAgent365ObservabilityService observability,
-        Channel<AuditLogItem> auditChannel,
+        Channel<AuditLogItem>auditChannel,
         ILogger<LogIngestRequest> logger)
     {
         LogIngestRequest? ingestRequest;
@@ -109,9 +108,6 @@ public static class LogIngestEndpoints
                     logger.LogWarning("Unauthorized client: {ClientAppId}/{TenantId} — no plan assigned", ingestRequest.ClientAppId, ingestRequest.TenantId);
                     return Results.Json(new { error = "Client not authorized — no plan assigned" }, statusCode: StatusCodes.Status401Unauthorized);
                 }
-
-                // Create A365 inference scope for this log processing
-                using var a365Scope = observability.StartInferenceScope(ingestRequest, clientAssignment.DisplayName);
 
                 // --- 2. Plan Lookup ---
                 var plan = await planRepo.GetAsync(clientAssignment.PlanId);

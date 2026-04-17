@@ -17,8 +17,6 @@
     <!-- Microsoft -->
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.0.0" />
     <PackageVersion Include="Microsoft.Agents.AI.Purview" Version="1.0.0-rc6" />
-    <PackageVersion Include="Microsoft.Agents.A365.Observability" Version="0.1.75-beta" />
-    <PackageVersion Include="Microsoft.Agents.A365.Observability.Runtime" Version="0.1.75-beta" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />
