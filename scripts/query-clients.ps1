@@ -18,7 +18,7 @@ $tenantId = $vars["DemoClient__TenantId"]
 $apiScope = $vars["DemoClient__ApiScope"]
 $clientId = $vars["DemoClient__Clients__0__AppId"]
 $clientSecret = $vars["DemoClient__Clients__0__Secret"]
-$baseUrl = $vars["DemoClient__ChargebackBase"]
+$baseUrl = $vars["DemoClient__AIPolicyBase"]
 
 Write-Host "Acquiring token..." -ForegroundColor Gray
 $tokenResponse = Invoke-RestMethod `

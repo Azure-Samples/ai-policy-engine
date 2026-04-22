@@ -3,8 +3,8 @@
 **/node_modules/
 **/.vs/
 **/.vscode/
-**/Chargeback.Tests/
-**/Chargeback.AppHost/
+**/AIPolicyEngine.Tests/
+**/AIPolicyEngine.AppHost/
 *.slnx
 *.sln
 *.md

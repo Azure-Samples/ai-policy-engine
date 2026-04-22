@@ -36,7 +36,7 @@ export function Layout({ children, activeTab, onTabChange, billingMode = 'token'
         <div className="flex h-16 items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <Activity className="h-6 w-6 text-[#0078D4]" />
-            <h1 className="text-xl font-bold tracking-tight">Chargeback Dashboard</h1>
+            <h1 className="text-xl font-bold tracking-tight">AI Policy Engine Dashboard</h1>
           </div>
 
           {/* Nav */}

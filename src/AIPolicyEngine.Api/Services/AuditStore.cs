@@ -9,7 +9,7 @@ namespace AIPolicyEngine.Api.Services;
 /// </summary>
 public sealed class AuditStore : IAuditStore
 {
-    private const string DatabaseName = "chargeback";
+    private const string DatabaseName = "aipolicy";
     private const string AuditLogsContainer = "audit-logs";
     private const string BillingSummariesContainer = "billing-summaries";
     private const int DefaultTtlSeconds = 94608000; // 36 months

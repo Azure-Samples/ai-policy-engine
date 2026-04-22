@@ -22,7 +22,7 @@ TENANT_ID="${vars[DemoClient__TenantId]}"
 API_SCOPE="${vars[DemoClient__ApiScope]}"
 CLIENT_ID="${vars[DemoClient__Clients__0__AppId]}"
 CLIENT_SECRET="${vars[DemoClient__Clients__0__Secret]}"
-BASE_URL="${vars[DemoClient__ChargebackBase]}"
+BASE_URL="${vars[DemoClient__AIPolicyBase]}"
 
 echo "Acquiring token..."
 TOKEN_RESPONSE=$(curl -s -X POST \

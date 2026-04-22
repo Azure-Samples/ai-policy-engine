@@ -97,7 +97,7 @@ locals {
 
 resource "azapi_resource" "workbook" {
   type      = "Microsoft.Insights/workbooks@2022-04-01"
-  name      = uuidv5("url", "${var.name_prefix}-chargeback-workbook")
+  name      = uuidv5("url", "${var.name_prefix}-aipolicy-workbook")
   location  = var.location
   parent_id = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${var.resource_group_name}"
   tags      = var.tags
@@ -105,7 +105,7 @@ resource "azapi_resource" "workbook" {
   body = {
     kind = "shared"
     properties = {
-      displayName    = "${var.name_prefix} Chargeback Dashboard"
+      displayName    = "${var.name_prefix} AI Policy Dashboard"
       serializedData = local.workbook_content
       category       = "workbook"
       sourceId       = azurerm_application_insights.this.id

@@ -40,9 +40,9 @@ internal sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSche
         var claims = new[]
         {
             new Claim(ClaimTypes.Name, "test-apim"),
-            new Claim(ClaimTypes.Role, "Chargeback.Export"),
-            new Claim(ClaimTypes.Role, "Chargeback.Admin"),
-            new Claim(ClaimTypes.Role, "Chargeback.Apim"),
+            new Claim(ClaimTypes.Role, "AIPolicy.Export"),
+            new Claim(ClaimTypes.Role, "AIPolicy.Admin"),
+            new Claim(ClaimTypes.Role, "AIPolicy.Apim"),
             new Claim("oid", "00000000-0000-0000-0000-000000000099"),
         };
         var identity = new ClaimsIdentity(claims, "TestScheme");
@@ -72,7 +72,7 @@ public sealed class ChargebackApiFactory : WebApplicationFactory<Program>
                 // Provide a dummy connection string so Aspire doesn't throw on missing config
                 ["ConnectionStrings:redis"] = "localhost:99999,abortConnect=false,connectTimeout=1",
                 // Dummy Cosmos connection for testing
-                ["ConnectionStrings:chargeback"] = "AccountEndpoint=https://localhost:8081/;AccountKey=dGVzdA==",
+                ["ConnectionStrings:aipolicy"] = "AccountEndpoint=https://localhost:8081/;AccountKey=dGVzdA==",
                 // Disable AzureAd auth in tests
                 ["AzureAd:Instance"] = "https://login.microsoftonline.com/",
                 ["AzureAd:TenantId"] = "test-tenant",

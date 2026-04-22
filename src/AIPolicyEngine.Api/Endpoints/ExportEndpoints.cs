@@ -5,9 +5,9 @@ using AIPolicyEngine.Api.Services;
 namespace AIPolicyEngine.Api.Endpoints;
 
 /// <summary>
-/// Export endpoints for downloading chargeback data as CSV.
+/// Export endpoints for downloading AI policy data as CSV.
 /// Uses Cosmos DB as primary source, falls back to Redis for pre-existing data.
-/// CSV downloads require the Chargeback.Export app role.
+/// CSV downloads require the AIPolicy.Export app role.
 /// </summary>
 public static class ExportEndpoints
 {
@@ -20,7 +20,7 @@ public static class ExportEndpoints
             .RequireAuthorization()
             .Produces<ExportPeriodsResponse>();
 
-        // CSV downloads require the Chargeback.Export role
+        // CSV downloads require the AIPolicy.Export role
         var exportGroup = routes.MapGroup("/api/export")
             .RequireAuthorization("ExportPolicy");
 

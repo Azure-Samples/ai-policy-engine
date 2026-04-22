@@ -65,7 +65,7 @@ public sealed class DeploymentDiscoveryService : IDeploymentDiscoveryService
             return [];
         }
 
-        // Derive the account name from the endpoint URL (e.g. https://chrgbk-ai.cognitiveservices.azure.com/)
+        // Derive the account name from the endpoint URL (e.g. https://aipolicy-ai.cognitiveservices.azure.com/)
         var uri = new Uri(endpoint);
         var accountName = uri.Host.Split('.')[0];
 

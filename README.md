@@ -65,7 +65,7 @@ terraform apply
 
 # Stage 2: Build and deploy the container to the provisioned ACR
 cd ../..
-./scripts/deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2
+./scripts/deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 
 # For multi-tenant: provision SPs in secondary tenant
 cd infra/terraform
@@ -476,7 +476,7 @@ terraform apply
 
 # Then build and deploy the container (also verifies Entra app config)
 cd ../..
-./scripts/deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2
+./scripts/deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 ```
 
 > **Note**: The `deploy-container.ps1` script automatically verifies and fixes Entra ID app configuration (identifier URIs, SPA redirect URIs, service principals, and role assignments for the deploying user). This works around known eventual-consistency issues in the AzureAD Terraform provider.

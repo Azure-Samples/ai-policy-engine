@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Chargeback.Tests</_Parameter1>
+      <_Parameter1>AIPolicyEngine.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 

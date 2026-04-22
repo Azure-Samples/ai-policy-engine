@@ -31,8 +31,8 @@ builder.AddRedisClient("redis", configureOptions: options =>
     }
 });
 
-// Cosmos DB via Aspire integration (uses connection named "chargeback" from AppHost)
-builder.AddAzureCosmosClient("chargeback", configureClientOptions: options =>
+// Cosmos DB via Aspire integration (uses connection named "aipolicy" from AppHost)
+builder.AddAzureCosmosClient("aipolicy", configureClientOptions: options =>
 {
     options.UseSystemTextJsonSerializerWithOptions = new System.Text.Json.JsonSerializerOptions
     {
@@ -128,11 +128,11 @@ builder.Services.AddAuthentication()
     .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("ExportPolicy", policy =>
-        policy.RequireRole("Chargeback.Export"))
+        policy.RequireRole("AIPolicy.Export"))
     .AddPolicy("ApimPolicy", policy =>
-        policy.RequireRole("Chargeback.Apim"))
+        policy.RequireRole("AIPolicy.Apim"))
     .AddPolicy("AdminPolicy", policy =>
-        policy.RequireRole("Chargeback.Admin"))
+        policy.RequireRole("AIPolicy.Admin"))
     .SetFallbackPolicy(new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build());

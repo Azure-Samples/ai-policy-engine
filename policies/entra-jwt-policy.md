@@ -66,7 +66,7 @@ This `deploymentId` is used for per-model quota tracking and usage attribution.
 **This is the core rate-limiting and quota gate.** Before the request reaches OpenAI:
 
 1. APIM acquires a token via its **managed identity** for the Container App audience — no secrets are exchanged.
-2. Calls the Chargeback API's `/api/precheck` endpoint, which checks:
+2. Calls the AI Policy API's `/api/precheck` endpoint, which checks:
    - Client is registered and has a plan assigned
    - Monthly token quota is not exhausted
    - RPM/TPM rate limits are within bounds
@@ -144,7 +144,7 @@ The policy handles both **non-streaming** and **streaming (SSE)** responses:
 </send-one-way-request>
 ```
 
-Sends a **one-way (fire-and-forget)** POST to the Chargeback API's `/api/log` endpoint with:
+Sends a **one-way (fire-and-forget)** POST to the AI Policy API's `/api/log` endpoint with:
 
 | Field | Source |
 |-------|--------|
@@ -204,7 +204,7 @@ The policy references the following `{{named values}}` that must be configured i
 |-------------|---------|
 | `{{ExpectedAudience}}` | The `aud` claim value required in JWT tokens (typically the APIM app registration's Application ID URI) |
 | `{{ContainerAppAudience}}` | The resource/audience used when acquiring a managed identity token for the Container App |
-| `{{ContainerAppUrl}}` | Base URL of the Chargeback API running on Azure Container Apps |
+| `{{ContainerAppUrl}}` | Base URL of the AI Policy API running on Azure Container Apps |
 
 ---
 

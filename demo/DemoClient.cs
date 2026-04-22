@@ -137,14 +137,14 @@ foreach (var client in settings.Clients)
     }
 
     Console.WriteLine();
-    Console.Write("  Fetching chargeback summary... ");
-    await PrintChargebackSummaryAsync(http, settings.ChargebackBase, client.AppId);
+    Console.Write("  Fetching AI Policy summary... ");
+    await PrintChargebackSummaryAsync(http, settings.AIPolicyBase, client.AppId);
     Console.WriteLine();
 }
 
 Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("Demo complete! Check the dashboard at:");
-Console.WriteLine($"  {settings.AIPolicyEngineBase}/");
+Console.WriteLine($"  {settings.AIPolicyBase}/");
 Console.ResetColor();
 
 static void LoadEnvironmentFiles()
@@ -451,7 +451,7 @@ file sealed class DemoClientSettings
     public required string ApiScope { get; init; }
     public required string ApimBase { get; init; }
     public required string ApiVersion { get; init; }
-    public required string AIPolicyEngineBase { get; init; }
+    public required string AIPolicyBase { get; init; }
     public required IReadOnlyList<DemoClientConfig> Clients { get; init; }
     public required IReadOnlyList<string> Prompts { get; init; }
     public required string AgentInstructions { get; init; }
@@ -509,7 +509,7 @@ file sealed class DemoClientSettings
             ApiScope = ReadRequired(section, "ApiScope"),
             ApimBase = ReadRequired(section, "ApimBase"),
             ApiVersion = ReadRequired(section, "ApiVersion"),
-            AIPolicyEngineBase = ReadRequired(section, "AIPolicyEngineBase"),
+            AIPolicyBase = ReadRequired(section, "AIPolicyBase"),
             Clients = clients,
             Prompts = prompts,
             AgentInstructions = instructions

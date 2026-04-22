@@ -63,7 +63,7 @@ function App() {
         <div className="flex flex-col items-center gap-6 p-8 rounded-xl border bg-card shadow-lg max-w-sm text-center">
           <Activity className="h-12 w-12 text-blue-500" />
           <div>
-            <h1 className="text-2xl font-bold mb-2">Chargeback Dashboard</h1>
+            <h1 className="text-2xl font-bold mb-2">AI Policy Engine Dashboard</h1>
             <p className="text-muted-foreground text-sm">Sign in with your organization account to access the dashboard.</p>
           </div>
           <Button onClick={() => instance.loginRedirect(loginRequest)} className="gap-2 w-full">

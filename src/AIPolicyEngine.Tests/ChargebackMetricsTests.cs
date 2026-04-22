@@ -47,7 +47,7 @@ public class ChargebackMetricsTests
     {
         var meterFactory = CreateMeterFactory();
         var metrics = new ChargebackMetrics(meterFactory);
-        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "chargeback.tokens_processed");
+        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "aipolicy.tokens_processed");
 
         metrics.RecordTokensProcessed(500, "t1", "app-1", "gpt-4o", "gpt-4o-deploy");
 
@@ -65,7 +65,7 @@ public class ChargebackMetricsTests
     {
         var meterFactory = CreateMeterFactory();
         var metrics = new ChargebackMetrics(meterFactory);
-        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "chargeback.requests_processed");
+        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "aipolicy.requests_processed");
 
         metrics.RecordRequest("t1", "app-1", "gpt-4o");
 
@@ -82,7 +82,7 @@ public class ChargebackMetricsTests
     {
         var meterFactory = CreateMeterFactory();
         var metrics = new ChargebackMetrics(meterFactory);
-        using var collector = new MetricCollector<double>(meterFactory, ChargebackMetrics.MeterName, "chargeback.cost_total");
+        using var collector = new MetricCollector<double>(meterFactory, ChargebackMetrics.MeterName, "aipolicy.cost_total");
 
         metrics.RecordCost(1.25, "t1", "app-1", "gpt-4o");
 
@@ -99,7 +99,7 @@ public class ChargebackMetricsTests
     {
         var meterFactory = CreateMeterFactory();
         var metrics = new ChargebackMetrics(meterFactory);
-        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "chargeback.tokens_processed");
+        using var collector = new MetricCollector<long>(meterFactory, ChargebackMetrics.MeterName, "aipolicy.tokens_processed");
 
         metrics.RecordTokensProcessed(100, "t1", "app-1", "gpt-4o", "deploy-1");
         metrics.RecordTokensProcessed(200, "t2", "app-1", "gpt-4", "deploy-2");

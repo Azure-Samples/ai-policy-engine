@@ -2,16 +2,16 @@
 
 <#
 .SYNOPSIS
-    Deploys the Azure OpenAI Chargeback Environment from scratch.
+    Deploys the Azure OpenAI AI Policy Environment from scratch.
 .DESCRIPTION
     Automates: Resource Group, ACR, Entra App Registrations, Docker build/push,
     Bicep infrastructure, APIM configuration, and initial plan setup.
 .PARAMETER Location
     Azure region for all resources (default: eastus2)
 .PARAMETER WorkloadName
-    Short name used as prefix for all resources (default: chrgbk)
+    Short name used as prefix for all resources (default: aipolicy)
 .PARAMETER ResourceGroupName
-    Resource group name (default: rg-chargeback-{Location})
+    Resource group name (default: rg-aipolicy-{Location})
 .PARAMETER SkipBicep
     Skip the Bicep deployment (useful when re-running post-deploy steps)
 .PARAMETER SkipDocker
@@ -25,13 +25,13 @@
     registered for billing under this tenant — useful for demonstrating per-tenant
     chargeback with a single client app serving multiple organizations.
 .EXAMPLE
-    .\setup-azure.ps1 -Location eastus2 -WorkloadName chrgbk
+    .\setup-azure.ps1 -Location eastus2 -WorkloadName aipolicy
 .EXAMPLE
-    .\setup-azure.ps1 -Location eastus2 -WorkloadName chrgbk -SecondaryTenantId "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    .\setup-azure.ps1 -Location eastus2 -WorkloadName aipolicy -SecondaryTenantId "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 #>
 param(
     [string]$Location = "eastus2",
-    [string]$WorkloadName = "chrgbk",
+    [string]$WorkloadName = "aipolicy",
     [string]$ResourceGroupName = "",
     [string]$SecondaryTenantId = "",
     [switch]$SkipBicep,
@@ -78,7 +78,7 @@ if ($CosmosAccountName.Length -gt 44) { $CosmosAccountName = $CosmosAccountName.
 if ($KeyVaultName.Length -gt 24) { $KeyVaultName = $KeyVaultName.Substring(0, 24).TrimEnd('-') }
 
 Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   Azure OpenAI Chargeback - Full Environment Setup      ║" -ForegroundColor Cyan
+Write-Host "║   Azure OpenAI AI Policy - Full Environment Setup        ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Location:       $Location"
@@ -89,26 +89,62 @@ Write-Host ""
 # Tracking variables for deployment output
 $deploymentOutput = @{}
 
+# ----------------------------------------------------------------------------
+# Invoke-AzRetry
+#
+# Drop-in wrapper for the `az` CLI. Captures stdout, retries on transient
+# Microsoft Graph / ARM failures (RemoteDisconnected, connection aborted,
+# 5xx, 429, timeouts) with exponential backoff. Preserves $LASTEXITCODE and
+# emits the original stdout so callers that pipe to ConvertFrom-Json or check
+# $LASTEXITCODE continue to work unchanged.
+#
+# Usage:   Invoke-AzRetry ad app update --id $apiAppId --identifier-uris "api://$apiAppId"
+# ----------------------------------------------------------------------------
+function Invoke-AzRetry {
+    $maxAttempts = 5
+    $transientPattern = 'RemoteDisconnected|Connection aborted|Read timed out|ReadTimeoutError|ServiceUnavailable|BadGateway|GatewayTimeout|Too Many Requests|HTTPSConnectionPool|ConnectionReset|ConnectionError|Temporary failure in name resolution|Max retries exceeded|\(50[0234]\)|\(429\)'
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $global:LASTEXITCODE = 0
+        $merged = & az @args 2>&1
+        $exitCode = $LASTEXITCODE
+        $stdout = @($merged | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+        if ($exitCode -eq 0) {
+            return $stdout
+        }
+        $stderrText = (@($merged | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) | ForEach-Object { $_.Exception.Message }) -join "`n"
+        if ($attempt -ge $maxAttempts -or $stderrText -notmatch $transientPattern) {
+            $global:LASTEXITCODE = $exitCode
+            if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
+                Write-Host $stderrText -ForegroundColor DarkRed
+            }
+            return $stdout
+        }
+        $delay = [int][Math]::Min(30, [Math]::Pow(2, $attempt))
+        Write-Host "    ⚠ Transient Azure CLI error (attempt $attempt/$maxAttempts). Retrying in ${delay}s..." -ForegroundColor DarkYellow
+        Start-Sleep -Seconds $delay
+    }
+}
+
 function Ensure-ServicePrincipal {
     param(
         [Parameter(Mandatory = $true)][string]$AppId,
         [Parameter(Mandatory = $true)][string]$DisplayName
     )
 
-    $spId = az ad sp show --id $AppId --query "id" -o tsv 2>$null
+    $spId = Invoke-AzRetry ad sp show --id $AppId --query "id" -o tsv 2>$null
     if (-not [string]::IsNullOrWhiteSpace($spId)) {
         Write-Host "    ✓ Service principal exists for $DisplayName" -ForegroundColor Green
         return
     }
 
     Write-Host "    Creating service principal for $DisplayName..." -ForegroundColor Gray
-    az ad sp create --id $AppId -o none
+    Invoke-AzRetry ad sp create --id $AppId -o none | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to create service principal for $DisplayName ($AppId)." }
 
     $spReady = $false
     for ($attempt = 1; $attempt -le 10; $attempt++) {
         Start-Sleep -Seconds 3
-        $spId = az ad sp show --id $AppId --query "id" -o tsv 2>$null
+        $spId = Invoke-AzRetry ad sp show --id $AppId --query "id" -o tsv 2>$null
         if (-not [string]::IsNullOrWhiteSpace($spId)) {
             $spReady = $true
             break
@@ -128,12 +164,12 @@ function Ensure-DelegatedScopeAndConsent {
     )
 
     # Check if this API permission already exists using the manifest directly
-    $existingAccess = az ad app show --id $ClientAppId --query "requiredResourceAccess[?resourceAppId=='$ApiAppId'].resourceAccess[].id" -o tsv 2>$null
+    $existingAccess = Invoke-AzRetry ad app show --id $ClientAppId --query "requiredResourceAccess[?resourceAppId=='$ApiAppId'].resourceAccess[].id" -o tsv 2>$null
     $alreadyHasScope = ($existingAccess -split "`n" | ForEach-Object { $_.Trim() }) -contains $ScopeId
 
     if (-not $alreadyHasScope) {
         Write-Host "    Adding delegated scope permission for $ClientDisplayName..." -ForegroundColor Gray
-        az ad app permission add --id $ClientAppId --api $ApiAppId --api-permissions "$ScopeId=Scope" -o none
+        Invoke-AzRetry ad app permission add --id $ClientAppId --api $ApiAppId --api-permissions "$ScopeId=Scope" -o none | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Failed to add delegated API permission for $ClientDisplayName." }
         Write-Host "    ✓ Delegated scope permission added" -ForegroundColor Green
     } else {
@@ -142,7 +178,7 @@ function Ensure-DelegatedScopeAndConsent {
 
     $consentGranted = $false
     for ($attempt = 1; $attempt -le 10; $attempt++) {
-        az ad app permission admin-consent --id $ClientAppId -o none 2>$null
+        Invoke-AzRetry ad app permission admin-consent --id $ClientAppId -o none 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             $consentGranted = $true
             break
@@ -310,17 +346,17 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 
 try {
     # --- API App ---
-    Write-Host "  Creating API app registration 'Chargeback API'..." -ForegroundColor Gray
+    Write-Host "  Creating API app registration 'AI Policy API'..." -ForegroundColor Gray
 
     # Check if it already exists
     $scopeId = ""
-    $existingApiApp = az ad app list --display-name "Chargeback API" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingApiApp = Invoke-AzRetry ad app list --display-name "AI Policy API" --query "[0]" 2>$null | ConvertFrom-Json
     if ($existingApiApp) {
         $apiAppId = $existingApiApp.appId
         $apiObjId = $existingApiApp.id
         Write-Host "    ✓ Reusing existing API app: $apiAppId" -ForegroundColor Green
     } else {
-        $apiApp = az ad app create --display-name "Chargeback API" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $apiApp = Invoke-AzRetry ad app create --display-name "AI Policy API" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
         $apiAppId = $apiApp.appId
         $apiObjId = $apiApp.id
         Write-Host "    ✓ API app created (multi-tenant): $apiAppId" -ForegroundColor Green
@@ -328,32 +364,32 @@ try {
     }
 
     # Ensure the API app is multi-tenant (required for cross-tenant delegated auth)
-    az ad app update --id $apiAppId --sign-in-audience AzureADMultipleOrgs 2>$null
+    Invoke-AzRetry ad app update --id $apiAppId --sign-in-audience AzureADMultipleOrgs 2>$null | Out-Null
 
     # Add Microsoft Graph openid permission (required for cross-tenant admin consent)
     $graphOpenIdId = "37f7f235-527c-4136-accd-4a02d197296e"
     Write-Host "  Ensuring Microsoft Graph openid permission on API app..." -ForegroundColor Gray
-    $apiGraphAccess = az ad app show --id $apiAppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
+    $apiGraphAccess = Invoke-AzRetry ad app show --id $apiAppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
     if (($apiGraphAccess -split "`n" | ForEach-Object { $_.Trim() }) -notcontains $graphOpenIdId) {
-        az ad app permission add --id $apiAppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null
+        Invoke-AzRetry ad app permission add --id $apiAppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null | Out-Null
     }
     Write-Host "    ✓ Graph openid permission configured on API app" -ForegroundColor Green
 
     # Ensure Application ID URI is set
-    az ad app update --id $apiAppId --identifier-uris "api://$apiAppId"
+    Invoke-AzRetry ad app update --id $apiAppId --identifier-uris "api://$apiAppId" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to set API app identifier URI." }
     Write-Host "    ✓ Identifier URI set: api://$apiAppId" -ForegroundColor Green
 
     # Resolve existing API scope, or create it if missing
-    $scopeId = az ad app show --id $apiAppId --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>$null
+    $scopeId = Invoke-AzRetry ad app show --id $apiAppId --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($scopeId)) {
         $scopeId = [guid]::NewGuid().ToString()
         $scopeBody = @{
             api = @{
                 oauth2PermissionScopes = @(@{
                     id                       = $scopeId
-                    adminConsentDisplayName  = "Access Chargeback API"
-                    adminConsentDescription  = "Allows the app to access the Chargeback API"
+                    adminConsentDisplayName  = "Access AI Policy API"
+                    adminConsentDescription  = "Allows the app to access the AI Policy API"
                     type                     = "Admin"
                     value                    = "access_as_user"
                     isEnabled                = $true
@@ -364,7 +400,7 @@ try {
         # Write to temp file to avoid shell escaping issues
         $scopeFile = Join-Path $env:TEMP "scope-body.json"
         [System.IO.File]::WriteAllText($scopeFile, $scopeBody, [System.Text.UTF8Encoding]::new($false))
-        az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none
+        Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none | Out-Null
         Remove-Item $scopeFile -ErrorAction SilentlyContinue
         if ($LASTEXITCODE -ne 0) { throw "Failed to expose API scope." }
         Write-Host "    ✓ API scope 'access_as_user' exposed" -ForegroundColor Green
@@ -373,121 +409,121 @@ try {
     }
 
     Write-Host "  Ensuring API enterprise application exists..." -ForegroundColor Gray
-    Ensure-ServicePrincipal -AppId $apiAppId -DisplayName "Chargeback API"
+    Ensure-ServicePrincipal -AppId $apiAppId -DisplayName "AI Policy API"
 
-    # Ensure Chargeback.Export app role exists on the API app
-    Write-Host "  Ensuring 'Chargeback.Export' app role..." -ForegroundColor Gray
-    $existingExportRole = az ad app show --id $apiAppId --query "appRoles[?value=='Chargeback.Export'] | [0].id" -o tsv 2>$null
+    # Ensure AIPolicy.Export app role exists on the API app
+    Write-Host "  Ensuring 'AIPolicy.Export' app role..." -ForegroundColor Gray
+    $existingExportRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Export'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingExportRole)) {
         $exportRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = az ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $exportRoleId
             allowedMemberTypes = @("User", "Application")
-            displayName        = "Chargeback Export"
-            description        = "Allows the user or application to export chargeback billing summaries and audit trails"
-            value              = "Chargeback.Export"
+            displayName        = "AI Policy Export"
+            description        = "Allows the user or application to export AI Policy billing summaries and audit trails"
+            value              = "AIPolicy.Export"
             isEnabled          = $true
         }
         $allRoles = @($currentRoles) + @($newRole)
         $roleBody = @{ appRoles = $allRoles } | ConvertTo-Json -Depth 5 -Compress
         $roleFile = Join-Path $env:TEMP "app-role-body.json"
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
-        az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none
+        Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add Chargeback.Export app role." }
-        Write-Host "    ✓ 'Chargeback.Export' app role created (ID: $exportRoleId)" -ForegroundColor Green
+        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Export app role." }
+        Write-Host "    ✓ 'AIPolicy.Export' app role created (ID: $exportRoleId)" -ForegroundColor Green
     } else {
-        Write-Host "    ✓ 'Chargeback.Export' app role already exists" -ForegroundColor Green
+        Write-Host "    ✓ 'AIPolicy.Export' app role already exists" -ForegroundColor Green
         $exportRoleId = $existingExportRole
 
         # Ensure allowedMemberTypes includes User (may have been created as Application-only)
-        $currentAllowedTypes = az ad app show --id $apiAppId --query "appRoles[?value=='Chargeback.Export'] | [0].allowedMemberTypes" -o json 2>$null | ConvertFrom-Json
+        $currentAllowedTypes = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Export'] | [0].allowedMemberTypes" -o json 2>$null | ConvertFrom-Json
         if ($currentAllowedTypes -and ($currentAllowedTypes -notcontains "User")) {
             Write-Host "    Updating app role to allow User assignments..." -ForegroundColor Gray
-            $currentRoles = az ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+            $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
             foreach ($role in $currentRoles) {
-                if ($role.value -eq "Chargeback.Export") {
+                if ($role.value -eq "AIPolicy.Export") {
                     $role.allowedMemberTypes = @("User", "Application")
                 }
             }
             $roleBody = @{ appRoles = $currentRoles } | ConvertTo-Json -Depth 5 -Compress
             $roleFile = Join-Path $env:TEMP "app-role-body.json"
             [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
-            az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none
+            Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
             Remove-Item $roleFile -ErrorAction SilentlyContinue
             Write-Host "    ✓ App role updated to allow User + Application" -ForegroundColor Green
         }
     }
 
-    # Ensure Chargeback.Admin app role exists
-    Write-Host "  Ensuring 'Chargeback.Admin' app role..." -ForegroundColor Gray
-    $existingAdminRole = az ad app show --id $apiAppId --query "appRoles[?value=='Chargeback.Admin'] | [0].id" -o tsv 2>$null
+    # Ensure AIPolicy.Admin app role exists
+    Write-Host "  Ensuring 'AIPolicy.Admin' app role..." -ForegroundColor Gray
+    $existingAdminRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Admin'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingAdminRole)) {
         $adminRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = az ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $adminRoleId
             allowedMemberTypes = @("User", "Application")
-            displayName        = "Chargeback Admin"
+            displayName        = "AIPolicy Admin"
             description        = "Allows the user or application to manage billing plans, client assignments, pricing, and usage policies"
-            value              = "Chargeback.Admin"
+            value              = "AIPolicy.Admin"
             isEnabled          = $true
         }
         $allRoles = @($currentRoles) + @($newRole)
         $roleBody = @{ appRoles = $allRoles } | ConvertTo-Json -Depth 5 -Compress
         $roleFile = Join-Path $env:TEMP "app-role-body.json"
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
-        az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none
+        Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add Chargeback.Admin app role." }
-        Write-Host "    ✓ 'Chargeback.Admin' app role created (ID: $adminRoleId)" -ForegroundColor Green
+        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Admin app role." }
+        Write-Host "    ✓ 'AIPolicy.Admin' app role created (ID: $adminRoleId)" -ForegroundColor Green
     } else {
-        Write-Host "    ✓ 'Chargeback.Admin' app role already exists" -ForegroundColor Green
+        Write-Host "    ✓ 'AIPolicy.Admin' app role already exists" -ForegroundColor Green
         $adminRoleId = $existingAdminRole
     }
 
-    # Ensure Chargeback.Apim app role exists (for APIM managed identity → Container App auth)
-    Write-Host "  Ensuring 'Chargeback.Apim' app role..." -ForegroundColor Gray
-    $existingApimRole = az ad app show --id $apiAppId --query "appRoles[?value=='Chargeback.Apim'] | [0].id" -o tsv 2>$null
+    # Ensure AIPolicy.Apim app role exists (for APIM managed identity → Container App auth)
+    Write-Host "  Ensuring 'AIPolicy.Apim' app role..." -ForegroundColor Gray
+    $existingApimRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Apim'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingApimRole)) {
         $apimRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = az ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $apimRoleId
             allowedMemberTypes = @("Application")
             displayName        = "APIM Service"
-            description        = "Allows APIM to call the chargeback API precheck and log ingest endpoints"
-            value              = "Chargeback.Apim"
+            description        = "Allows APIM to call the AIPolicy API precheck and log ingest endpoints"
+            value              = "AIPolicy.Apim"
             isEnabled          = $true
         }
         $allRoles = @($currentRoles) + @($newRole)
         $roleBody = @{ appRoles = $allRoles } | ConvertTo-Json -Depth 5 -Compress
         $roleFile = Join-Path $env:TEMP "app-role-body.json"
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
-        az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none
+        Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add Chargeback.Apim app role." }
-        Write-Host "    ✓ 'Chargeback.Apim' app role created (ID: $apimRoleId)" -ForegroundColor Green
+        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Apim app role." }
+        Write-Host "    ✓ 'AIPolicy.Apim' app role created (ID: $apimRoleId)" -ForegroundColor Green
     } else {
-        Write-Host "    ✓ 'Chargeback.Apim' app role already exists" -ForegroundColor Green
+        Write-Host "    ✓ 'AIPolicy.Apim' app role already exists" -ForegroundColor Green
         $apimRoleId = $existingApimRole
     }
 
-    # Assign Chargeback.Export and Chargeback.Admin roles to the deploying user
+    # Assign AIPolicy.Export and AIPolicy.Admin roles to the deploying user
     Write-Host "  Assigning app roles to deploying user..." -ForegroundColor Gray
-    $currentUserOid = az ad signed-in-user show --query "id" -o tsv 2>$null
+    $currentUserOid = Invoke-AzRetry ad signed-in-user show --query "id" -o tsv 2>$null
     if (-not [string]::IsNullOrWhiteSpace($currentUserOid)) {
-        $apiSpId = az ad sp show --id $apiAppId --query "id" -o tsv 2>$null
+        $apiSpId = Invoke-AzRetry ad sp show --id $apiAppId --query "id" -o tsv 2>$null
         if (-not [string]::IsNullOrWhiteSpace($apiSpId)) {
             foreach ($roleEntry in @(
-                @{ Name = "Chargeback.Export"; Id = $exportRoleId },
-                @{ Name = "Chargeback.Admin";  Id = $adminRoleId }
+                @{ Name = "AIPolicy.Export"; Id = $exportRoleId },
+                @{ Name = "AIPolicy.Admin";  Id = $adminRoleId }
             )) {
-                $existingAssignment = az rest --method GET `
+                $existingAssignment = Invoke-AzRetry rest --method GET `
                     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
                     --query "value[?principalId=='$currentUserOid' && appRoleId=='$($roleEntry.Id)'] | [0].id" -o tsv 2>$null
                 if ([string]::IsNullOrWhiteSpace($existingAssignment)) {
@@ -498,9 +534,9 @@ try {
                     } | ConvertTo-Json -Compress
                     $assignFile = Join-Path $env:TEMP "role-assign-body.json"
                     [System.IO.File]::WriteAllText($assignFile, $assignBody, [System.Text.UTF8Encoding]::new($false))
-                    az rest --method POST `
+                    Invoke-AzRetry rest --method POST `
                         --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
-                        --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null
+                        --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null | Out-Null
                     Remove-Item $assignFile -ErrorAction SilentlyContinue
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "    ✓ $($roleEntry.Name) role assigned to current user" -ForegroundColor Green
@@ -521,38 +557,38 @@ try {
     $deploymentOutput["adminRoleId"] = $adminRoleId
 
     # --- Gateway App (NEW — APIM JWT audience for client→APIM tokens) ---
-    Write-Host "  Creating gateway app 'Chargeback APIM Gateway'..." -ForegroundColor Gray
+    Write-Host "  Creating gateway app 'AIPolicy APIM Gateway'..." -ForegroundColor Gray
 
-    $existingGatewayApp = az ad app list --display-name "Chargeback APIM Gateway" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingGatewayApp = Invoke-AzRetry ad app list --display-name "AIPolicy APIM Gateway" --query "[0]" 2>$null | ConvertFrom-Json
     if ($existingGatewayApp) {
         $gatewayAppId = $existingGatewayApp.appId
         $gatewayObjId = $existingGatewayApp.id
         Write-Host "    ✓ Reusing existing gateway app: $gatewayAppId" -ForegroundColor Green
     } else {
-        $gatewayApp = az ad app create --display-name "Chargeback APIM Gateway" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $gatewayApp = Invoke-AzRetry ad app create --display-name "AIPolicy APIM Gateway" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
         $gatewayAppId = $gatewayApp.appId
         $gatewayObjId = $gatewayApp.id
         Write-Host "    ✓ Gateway app created (multi-tenant): $gatewayAppId" -ForegroundColor Green
     }
 
     # Ensure multi-tenant (required so external clients in other tenants can consent)
-    az ad app update --id $gatewayAppId --sign-in-audience AzureADMultipleOrgs 2>$null
+    Invoke-AzRetry ad app update --id $gatewayAppId --sign-in-audience AzureADMultipleOrgs 2>$null | Out-Null
 
     # Ensure Microsoft Graph openid permission on the gateway app (for third-party tenant consent)
     Write-Host "  Ensuring Microsoft Graph openid permission on gateway app..." -ForegroundColor Gray
-    $gwGraphAccess = az ad app show --id $gatewayAppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
+    $gwGraphAccess = Invoke-AzRetry ad app show --id $gatewayAppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
     if (($gwGraphAccess -split "`n" | ForEach-Object { $_.Trim() }) -notcontains $graphOpenIdId) {
-        az ad app permission add --id $gatewayAppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null
+        Invoke-AzRetry ad app permission add --id $gatewayAppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null | Out-Null
     }
     Write-Host "    ✓ Graph openid permission configured on gateway app" -ForegroundColor Green
 
     # Identifier URI
-    az ad app update --id $gatewayAppId --identifier-uris "api://$gatewayAppId"
+    Invoke-AzRetry ad app update --id $gatewayAppId --identifier-uris "api://$gatewayAppId" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to set gateway app identifier URI." }
     Write-Host "    ✓ Gateway identifier URI set: api://$gatewayAppId" -ForegroundColor Green
 
     # Expose access_as_user OAuth2 scope on the gateway (this is what APIM validates `aud` against)
-    $gatewayScopeId = az ad app show --id $gatewayAppId --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>$null
+    $gatewayScopeId = Invoke-AzRetry ad app show --id $gatewayAppId --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($gatewayScopeId)) {
         $gatewayScopeId = [guid]::NewGuid().ToString()
         $scopeBody = @{
@@ -560,7 +596,7 @@ try {
                 oauth2PermissionScopes = @(@{
                     id                       = $gatewayScopeId
                     adminConsentDisplayName  = "Access OpenAI via APIM Gateway"
-                    adminConsentDescription  = "Allows the app to call Azure OpenAI endpoints through the APIM chargeback gateway"
+                    adminConsentDescription  = "Allows the app to call Azure OpenAI endpoints through the APIM AI Policy gateway"
                     type                     = "Admin"
                     value                    = "access_as_user"
                     isEnabled                = $true
@@ -570,7 +606,7 @@ try {
 
         $scopeFile = Join-Path $env:TEMP "gateway-scope-body.json"
         [System.IO.File]::WriteAllText($scopeFile, $scopeBody, [System.Text.UTF8Encoding]::new($false))
-        az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$gatewayObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none
+        Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$gatewayObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none | Out-Null
         Remove-Item $scopeFile -ErrorAction SilentlyContinue
         if ($LASTEXITCODE -ne 0) { throw "Failed to expose gateway 'access_as_user' scope." }
         Write-Host "    ✓ Gateway scope 'access_as_user' exposed" -ForegroundColor Green
@@ -579,58 +615,58 @@ try {
     }
 
     Write-Host "  Ensuring gateway enterprise application exists..." -ForegroundColor Gray
-    Ensure-ServicePrincipal -AppId $gatewayAppId -DisplayName "Chargeback APIM Gateway"
+    Ensure-ServicePrincipal -AppId $gatewayAppId -DisplayName "AIPolicy APIM Gateway"
 
     $deploymentOutput["gatewayAppId"] = $gatewayAppId
     $deploymentOutput["gatewayObjId"] = $gatewayObjId
 
     # --- Client App 1 ---
-    Write-Host "  Creating client app 'Chargeback Sample Client'..." -ForegroundColor Gray
+    Write-Host "  Creating client app 'AIPolicy Sample Client'..." -ForegroundColor Gray
 
-    $existingClient1 = az ad app list --display-name "Chargeback Sample Client" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingClient1 = Invoke-AzRetry ad app list --display-name "AIPolicy Sample Client" --query "[0]" 2>$null | ConvertFrom-Json
     if ($existingClient1) {
         $client1AppId = $existingClient1.appId
         $client1ObjId = $existingClient1.id
         Write-Host "    ✓ Reusing existing client app 1: $client1AppId" -ForegroundColor Green
     } else {
-        $client1 = az ad app create --display-name "Chargeback Sample Client" --sign-in-audience AzureADMyOrg | ConvertFrom-Json
+        $client1 = Invoke-AzRetry ad app create --display-name "AIPolicy Sample Client" --sign-in-audience AzureADMyOrg | ConvertFrom-Json
         $client1AppId = $client1.appId
         $client1ObjId = $client1.id
         Write-Host "    ✓ Client app 1 created: $client1AppId" -ForegroundColor Green
     }
 
-    Ensure-ServicePrincipal -AppId $client1AppId -DisplayName "Chargeback Sample Client"
-    Ensure-DelegatedScopeAndConsent -ClientAppId $client1AppId -ApiAppId $gatewayAppId -ScopeId $gatewayScopeId -ClientDisplayName "Chargeback Sample Client"
+    Ensure-ServicePrincipal -AppId $client1AppId -DisplayName "AIPolicy Sample Client"
+    Ensure-DelegatedScopeAndConsent -ClientAppId $client1AppId -ApiAppId $gatewayAppId -ScopeId $gatewayScopeId -ClientDisplayName "AIPolicy Sample Client"
 
     # Add Microsoft Graph openid permission to Client 1
-    $client1GraphAccess = az ad app show --id $client1AppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
+    $client1GraphAccess = Invoke-AzRetry ad app show --id $client1AppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
     if (($client1GraphAccess -split "`n" | ForEach-Object { $_.Trim() }) -notcontains $graphOpenIdId) {
-        az ad app permission add --id $client1AppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null
+        Invoke-AzRetry ad app permission add --id $client1AppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null | Out-Null
     }
 
     # Create client secret for client 1
-    $client1Secret = az ad app credential reset --id $client1AppId --display-name "setup-script" --years 1 --query "password" -o tsv 2>$null
+    $client1Secret = Invoke-AzRetry ad app credential reset --id $client1AppId --display-name "setup-script" --years 1 --query "password" -o tsv 2>$null
     if ($client1Secret) {
         Write-Host "    ✓ Client 1 secret created" -ForegroundColor Green
     }
 
-    # Assign Chargeback.Admin to client 1 SP (used by Phase 9 for plan seeding)
-    $client1SpId = az ad sp show --id $client1AppId --query "id" -o tsv 2>$null
-    $apiSpId = az ad sp show --id $apiAppId --query "id" -o tsv 2>$null
+    # Assign AIPolicy.Admin to client 1 SP (used by Phase 9 for plan seeding)
+    $client1SpId = Invoke-AzRetry ad sp show --id $client1AppId --query "id" -o tsv 2>$null
+    $apiSpId = Invoke-AzRetry ad sp show --id $apiAppId --query "id" -o tsv 2>$null
     if (-not [string]::IsNullOrWhiteSpace($client1SpId) -and -not [string]::IsNullOrWhiteSpace($apiSpId)) {
-        $existingAdminAssign = az rest --method GET `
+        $existingAdminAssign = Invoke-AzRetry rest --method GET `
             --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
             --query "value[?principalId=='$client1SpId' && appRoleId=='$adminRoleId'] | [0].id" -o tsv 2>$null
         if ([string]::IsNullOrWhiteSpace($existingAdminAssign)) {
             $assignBody = @{ principalId = $client1SpId; resourceId = $apiSpId; appRoleId = $adminRoleId } | ConvertTo-Json -Compress
             $assignFile = Join-Path $env:TEMP "client1-admin-role.json"
             [System.IO.File]::WriteAllText($assignFile, $assignBody, [System.Text.UTF8Encoding]::new($false))
-            az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
-                --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null
+            Invoke-AzRetry rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
+                --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null | Out-Null
             Remove-Item $assignFile -ErrorAction SilentlyContinue
-            Write-Host "    ✓ Chargeback.Admin role assigned to Client 1 SP" -ForegroundColor Green
+            Write-Host "    ✓ AIPolicy.Admin role assigned to Client 1 SP" -ForegroundColor Green
         } else {
-            Write-Host "    ✓ Chargeback.Admin role already assigned to Client 1 SP" -ForegroundColor Green
+            Write-Host "    ✓ AIPolicy.Admin role already assigned to Client 1 SP" -ForegroundColor Green
         }
     }
 
@@ -649,38 +685,38 @@ try {
         $deploymentOutput["client2ObjId"] = ""
         $deploymentOutput["client2Secret"] = ""
     } else {
-    Write-Host "  Creating client app 'Chargeback Demo Client 2' (multi-tenant)..." -ForegroundColor Gray
+    Write-Host "  Creating client app 'AIPolicy Demo Client 2' (multi-tenant)..." -ForegroundColor Gray
 
-    $existingClient2 = az ad app list --display-name "Chargeback Demo Client 2" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingClient2 = Invoke-AzRetry ad app list --display-name "AIPolicy Demo Client 2" --query "[0]" 2>$null | ConvertFrom-Json
     if ($existingClient2) {
         $client2AppId = $existingClient2.appId
         $client2ObjId = $existingClient2.id
         Write-Host "    ✓ Reusing existing client app 2: $client2AppId" -ForegroundColor Green
         # Ensure it's multi-tenant
-        az ad app update --id $client2AppId --sign-in-audience AzureADMultipleOrgs 2>$null
+        Invoke-AzRetry ad app update --id $client2AppId --sign-in-audience AzureADMultipleOrgs 2>$null | Out-Null
         Write-Host "    ✓ Client 2 updated to multi-tenant (AzureADMultipleOrgs)" -ForegroundColor Green
     } else {
-        $client2 = az ad app create --display-name "Chargeback Demo Client 2" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $client2 = Invoke-AzRetry ad app create --display-name "AIPolicy Demo Client 2" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
         $client2AppId = $client2.appId
         $client2ObjId = $client2.id
         Write-Host "    ✓ Client app 2 created (multi-tenant): $client2AppId" -ForegroundColor Green
     }
 
-    Ensure-ServicePrincipal -AppId $client2AppId -DisplayName "Chargeback Demo Client 2"
-    Ensure-DelegatedScopeAndConsent -ClientAppId $client2AppId -ApiAppId $gatewayAppId -ScopeId $gatewayScopeId -ClientDisplayName "Chargeback Demo Client 2"
+    Ensure-ServicePrincipal -AppId $client2AppId -DisplayName "AIPolicy Demo Client 2"
+    Ensure-DelegatedScopeAndConsent -ClientAppId $client2AppId -ApiAppId $gatewayAppId -ScopeId $gatewayScopeId -ClientDisplayName "AIPolicy Demo Client 2"
 
     # Add Microsoft Graph openid permission to Client 2
-    $client2GraphAccess = az ad app show --id $client2AppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
+    $client2GraphAccess = Invoke-AzRetry ad app show --id $client2AppId --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" -o tsv 2>$null
     if (($client2GraphAccess -split "`n" | ForEach-Object { $_.Trim() }) -notcontains $graphOpenIdId) {
-        az ad app permission add --id $client2AppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null
+        Invoke-AzRetry ad app permission add --id $client2AppId --api 00000003-0000-0000-c000-000000000000 --api-permissions "$graphOpenIdId=Scope" -o none 2>$null | Out-Null
     }
 
     # Enable public client flow and add localhost redirect URI for interactive auth (cross-tenant demo)
-    az ad app update --id $client2AppId --public-client-redirect-uris "http://localhost:29783" --enable-id-token-issuance true 2>$null
+    Invoke-AzRetry ad app update --id $client2AppId --public-client-redirect-uris "http://localhost:29783" --enable-id-token-issuance true 2>$null | Out-Null
     Write-Host "    ✓ Client 2 public client redirect URI configured (http://localhost:29783)" -ForegroundColor Green
 
     # Create client secret for client 2
-    $client2Secret = az ad app credential reset --id $client2AppId --display-name "setup-script" --years 1 --query "password" -o tsv 2>$null
+    $client2Secret = Invoke-AzRetry ad app credential reset --id $client2AppId --display-name "setup-script" --years 1 --query "password" -o tsv 2>$null
     if ($client2Secret) {
         Write-Host "    ✓ Client 2 secret created" -ForegroundColor Green
     }
@@ -704,7 +740,7 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host "  Phase 4: Docker Build + Push" -ForegroundColor Yellow
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Yellow
 
-$imageRepository = "$($AcrName).azurecr.io/chargeback-api"
+$imageRepository = "$($AcrName).azurecr.io/aipolicy-api"
 $runTag = "run-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
 $imageTag = if ($SkipDocker) { "${imageRepository}:latest" } else { "${imageRepository}:$runTag" }
 $deploymentOutput["containerImage"] = $imageTag
@@ -781,12 +817,39 @@ if ($SkipBicep) {
         Write-Host "  ACR managed identity pull configured — no admin credentials needed." -ForegroundColor Gray
 
         Write-Host "  Checking soft-deleted resource collisions..." -ForegroundColor Gray
-        $deletedApim = az apim deletedservice list --query "[?name=='$ApimName'] | [0].name" -o tsv 2>$null
-        if (-not [string]::IsNullOrWhiteSpace($deletedApim)) {
-            Write-Host "    Purging soft-deleted APIM '$ApimName'..." -ForegroundColor Gray
-            az apim deletedservice purge --name $ApimName --location $Location -o none
-            if ($LASTEXITCODE -ne 0) { throw "Failed to purge soft-deleted APIM service '$ApimName'." }
-            Write-Host "    ✓ Purged APIM soft-delete record" -ForegroundColor Green
+        $deletedApimIds = Invoke-AzRetry apim deletedservice list --query "[?name=='$ApimName'].id" -o tsv
+        if ($LASTEXITCODE -ne 0) { throw "Failed to query soft-deleted APIM services named '$ApimName'." }
+        $deletedApimIds = @($deletedApimIds | ForEach-Object { "$_".Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($deletedApimIds.Count -gt 0) {
+            foreach ($deletedApimId in $deletedApimIds) {
+                if ($deletedApimId -notmatch '/locations/([^/]+)/deletedservices/') {
+                    throw "Could not determine the location for soft-deleted APIM service '$ApimName' from '$deletedApimId'."
+                }
+
+                $deletedApimLocation = $Matches[1]
+                Write-Host "    Purging soft-deleted APIM '$ApimName' in '$deletedApimLocation'..." -ForegroundColor Gray
+
+                $purgeOutput = & az apim deletedservice purge --service-name $ApimName --location $deletedApimLocation -o none 2>&1
+                $purgeExitCode = $LASTEXITCODE
+                $purgeErrorText = (@($purgeOutput | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                        $_.Exception.Message
+                    } else {
+                        "$_"
+                    }
+                })) -join "`n"
+
+                if ($purgeExitCode -eq 0) {
+                    Write-Host "    ✓ Purged APIM soft-delete record in $deletedApimLocation" -ForegroundColor Green
+                } elseif ($purgeErrorText -match 'ServiceNotFound|does not exist') {
+                    Write-Host "    ✓ APIM soft-delete record already absent in $deletedApimLocation" -ForegroundColor Green
+                } else {
+                    if (-not [string]::IsNullOrWhiteSpace($purgeErrorText)) {
+                        Write-Host $purgeErrorText -ForegroundColor DarkRed
+                    }
+                    throw "Failed to purge soft-deleted APIM service '$ApimName' in '$deletedApimLocation'."
+                }
+            }
         } else {
             Write-Host "    ✓ No APIM soft-delete collision" -ForegroundColor Green
         }
@@ -833,50 +896,111 @@ if ($SkipBicep) {
 
         Write-Host "  Starting Bicep deployment (this may take 30-60 minutes for APIM)..." -ForegroundColor Magenta
         Write-Host "    Template: infra/bicep/main.bicep" -ForegroundColor Gray
+        $bicepParameterArgs = @(
+            "location=$Location"
+            "workloadName=$WorkloadName"
+            "apimInstanceName=$ApimName"
+            "keyVaultName=$KeyVaultName"
+            "redisCacheName=$RedisCacheName"
+            "cosmosAccountName=$CosmosAccountName"
+            "logAnalyticsWorkspaceName=$LogAnalyticsWorkspaceName"
+            "appInsightsName=$AppInsightsName"
+            "storageAccountName=$StorageAccountName"
+            "aiServiceName=$AiServiceName"
+            "containerAppName=$ContainerAppName"
+            "containerAppEnvName=$ContainerAppEnvName"
+            "containerImage=$imageTag"
+            "acrLoginServer=$($AcrName).azurecr.io"
+            "acrName=$AcrName"
+            "oaiApiName=azure-openai-api"
+            "funcApiName=aipolicy-api"
+            "enableJwt=$($EnableJwt.ToString().ToLower())"
+            "enableKeys=$($EnableKeys.ToString().ToLower())"
+        )
+        $bicepSharedArgs = @(
+            '--resource-group'
+            $ResourceGroupName
+            '--template-file'
+            "$RepoRoot/infra/bicep/main.bicep"
+            '--parameters'
+            "$RepoRoot/infra/bicep/parameter.json"
+            '--parameters'
+        ) + $bicepParameterArgs + @(
+            '--only-show-errors'
+            '-o'
+            'json'
+        )
 
-        $bicepResult = az deployment group create `
-            --resource-group $ResourceGroupName `
-            --template-file "$RepoRoot/infra/bicep/main.bicep" `
-            --parameters "$RepoRoot/infra/bicep/parameter.json" `
-            --parameters `
-                location=$Location `
-                workloadName=$WorkloadName `
-                apimInstanceName=$ApimName `
-                keyVaultName=$KeyVaultName `
-                redisCacheName=$RedisCacheName `
-                cosmosAccountName=$CosmosAccountName `
-                logAnalyticsWorkspaceName=$LogAnalyticsWorkspaceName `
-                appInsightsName=$AppInsightsName `
-                storageAccountName=$StorageAccountName `
-                aiServiceName=$AiServiceName `
-                containerAppName=$ContainerAppName `
-                containerAppEnvName=$ContainerAppEnvName `
-                containerImage=$imageTag `
-                acrLoginServer="$($AcrName).azurecr.io" `
-                acrName=$AcrName `
-                oaiApiName="azure-openai-api" `
-                funcApiName="chargeback-api" `
-                enableJwt=$($EnableJwt.ToString().ToLower()) `
-                enableKeys=$($EnableKeys.ToString().ToLower()) `
-            --query "properties.outputs" -o json --only-show-errors 2>&1
+        Write-Host "  Validating Bicep template..." -ForegroundColor Gray
+        $bicepValidationArgs = @('deployment', 'group', 'validate') + $bicepSharedArgs
+        $bicepValidationResult = & az @bicepValidationArgs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $bicepValidationText = ($bicepValidationResult | Out-String).Trim()
+            if ($bicepValidationText -match 'The content for this response was already consumed') {
+                Write-Host "    ⚠ Azure CLI validation bug hit: $bicepValidationText" -ForegroundColor DarkYellow
+                Write-Host "    Continuing to deployment create so ARM can surface the real error details..." -ForegroundColor DarkYellow
+            } else {
+                Write-Host "    Bicep validation error details:" -ForegroundColor Red
+                Write-Host $bicepValidationText -ForegroundColor DarkRed
+                throw "Bicep template validation failed. See error output above."
+            }
+        } else {
+            Write-Host "    ✓ Bicep template validation passed" -ForegroundColor Green
+        }
 
+        $bicepDeploymentName = "$WorkloadName-infra-$(Get-Date -Format 'yyyyMMddHHmmss')"
+        Write-Host "    Deployment name: $bicepDeploymentName" -ForegroundColor Gray
+
+        $bicepCreateArgs = @('deployment', 'group', 'create', '--name', $bicepDeploymentName) + $bicepSharedArgs
+        $bicepResult = & az @bicepCreateArgs 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    Bicep deployment error details:" -ForegroundColor Red
-            Write-Host $bicepResult -ForegroundColor DarkRed
+            $bicepErrorText = ($bicepResult | Out-String).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($bicepErrorText)) {
+                Write-Host $bicepErrorText -ForegroundColor DarkRed
+            }
+
+            $armDeploymentError = az deployment group show `
+                --resource-group $ResourceGroupName `
+                --name $bicepDeploymentName `
+                --query "properties.error" -o json 2>$null
+            $armDeploymentErrorText = ($armDeploymentError | Out-String).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($armDeploymentErrorText) -and $armDeploymentErrorText -ne 'null') {
+                Write-Host "    ARM deployment error payload:" -ForegroundColor Red
+                Write-Host $armDeploymentErrorText -ForegroundColor DarkRed
+            }
+
+            $failedOperations = az deployment operation group list `
+                --resource-group $ResourceGroupName `
+                --name $bicepDeploymentName `
+                --query "[?properties.provisioningState=='Failed'].{resource:properties.targetResource.resourceName,statusMessage:properties.statusMessage}" `
+                -o json 2>$null
+            $failedOperationsText = ($failedOperations | Out-String).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($failedOperationsText) -and $failedOperationsText -ne '[]' -and $failedOperationsText -ne 'null') {
+                Write-Host "    Failed deployment operations:" -ForegroundColor Red
+                Write-Host $failedOperationsText -ForegroundColor DarkRed
+            }
+
             throw "Bicep deployment failed. See error output above."
         }
 
         $bicepResultText = ($bicepResult | Out-String).Trim()
-        $jsonStart = $bicepResultText.IndexOf('{')
-        $jsonEnd = $bicepResultText.LastIndexOf('}')
-        if ($jsonStart -lt 0 -or $jsonEnd -lt $jsonStart) {
-            Write-Host "    Unexpected deployment output:" -ForegroundColor Red
-            Write-Host $bicepResultText -ForegroundColor DarkRed
-            throw "Bicep deployment succeeded but output was not valid JSON."
+        try {
+            $bicepDeployment = $bicepResultText | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            $jsonStart = $bicepResultText.IndexOf('{')
+            $jsonEnd = $bicepResultText.LastIndexOf('}')
+            if ($jsonStart -lt 0 -or $jsonEnd -lt $jsonStart) {
+                Write-Host "    Unexpected deployment output:" -ForegroundColor Red
+                Write-Host $bicepResultText -ForegroundColor DarkRed
+                throw "Bicep deployment succeeded but output was not valid JSON."
+            }
+
+            $bicepJson = $bicepResultText.Substring($jsonStart, $jsonEnd - $jsonStart + 1)
+            $bicepDeployment = $bicepJson | ConvertFrom-Json
         }
 
-        $bicepJson = $bicepResultText.Substring($jsonStart, $jsonEnd - $jsonStart + 1)
-        $bicepOutputs = $bicepJson | ConvertFrom-Json
+        $bicepOutputs = $bicepDeployment.properties.outputs
         Write-Host "    ✓ Bicep deployment complete" -ForegroundColor Green
 
         if ($bicepOutputs.containerAppUrlInfo) {
@@ -925,7 +1049,7 @@ try {
     Write-Host "  Configuring Cosmos DB connection..." -ForegroundColor Gray
     $cosmosEndpoint = az cosmosdb show --name $CosmosAccountName --resource-group $ResourceGroupName --query "documentEndpoint" -o tsv 2>$null
     if ($cosmosEndpoint) {
-        az containerapp update --name $ContainerAppName --resource-group $ResourceGroupName --set-env-vars "ConnectionStrings__chargeback=$cosmosEndpoint" -o none
+        az containerapp update --name $ContainerAppName --resource-group $ResourceGroupName --set-env-vars "ConnectionStrings__aipolicy=$cosmosEndpoint" -o none
         if ($LASTEXITCODE -ne 0) { throw "Failed to update Container App Cosmos connection." }
         Write-Host "    ✓ Cosmos DB connection configured: $cosmosEndpoint" -ForegroundColor Green
     } else {
@@ -995,15 +1119,15 @@ try {
         Write-Host "    ⚠ No AI Services account found — skipping role assignment" -ForegroundColor DarkYellow
     }
 
-    # Assign Chargeback.Apim app role to APIM managed identity
-    Write-Host "  Assigning 'Chargeback.Apim' app role to APIM managed identity..." -ForegroundColor Gray
-    $apiSpId = az ad sp show --id $apiAppId --query "id" -o tsv 2>$null
+    # Assign AIPolicy.Apim app role to APIM managed identity
+    Write-Host "  Assigning 'AIPolicy.Apim' app role to APIM managed identity..." -ForegroundColor Gray
+    $apiSpId = Invoke-AzRetry ad sp show --id $apiAppId --query "id" -o tsv 2>$null
     if (-not [string]::IsNullOrWhiteSpace($apiSpId) -and -not [string]::IsNullOrWhiteSpace($apimPrincipal)) {
-        $apimSpId = az ad sp show --id $apimPrincipal --query "id" -o tsv 2>$null
+        $apimSpId = Invoke-AzRetry ad sp show --id $apimPrincipal --query "id" -o tsv 2>$null
         if ([string]::IsNullOrWhiteSpace($apimSpId)) {
             $apimSpId = $apimPrincipal
         }
-        $existingApimAssignment = az rest --method GET `
+        $existingApimAssignment = Invoke-AzRetry rest --method GET `
             --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
             --query "value[?principalId=='$apimSpId' && appRoleId=='$apimRoleId'] | [0].id" -o tsv 2>$null
         if ([string]::IsNullOrWhiteSpace($existingApimAssignment)) {
@@ -1014,20 +1138,20 @@ try {
             } | ConvertTo-Json -Compress
             $assignFile = Join-Path $env:TEMP "apim-role-assign.json"
             [System.IO.File]::WriteAllText($assignFile, $assignBody, [System.Text.UTF8Encoding]::new($false))
-            az rest --method POST `
+            Invoke-AzRetry rest --method POST `
                 --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" `
-                --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null
+                --headers "Content-Type=application/json" --body "@$assignFile" -o none 2>$null | Out-Null
             Remove-Item $assignFile -ErrorAction SilentlyContinue
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "    ✓ Chargeback.Apim role assigned to APIM managed identity" -ForegroundColor Green
+                Write-Host "    ✓ AIPolicy.Apim role assigned to APIM managed identity" -ForegroundColor Green
             } else {
-                Write-Host "    ⚠ Could not assign Chargeback.Apim role to APIM — assign manually" -ForegroundColor DarkYellow
+                Write-Host "    ⚠ Could not assign AIPolicy.Apim role to APIM — assign manually" -ForegroundColor DarkYellow
             }
         } else {
-            Write-Host "    ✓ Chargeback.Apim role already assigned to APIM managed identity" -ForegroundColor Green
+            Write-Host "    ✓ AIPolicy.Apim role already assigned to APIM managed identity" -ForegroundColor Green
         }
     } else {
-        Write-Host "    ⚠ Could not resolve service principals — assign Chargeback.Apim role manually" -ForegroundColor DarkYellow
+        Write-Host "    ⚠ Could not resolve service principals — assign AIPolicy.Apim role manually" -ForegroundColor DarkYellow
     }
 
     $deploymentOutput["apimName"] = $ApimName
@@ -1095,12 +1219,14 @@ try {
         $policyXml = Get-Content "$RepoRoot/policies/entra-jwt-policy.xml" -Raw
         $body = @{ properties = @{ format = "rawxml"; value = $policyXml } } | ConvertTo-Json -Depth 3 -Compress
         $policyFile = Join-Path $env:TEMP "apim-policy.json"
+        $policyResponseFile = Join-Path $env:TEMP "apim-policy-response.xml"
         [System.IO.File]::WriteAllText($policyFile, $body, [System.Text.UTF8Encoding]::new($false))
 
         $policyUri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.ApiManagement/service/$ApimName/apis/azure-openai-api-jwt/policies/policy?api-version=2022-08-01"
-        az rest --method PUT --uri $policyUri --headers "Content-Type=application/json" --body "@$policyFile" -o none
+        Invoke-AzRetry rest --method PUT --uri $policyUri --headers "Content-Type=application/json" --body "@$policyFile" --output-file $policyResponseFile -o none | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Failed to upload APIM JWT policy." }
         Remove-Item $policyFile -ErrorAction SilentlyContinue
+        Remove-Item $policyResponseFile -ErrorAction SilentlyContinue
         Write-Host "    ✓ APIM policy uploaded (entra-jwt-policy.xml)" -ForegroundColor Green
     } else {
         Write-Host "    ⊘ JWT API disabled — skipping JWT policy upload" -ForegroundColor DarkGray
@@ -1124,12 +1250,14 @@ try {
         $keyPolicyXml = Get-Content "$RepoRoot/policies/subscription-key-policy.xml" -Raw
         $keyBody = @{ properties = @{ format = "rawxml"; value = $keyPolicyXml } } | ConvertTo-Json -Depth 3 -Compress
         $keyPolicyFile = Join-Path $env:TEMP "apim-key-policy.json"
+        $keyPolicyResponseFile = Join-Path $env:TEMP "apim-key-policy-response.xml"
         [System.IO.File]::WriteAllText($keyPolicyFile, $keyBody, [System.Text.UTF8Encoding]::new($false))
 
         $keyPolicyUri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.ApiManagement/service/$ApimName/apis/azure-openai-api-keys/policies/policy?api-version=2022-08-01"
-        az rest --method PUT --uri $keyPolicyUri --headers "Content-Type=application/json" --body "@$keyPolicyFile" -o none
+        Invoke-AzRetry rest --method PUT --uri $keyPolicyUri --headers "Content-Type=application/json" --body "@$keyPolicyFile" --output-file $keyPolicyResponseFile -o none | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Failed to upload subscription-key APIM policy." }
         Remove-Item $keyPolicyFile -ErrorAction SilentlyContinue
+        Remove-Item $keyPolicyResponseFile -ErrorAction SilentlyContinue
         Write-Host "    ✓ APIM policy uploaded (subscription-key-policy.xml)" -ForegroundColor Green
     } else {
         Write-Host "    ⊘ Key-based API disabled — skipping subscription-key policy upload" -ForegroundColor DarkGray
@@ -1163,15 +1291,15 @@ try {
 
     # API app — this is the app the dashboard SPA uses as its MSAL clientId
     Write-Host "  Setting SPA redirect URIs on API app (used by dashboard UI)..." -ForegroundColor Gray
-    az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" `
-        --headers "Content-Type=application/json" --body "@$redirectFile" -o none
+    Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" `
+        --headers "Content-Type=application/json" --body "@$redirectFile" -o none | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to set redirect URIs on API app." }
     Write-Host "    ✓ API app redirect URIs: https://$containerAppUrl, http://localhost:5173" -ForegroundColor Green
 
     # Client app 1 — also needs the redirect for delegated auth flows
     Write-Host "  Setting SPA redirect URIs on client app 1..." -ForegroundColor Gray
-    az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$client1ObjId" `
-        --headers "Content-Type=application/json" --body "@$redirectFile" -o none
+    Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$client1ObjId" `
+        --headers "Content-Type=application/json" --body "@$redirectFile" -o none | Out-Null
     Remove-Item $redirectFile -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "Failed to set redirect URIs on client app 1." }
     Write-Host "    ✓ Client app 1 redirect URIs: https://$containerAppUrl, http://localhost:5173" -ForegroundColor Green
@@ -1193,7 +1321,7 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 try {
     $baseUrl = "https://$containerAppUrl"
 
-    # Acquire an access token using client1 credentials (has Chargeback.Admin role)
+    # Acquire an access token using client1 credentials (has AIPolicy.Admin role)
     Write-Host "  Acquiring access token via client credentials..." -ForegroundColor Gray
     $tokenEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
     $tokenBody = @{
@@ -1286,13 +1414,13 @@ try {
     # Assign clients to plans
     # Client 1 is single-tenant — tenantId matches the deployment tenant
     Write-Host "  Assigning clients to plans..." -ForegroundColor Gray
-    $client1Body = @{ planId = $entPlan.id; displayName = "Chargeback Sample Client" } | ConvertTo-Json
+    $client1Body = @{ planId = $entPlan.id; displayName = "AIPolicy Sample Client" } | ConvertTo-Json
     Invoke-RestMethod -Uri "$baseUrl/api/clients/$client1AppId/$tenantId" -Method Put -Body $client1Body -ContentType "application/json" -Headers $authHeaders | Out-Null
     Write-Host "    ✓ Client 1 → Enterprise plan (tenant: $tenantId)" -ForegroundColor Green
 
     # Client 2 is multi-tenant — register with the deployment tenant first (optional)
     if ($IncludeExternalDemoClient -and -not [string]::IsNullOrWhiteSpace($client2AppId)) {
-        $client2Body = @{ planId = $startPlan.id; displayName = "Chargeback Demo Client 2" } | ConvertTo-Json
+        $client2Body = @{ planId = $startPlan.id; displayName = "AIPolicy Demo Client 2" } | ConvertTo-Json
         Invoke-RestMethod -Uri "$baseUrl/api/clients/$client2AppId/$tenantId" -Method Put -Body $client2Body -ContentType "application/json" -Headers $authHeaders | Out-Null
         Write-Host "    ✓ Client 2 → Starter plan (tenant: $tenantId)" -ForegroundColor Green
 
@@ -1307,7 +1435,7 @@ try {
             Write-Host "      az ad sp create --id $client2AppId" -ForegroundColor Yellow
             Write-Host "      az login --tenant $tenantId   # switch back" -ForegroundColor Yellow
 
-            $client2SecondaryBody = @{ planId = $startPlan.id; displayName = "Chargeback Demo Client 2 (Secondary Tenant)" } | ConvertTo-Json
+            $client2SecondaryBody = @{ planId = $startPlan.id; displayName = "AIPolicy Demo Client 2 (Secondary Tenant)" } | ConvertTo-Json
             Invoke-RestMethod -Uri "$baseUrl/api/clients/$client2AppId/$SecondaryTenantId" -Method Put -Body $client2SecondaryBody -ContentType "application/json" -Headers $authHeaders | Out-Null
             Write-Host "    ✓ Client 2 → Starter plan (secondary tenant: $SecondaryTenantId)" -ForegroundColor Green
         }
@@ -1341,8 +1469,8 @@ $demoClientEnv = [ordered]@{
     "DemoClient__ApiScope"                 = "api://$gatewayAppId/.default"
     "DemoClient__ApimBase"                 = "https://$($ApimName).azure-api.net"
     "DemoClient__ApiVersion"               = "2024-02-01"
-    "DemoClient__ChargebackBase"           = "https://$containerAppUrl"
-    "DemoClient__Clients__0__Name"         = "Chargeback Sample Client"
+    "DemoClient__AIPolicyBase"             = "https://$containerAppUrl"
+    "DemoClient__Clients__0__Name"         = "AIPolicy Sample Client"
     "DemoClient__Clients__0__AppId"        = $client1AppId
     "DemoClient__Clients__0__Secret"       = $client1SecretForEnv
     "DemoClient__Clients__0__Plan"         = "Enterprise"
@@ -1350,7 +1478,7 @@ $demoClientEnv = [ordered]@{
     "DemoClient__Clients__0__TenantId"     = $tenantId
 }
 if ($IncludeExternalDemoClient -and -not [string]::IsNullOrWhiteSpace($client2AppId)) {
-    $demoClientEnv["DemoClient__Clients__1__Name"]         = "Chargeback Demo Client 2"
+    $demoClientEnv["DemoClient__Clients__1__Name"]         = "AIPolicy Demo Client 2"
     $demoClientEnv["DemoClient__Clients__1__AppId"]        = $client2AppId
     $demoClientEnv["DemoClient__Clients__1__Secret"]       = $client2SecretForEnv
     $demoClientEnv["DemoClient__Clients__1__Plan"]         = "Starter"

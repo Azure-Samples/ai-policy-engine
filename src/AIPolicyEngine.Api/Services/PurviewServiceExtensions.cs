@@ -35,7 +35,7 @@ public static class PurviewServiceExtensions
 
         // "Base" settings — AppName intentionally left as the service-level fallback.
         // PurviewAuditService overrides AppName per-event with the client's display name.
-        var baseSettings = new PurviewSettings(configuration["PURVIEW_APP_NAME"] ?? "Chargeback API")
+        var baseSettings = new PurviewSettings(configuration["PURVIEW_APP_NAME"] ?? "AI Policy Engine API")
         {
             AppVersion = "1.0.0",
             TenantId = configuration["PURVIEW_TENANT_ID"],

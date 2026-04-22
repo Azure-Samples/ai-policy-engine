@@ -20,19 +20,19 @@ public sealed class ChargebackMetrics
         var meter = meterFactory.Create(MeterName);
 
         _tokensProcessed = meter.CreateCounter<long>(
-            "chargeback.tokens_processed",
+            "aipolicy.tokens_processed",
             unit: "tokens",
-            description: "Total tokens processed for chargeback tracking");
+            description: "Total tokens processed for AI policy tracking");
 
         _requestsProcessed = meter.CreateCounter<long>(
-            "chargeback.requests_processed",
+            "aipolicy.requests_processed",
             unit: "requests",
-            description: "Total chargeback log requests processed");
+            description: "Total AI policy log requests processed");
 
         _costTotal = meter.CreateHistogram<double>(
-            "chargeback.cost_total",
+            "aipolicy.cost_total",
             unit: "USD",
-            description: "Cost distribution per chargeback entry");
+            description: "Cost distribution per AI policy entry");
     }
 
     public void RecordTokensProcessed(long tokens, string tenantId, string clientAppId, string model, string deploymentId)

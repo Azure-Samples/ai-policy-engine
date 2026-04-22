@@ -139,7 +139,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: !empty(containerAppClientId) ? 'api://${containerAppClientId}' : ''
             }
             {
-              name: 'ConnectionStrings__chargeback'
+              name: 'ConnectionStrings__aipolicy'
               value: cosmosEndpoint
             }
             {

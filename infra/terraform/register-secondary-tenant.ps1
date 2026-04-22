@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Registers service principals for the Chargeback API and Client 2 in a secondary Entra tenant.
+    Registers service principals for the AI Policy API and Client 2 in a secondary Entra tenant.
 .DESCRIPTION
     Multi-tenant Entra apps need their service principals provisioned in each tenant
     they'll authenticate against. This script creates the SPs for the API and Client 2
@@ -13,9 +13,9 @@
 .PARAMETER SecondaryTenantId
     The Entra tenant ID where service principals should be created.
 .PARAMETER ApiAppId
-    Application (client) ID of the Chargeback API app registration.
+    Application (client) ID of the AI Policy API app registration.
 .PARAMETER Client2AppId
-    Application (client) ID of Chargeback Demo Client 2.
+    Application (client) ID of the AI Policy Demo Client 2.
 .EXAMPLE
     .\register-secondary-tenant.ps1 -SecondaryTenantId "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" `
         -ApiAppId "6d82b966-31bf-44c5-89ef-19410e155750" `

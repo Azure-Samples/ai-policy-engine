@@ -165,7 +165,7 @@ resource "azurerm_container_app" "this" {
     max_replicas = 10
 
     container {
-      name   = "chargeback-api"
+      name   = "aipolicy-api"
       image  = var.container_image
       cpu    = 0.5
       memory = "1Gi"
@@ -216,7 +216,7 @@ resource "azurerm_container_app" "this" {
       }
 
       env {
-        name  = "ConnectionStrings__chargeback"
+        name  = "ConnectionStrings__aipolicy"
         value = var.cosmos_endpoint
       }
 

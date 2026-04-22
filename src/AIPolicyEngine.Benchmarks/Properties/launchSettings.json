@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Chargeback.Benchmarks": {
+    "AIPolicyEngine.Benchmarks": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

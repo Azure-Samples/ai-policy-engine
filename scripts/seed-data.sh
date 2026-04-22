@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Seeds default plans and client assignments into the Chargeback API.
+# Seeds default plans and client assignments into the AI Policy API.
 # Can be run after Terraform apply or standalone.
 #
 # Creates Enterprise and Starter plans, then assigns sample clients to them.
@@ -177,17 +177,17 @@ fi
 echo -e "\033[90mAssigning clients to plans...\033[0m"
 
 api PUT "$BASE_URL/api/clients/$CLIENT1_APP_ID/$TENANT_ID" \
-    "{\"planId\": \"$ent_plan_id\", \"displayName\": \"Chargeback Sample Client\"}" >/dev/null
+    "{\"planId\": \"$ent_plan_id\", \"displayName\": \"AI Policy Sample Client\"}" >/dev/null
 echo -e "\033[32m  ✓ Client 1 → Enterprise plan (tenant: $TENANT_ID)\033[0m"
 
 api PUT "$BASE_URL/api/clients/$CLIENT2_APP_ID/$TENANT_ID" \
-    "{\"planId\": \"$start_plan_id\", \"displayName\": \"Chargeback Demo Client 2\"}" >/dev/null
+    "{\"planId\": \"$start_plan_id\", \"displayName\": \"AI Policy Demo Client 2\"}" >/dev/null
 echo -e "\033[32m  ✓ Client 2 → Starter plan (tenant: $TENANT_ID)\033[0m"
 
 # Optional secondary tenant
 if [[ -n "${SECONDARY_TENANT_ID:-}" ]]; then
     api PUT "$BASE_URL/api/clients/$CLIENT2_APP_ID/$SECONDARY_TENANT_ID" \
-        "{\"planId\": \"$start_plan_id\", \"displayName\": \"Chargeback Demo Client 2 (Secondary Tenant)\"}" >/dev/null
+        "{\"planId\": \"$start_plan_id\", \"displayName\": \"AI Policy Demo Client 2 (Secondary Tenant)\"}" >/dev/null
     echo -e "\033[32m  ✓ Client 2 → Starter plan (secondary tenant: $SECONDARY_TENANT_ID)\033[0m"
 fi
 

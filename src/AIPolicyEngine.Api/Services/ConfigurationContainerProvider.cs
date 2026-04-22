@@ -8,7 +8,7 @@ namespace AIPolicyEngine.Api.Services;
 /// </summary>
 public sealed class ConfigurationContainerProvider
 {
-    private const string DatabaseName = "chargeback";
+    private const string DatabaseName = "aipolicy";
     private const string ContainerName = "configuration";
 
     private readonly CosmosClient _cosmosClient;

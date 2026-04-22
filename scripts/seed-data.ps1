@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Seeds default plans and client assignments into the Chargeback API.
+    Seeds default plans and client assignments into the AI Policy API.
     Can be run after Terraform apply or standalone.
 
 .DESCRIPTION
@@ -10,7 +10,7 @@
     if run with a valid bearer token. Idempotent — updates existing plans/clients.
 
 .PARAMETER BaseUrl
-    Base URL of the Chargeback API (e.g. https://chrgbk-ca.xxx.azurecontainerapps.io).
+    Base URL of the AI Policy API (e.g. https://aipolicy-ca.xxx.azurecontainerapps.io).
     If not provided, reads from terraform output.
 
 .PARAMETER Client1AppId
@@ -171,17 +171,17 @@ else {
 # Assign clients to plans
 Write-Host "Assigning clients to plans..." -ForegroundColor Gray
 
-$client1Body = @{ planId = $entPlan.id; displayName = "Chargeback Sample Client" } | ConvertTo-Json
+$client1Body = @{ planId = $entPlan.id; displayName = "AI Policy Sample Client" } | ConvertTo-Json
 Invoke-RestMethod -Uri "$BaseUrl/api/clients/$Client1AppId/$TenantId" -Method Put -Body $client1Body -ContentType "application/json" -Headers $authHeaders | Out-Null
 Write-Host "  ✓ Client 1 → Enterprise plan (tenant: $TenantId)" -ForegroundColor Green
 
-$client2Body = @{ planId = $startPlan.id; displayName = "Chargeback Demo Client 2" } | ConvertTo-Json
+$client2Body = @{ planId = $startPlan.id; displayName = "AI Policy Demo Client 2" } | ConvertTo-Json
 Invoke-RestMethod -Uri "$BaseUrl/api/clients/$Client2AppId/$TenantId" -Method Put -Body $client2Body -ContentType "application/json" -Headers $authHeaders | Out-Null
 Write-Host "  ✓ Client 2 → Starter plan (tenant: $TenantId)" -ForegroundColor Green
 
 # Optional secondary tenant
 if (-not [string]::IsNullOrWhiteSpace($SecondaryTenantId)) {
-    $client2SecondaryBody = @{ planId = $startPlan.id; displayName = "Chargeback Demo Client 2 (Secondary Tenant)" } | ConvertTo-Json
+    $client2SecondaryBody = @{ planId = $startPlan.id; displayName = "AI Policy Demo Client 2 (Secondary Tenant)" } | ConvertTo-Json
     Invoke-RestMethod -Uri "$BaseUrl/api/clients/$Client2AppId/$SecondaryTenantId" -Method Put -Body $client2SecondaryBody -ContentType "application/json" -Headers $authHeaders | Out-Null
     Write-Host "  ✓ Client 2 → Starter plan (secondary tenant: $SecondaryTenantId)" -ForegroundColor Green
 }

@@ -195,7 +195,7 @@ Precheck latency should be <10ms. If slower:
 Bill-back reports are built from audit logs stored in CosmosDB. If data is missing:
 1. **No logs recorded**: Check if `/api/log` endpoint is being called by APIM
 2. **Logs recorded but not exported**: Check export date range — default is current month
-3. **Role missing**: Export endpoints require `Chargeback.Export` app role
+3. **Role missing**: Export endpoints require `AIPolicy.Export` app role
 
 **Debug**: Check Azure Monitor logs for `/api/log` POST failures.
 

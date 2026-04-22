@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "4448819957253312403"
+      "templateHash": "16331444636128032516"
     }
   },
   "parameters": {
@@ -23,14 +23,14 @@
     },
     "containerAppName": {
       "type": "string",
-      "defaultValue": "ca-chargeback",
+      "defaultValue": "ca-aipolicy",
       "metadata": {
-        "description": "Name of the Container App for the .NET chargeback API."
+        "description": "Name of the Container App for the .NET AI Policy API."
       }
     },
     "containerAppEnvName": {
       "type": "string",
-      "defaultValue": "cae-chargeback",
+      "defaultValue": "cae-aipolicy",
       "metadata": {
         "description": "Name of the Container App Environment."
       }
@@ -39,7 +39,7 @@
       "type": "string",
       "defaultValue": "mcr.microsoft.com/dotnet/aspnet:10.0",
       "metadata": {
-        "description": "Container image for the chargeback API."
+        "description": "Container image for the AI Policy API."
       }
     },
     "keyVaultName": {
@@ -56,14 +56,14 @@
     },
     "appInsightsName": {
       "type": "string",
-      "defaultValue": "ai-chargeback",
+      "defaultValue": "ai-aipolicy",
       "metadata": {
         "description": "Name of the Application Insights resource."
       }
     },
     "workbookDisplayName": {
       "type": "string",
-      "defaultValue": "Chargeback Log Analytics Dashboard",
+      "defaultValue": "AI Policy Log Analytics Dashboard",
       "metadata": {
         "description": "Display name for the Azure Monitor workbook dashboard."
       }
@@ -1045,7 +1045,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "7799847541466511501"
+              "templateHash": "11441562030368135725"
             }
           },
           "parameters": {
@@ -1098,10 +1098,10 @@
             {
               "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
               "apiVersion": "2024-05-15",
-              "name": "[format('{0}/{1}', parameters('cosmosAccountName'), 'chargeback')]",
+              "name": "[format('{0}/{1}', parameters('cosmosAccountName'), 'aipolicy')]",
               "properties": {
                 "resource": {
-                  "id": "chargeback"
+                  "id": "aipolicy"
                 }
               },
               "dependsOn": [
@@ -1111,7 +1111,7 @@
             {
               "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
               "apiVersion": "2024-05-15",
-              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'chargeback', 'audit-logs')]",
+              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'aipolicy', 'audit-logs')]",
               "properties": {
                 "resource": {
                   "id": "audit-logs",
@@ -1150,13 +1150,13 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'chargeback')]"
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'aipolicy')]"
               ]
             },
             {
               "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
               "apiVersion": "2024-05-15",
-              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'chargeback', 'billing-summaries')]",
+              "name": "[format('{0}/{1}/{2}', parameters('cosmosAccountName'), 'aipolicy', 'billing-summaries')]",
               "properties": {
                 "resource": {
                   "id": "billing-summaries",
@@ -1192,7 +1192,7 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'chargeback')]"
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('cosmosAccountName'), 'aipolicy')]"
               ]
             }
           ],
@@ -1403,13 +1403,13 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "12890373827018962559"
+              "templateHash": "17253900654167688150"
             }
           },
           "parameters": {
             "workbookDisplayName": {
               "type": "string",
-              "defaultValue": "Chargeback Log Analytics Dashboard",
+              "defaultValue": "AI Policy Log Analytics Dashboard",
               "metadata": {
                 "description": "Display name for the Azure Monitor workbook."
               }
@@ -1441,7 +1441,7 @@
                 {
                   "type": 1,
                   "content": {
-                    "json": "## Chargeback Operations Dashboard\nThis workbook pulls 30-day operational chargeback data from Log Analytics / Application Insights telemetry."
+                    "json": "## AI Policy Operations Dashboard\nThis workbook pulls 30-day operational AI Policy data from Log Analytics / Application Insights telemetry."
                   },
                   "name": "text - 0"
                 },
@@ -1617,7 +1617,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "18420531783176905658"
+              "templateHash": "7043658220417304193"
             }
           },
           "parameters": {
@@ -1814,7 +1814,7 @@
                           "value": "[if(not(empty(parameters('containerAppClientId'))), format('api://{0}', parameters('containerAppClientId')), '')]"
                         },
                         {
-                          "name": "ConnectionStrings__chargeback",
+                          "name": "ConnectionStrings__aipolicy",
                           "value": "[parameters('cosmosEndpoint')]"
                         },
                         {

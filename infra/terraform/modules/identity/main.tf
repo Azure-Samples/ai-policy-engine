@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Identity module – Entra ID app registrations for the chargeback system
+# Identity module – Entra ID app registrations for the AI Policy system
 # ---------------------------------------------------------------------------
 
 data "azuread_client_config" "current" {}
@@ -21,14 +21,14 @@ resource "random_uuid" "role_apim" {}
 # =============================================================================
 
 resource "azuread_application" "gateway" {
-  display_name     = "Chargeback APIM Gateway"
+  display_name     = "AI Policy APIM Gateway"
   sign_in_audience = "AzureADMultipleOrgs"
 
   api {
     oauth2_permission_scope {
       id                         = random_uuid.gateway_scope_id.result
       admin_consent_display_name = "Access OpenAI via APIM Gateway"
-      admin_consent_description  = "Allows the app to call Azure OpenAI endpoints through the APIM chargeback gateway"
+      admin_consent_description  = "Allows the app to call Azure OpenAI endpoints through the APIM AI Policy gateway"
       type                       = "Admin"
       value                      = "access_as_user"
       enabled                    = true
@@ -67,19 +67,19 @@ resource "azuread_service_principal" "gateway" {
 }
 
 # =============================================================================
-# Chargeback API App Registration (single-tenant)
+# AI Policy API App Registration (single-tenant)
 # Only APIM's managed identity and dashboard users access this directly.
 # =============================================================================
 
 resource "azuread_application" "api" {
-  display_name     = "Chargeback API"
+  display_name     = "AI Policy API"
   sign_in_audience = "AzureADMyOrg"
 
   api {
     oauth2_permission_scope {
       id                         = random_uuid.oauth2_scope_id.result
-      admin_consent_display_name = "Access Chargeback API"
-      admin_consent_description  = "Allows the app to access the Chargeback API"
+      admin_consent_display_name = "Access AI Policy API"
+      admin_consent_description  = "Allows the app to access the AI Policy API"
       type                       = "Admin"
       value                      = "access_as_user"
       enabled                    = true
@@ -88,18 +88,18 @@ resource "azuread_application" "api" {
 
   app_role {
     id                   = random_uuid.role_export.result
-    display_name         = "Chargeback Export"
-    description          = "Can export chargeback data"
-    value                = "Chargeback.Export"
+    display_name         = "AI Policy Export"
+    description          = "Can export AI Policy data"
+    value                = "AIPolicy.Export"
     allowed_member_types = ["Application", "User"]
     enabled              = true
   }
 
   app_role {
     id                   = random_uuid.role_admin.result
-    display_name         = "Chargeback Admin"
-    description          = "Full administrative access to the chargeback system"
-    value                = "Chargeback.Admin"
+    display_name         = "AI Policy Admin"
+    description          = "Full administrative access to the AI Policy system"
+    value                = "AIPolicy.Admin"
     allowed_member_types = ["Application", "User"]
     enabled              = true
   }
@@ -108,7 +108,7 @@ resource "azuread_application" "api" {
     id                   = random_uuid.role_apim.result
     display_name         = "APIM Service"
     description          = "API Management service access"
-    value                = "Chargeback.Apim"
+    value                = "AIPolicy.Apim"
     allowed_member_types = ["Application"]
     enabled              = true
   }
@@ -146,7 +146,7 @@ resource "azuread_service_principal" "api" {
 # =============================================================================
 
 resource "azuread_application" "client1" {
-  display_name     = "Chargeback Sample Client"
+  display_name     = "AI Policy Sample Client"
   sign_in_audience = "AzureADMyOrg"
 
   required_resource_access {
@@ -193,7 +193,7 @@ resource "azuread_app_role_assignment" "client1_admin" {
 # =============================================================================
 
 resource "azuread_application" "client2" {
-  display_name     = "Chargeback Demo Client 2"
+  display_name     = "AI Policy Demo Client 2"
   sign_in_audience = "AzureADMultipleOrgs"
 
   required_resource_access {

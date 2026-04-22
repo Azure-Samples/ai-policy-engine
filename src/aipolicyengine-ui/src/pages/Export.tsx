@@ -67,9 +67,9 @@ export function Export() {
         // Don't show error for auth failures — the user may not have the export role
         const msg = err?.message ?? ""
         if (msg.includes("401") || msg.includes("Unauthorized")) {
-          setError("You do not have the Chargeback.Export role required to access export data. Contact your administrator to assign this role.")
+          setError("You do not have the AIPolicy.Export role required to access export data. Contact your administrator to assign this role.")
         } else if (msg.includes("403") || msg.includes("Forbidden")) {
-          setError("Access denied. The Chargeback.Export role is required to export data.")
+          setError("Access denied. The AIPolicy.Export role is required to export data.")
         } else {
           setError(msg)
         }
