@@ -100,6 +100,30 @@ resource billingSummariesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDat
   }
 }
 
+resource configurationContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: database
+  name: 'configuration'
+  properties: {
+    resource: {
+      id: 'configuration'
+      partitionKey: {
+        paths: ['/partitionKey']
+        kind: 'Hash'
+      }
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        includedPaths: [
+          { path: '/*' }
+        ]
+        excludedPaths: [
+          { path: '/"_etag"/?' }
+        ]
+      }
+      defaultTtl: 94608000 // 36 months in seconds
+    }
+  }
+}
+
 output cosmosAccountName string = cosmosAccount.name
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output cosmosPrincipalId string = cosmosAccount.identity.principalId
