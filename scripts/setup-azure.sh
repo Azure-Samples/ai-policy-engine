@@ -868,7 +868,6 @@ else
     bicep_common_args=(
         --resource-group "$RESOURCE_GROUP_NAME"
         --template-file "$REPO_ROOT/infra/bicep/main.bicep"
-        --parameters "$REPO_ROOT/infra/bicep/parameter.json"
         --parameters
         "${bicep_parameter_args[@]}"
         --only-show-errors

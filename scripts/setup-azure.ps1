@@ -88,6 +88,8 @@ Write-Host ""
 
 # Tracking variables for deployment output
 $deploymentOutput = @{}
+$script:LastAzError = ""
+$script:TenantIdHint = ""
 
 # ----------------------------------------------------------------------------
 # Invoke-AzRetry
@@ -96,7 +98,8 @@ $deploymentOutput = @{}
 # Microsoft Graph / ARM failures (RemoteDisconnected, connection aborted,
 # 5xx, 429, timeouts) with exponential backoff. Preserves $LASTEXITCODE and
 # emits the original stdout so callers that pipe to ConvertFrom-Json or check
-# $LASTEXITCODE continue to work unchanged.
+# $LASTEXITCODE continue to work unchanged, and records the last stderr text so
+# higher-level helpers can surface targeted remediation.
 #
 # Usage:   Invoke-AzRetry ad app update --id $apiAppId --identifier-uris "api://$apiAppId"
 # ----------------------------------------------------------------------------
@@ -109,9 +112,11 @@ function Invoke-AzRetry {
         $exitCode = $LASTEXITCODE
         $stdout = @($merged | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
         if ($exitCode -eq 0) {
+            $script:LastAzError = ""
             return $stdout
         }
         $stderrText = (@($merged | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) | ForEach-Object { $_.Exception.Message }) -join "`n"
+        $script:LastAzError = $stderrText
         if ($attempt -ge $maxAttempts -or $stderrText -notmatch $transientPattern) {
             $global:LASTEXITCODE = $exitCode
             if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
@@ -122,6 +127,72 @@ function Invoke-AzRetry {
         $delay = [int][Math]::Min(30, [Math]::Pow(2, $attempt))
         Write-Host "    ⚠ Transient Azure CLI error (attempt $attempt/$maxAttempts). Retrying in ${delay}s..." -ForegroundColor DarkYellow
         Start-Sleep -Seconds $delay
+    }
+}
+
+function Get-AzFailureMessage {
+    param(
+        [Parameter(Mandatory = $true)][string]$Operation
+    )
+
+    $stderrText = $script:LastAzError
+    if ($stderrText -match 'Continuous access evaluation resulted in challenge' -or
+        $stderrText -match 'TokenCreatedWithOutdatedPolicies' -or
+        $stderrText -match 'InteractionRequired') {
+        $loginHint = if ([string]::IsNullOrWhiteSpace($script:TenantIdHint)) {
+            "Run 'az login --scope https://graph.microsoft.com//.default' and rerun the script."
+        } else {
+            "Run 'az login --tenant $($script:TenantIdHint) --scope https://graph.microsoft.com//.default' and rerun the script."
+        }
+
+        return "$Operation failed because Microsoft Graph rejected the current Azure CLI session due to a Continuous Access Evaluation challenge (TokenCreatedWithOutdatedPolicies). $loginHint"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
+        return "$Operation failed. Azure CLI said: $stderrText"
+    }
+
+    return "$Operation failed."
+}
+
+function Throw-AzFailure {
+    param(
+        [Parameter(Mandatory = $true)][string]$Operation
+    )
+
+    throw (Get-AzFailureMessage -Operation $Operation)
+}
+
+function ConvertFrom-AzJsonOutput {
+    param(
+        [AllowNull()]$Output,
+        [Parameter(Mandatory = $true)][string]$Operation,
+        [switch]$AllowEmpty
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        Throw-AzFailure -Operation $Operation
+    }
+
+    $text = if ($null -eq $Output) {
+        ""
+    } elseif ($Output -is [System.Array]) {
+        ($Output | ForEach-Object { "$_" }) -join "`n"
+    } else {
+        "$Output"
+    }
+    $text = $text.Trim()
+
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        if ($AllowEmpty) { return $null }
+        throw "$Operation returned no JSON output."
+    }
+
+    try {
+        return $text | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        $snippet = if ($text.Length -gt 400) { "$($text.Substring(0, 400))..." } else { $text }
+        throw "$Operation returned invalid JSON: $snippet"
     }
 }
 
@@ -139,7 +210,7 @@ function Ensure-ServicePrincipal {
 
     Write-Host "    Creating service principal for $DisplayName..." -ForegroundColor Gray
     Invoke-AzRetry ad sp create --id $AppId -o none | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to create service principal for $DisplayName ($AppId)." }
+    if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Creating service principal for $DisplayName ($AppId)" }
 
     $spReady = $false
     for ($attempt = 1; $attempt -le 10; $attempt++) {
@@ -170,7 +241,7 @@ function Ensure-DelegatedScopeAndConsent {
     if (-not $alreadyHasScope) {
         Write-Host "    Adding delegated scope permission for $ClientDisplayName..." -ForegroundColor Gray
         Invoke-AzRetry ad app permission add --id $ClientAppId --api $ApiAppId --api-permissions "$ScopeId=Scope" -o none | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add delegated API permission for $ClientDisplayName." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Adding delegated API permission for $ClientDisplayName" }
         Write-Host "    ✓ Delegated scope permission added" -ForegroundColor Green
     } else {
         Write-Host "    ✓ Delegated scope permission already present for $ClientDisplayName" -ForegroundColor Green
@@ -188,7 +259,13 @@ function Ensure-DelegatedScopeAndConsent {
         Start-Sleep -Seconds 5
     }
 
-    if (-not $consentGranted) { throw "Failed to grant admin consent for $ClientDisplayName after retries." }
+    if (-not $consentGranted) {
+        if ($LASTEXITCODE -ne 0) {
+            Throw-AzFailure -Operation "Granting admin consent for $ClientDisplayName"
+        }
+
+        throw "Failed to grant admin consent for $ClientDisplayName after retries."
+    }
     Write-Host "    ✓ Admin consent granted for $ClientDisplayName" -ForegroundColor Green
 }
 
@@ -210,9 +287,18 @@ try {
     if (-not $account) { throw "Not logged in to Azure CLI. Run 'az login' first." }
     $subscriptionId = $account.id
     $tenantId = $account.tenantId
+    $script:TenantIdHint = $tenantId
     Write-Host "    ✓ Logged in: $($account.user.name)" -ForegroundColor Green
     Write-Host "    ✓ Subscription: $($account.name) ($subscriptionId)" -ForegroundColor Green
     Write-Host "    ✓ Tenant: $tenantId" -ForegroundColor Green
+
+    Write-Host "  Checking Microsoft Graph access..." -ForegroundColor Gray
+    $graphToken = Invoke-AzRetry account get-access-token --resource "https://graph.microsoft.com/" --query "accessToken" -o tsv 2>$null
+    $graphTokenText = ($graphToken | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($graphTokenText)) {
+        Throw-AzFailure -Operation "Microsoft Graph authentication check"
+    }
+    Write-Host "    ✓ Microsoft Graph access ready" -ForegroundColor Green
 
     $deploymentOutput["subscriptionId"] = $subscriptionId
     $deploymentOutput["tenantId"] = $tenantId
@@ -350,13 +436,13 @@ try {
 
     # Check if it already exists
     $scopeId = ""
-    $existingApiApp = Invoke-AzRetry ad app list --display-name "AI Policy API" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingApiApp = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app list --display-name "AI Policy API" --query "[0]" 2>$null) -Operation "Looking up API app registration 'AI Policy API'" -AllowEmpty
     if ($existingApiApp) {
         $apiAppId = $existingApiApp.appId
         $apiObjId = $existingApiApp.id
         Write-Host "    ✓ Reusing existing API app: $apiAppId" -ForegroundColor Green
     } else {
-        $apiApp = Invoke-AzRetry ad app create --display-name "AI Policy API" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $apiApp = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app create --display-name "AI Policy API" --sign-in-audience AzureADMultipleOrgs) -Operation "Creating API app registration 'AI Policy API'"
         $apiAppId = $apiApp.appId
         $apiObjId = $apiApp.id
         Write-Host "    ✓ API app created (multi-tenant): $apiAppId" -ForegroundColor Green
@@ -377,7 +463,7 @@ try {
 
     # Ensure Application ID URI is set
     Invoke-AzRetry ad app update --id $apiAppId --identifier-uris "api://$apiAppId" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to set API app identifier URI." }
+    if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Setting API app identifier URI" }
     Write-Host "    ✓ Identifier URI set: api://$apiAppId" -ForegroundColor Green
 
     # Resolve existing API scope, or create it if missing
@@ -402,7 +488,7 @@ try {
         [System.IO.File]::WriteAllText($scopeFile, $scopeBody, [System.Text.UTF8Encoding]::new($false))
         Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none | Out-Null
         Remove-Item $scopeFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to expose API scope." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Exposing API scope 'access_as_user'" }
         Write-Host "    ✓ API scope 'access_as_user' exposed" -ForegroundColor Green
     } else {
         Write-Host "    ✓ API scope 'access_as_user' already present" -ForegroundColor Green
@@ -416,7 +502,7 @@ try {
     $existingExportRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Export'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingExportRole)) {
         $exportRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null) -Operation "Reading API app roles"
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $exportRoleId
@@ -432,17 +518,17 @@ try {
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
         Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Export app role." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Adding AIPolicy.Export app role" }
         Write-Host "    ✓ 'AIPolicy.Export' app role created (ID: $exportRoleId)" -ForegroundColor Green
     } else {
         Write-Host "    ✓ 'AIPolicy.Export' app role already exists" -ForegroundColor Green
         $exportRoleId = $existingExportRole
 
         # Ensure allowedMemberTypes includes User (may have been created as Application-only)
-        $currentAllowedTypes = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Export'] | [0].allowedMemberTypes" -o json 2>$null | ConvertFrom-Json
+        $currentAllowedTypes = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Export'] | [0].allowedMemberTypes" -o json 2>$null) -Operation "Reading AIPolicy.Export app role configuration" -AllowEmpty
         if ($currentAllowedTypes -and ($currentAllowedTypes -notcontains "User")) {
             Write-Host "    Updating app role to allow User assignments..." -ForegroundColor Gray
-            $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+            $currentRoles = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null) -Operation "Reading API app roles"
             foreach ($role in $currentRoles) {
                 if ($role.value -eq "AIPolicy.Export") {
                     $role.allowedMemberTypes = @("User", "Application")
@@ -462,7 +548,7 @@ try {
     $existingAdminRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Admin'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingAdminRole)) {
         $adminRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null) -Operation "Reading API app roles"
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $adminRoleId
@@ -478,7 +564,7 @@ try {
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
         Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Admin app role." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Adding AIPolicy.Admin app role" }
         Write-Host "    ✓ 'AIPolicy.Admin' app role created (ID: $adminRoleId)" -ForegroundColor Green
     } else {
         Write-Host "    ✓ 'AIPolicy.Admin' app role already exists" -ForegroundColor Green
@@ -490,7 +576,7 @@ try {
     $existingApimRole = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles[?value=='AIPolicy.Apim'] | [0].id" -o tsv 2>$null
     if ([string]::IsNullOrWhiteSpace($existingApimRole)) {
         $apimRoleId = [guid]::NewGuid().ToString()
-        $currentRoles = Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null | ConvertFrom-Json
+        $currentRoles = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app show --id $apiAppId --query "appRoles" -o json 2>$null) -Operation "Reading API app roles"
         if (-not $currentRoles) { $currentRoles = @() }
         $newRole = @{
             id                 = $apimRoleId
@@ -506,7 +592,7 @@ try {
         [System.IO.File]::WriteAllText($roleFile, $roleBody, [System.Text.UTF8Encoding]::new($false))
         Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$apiObjId" --headers "Content-Type=application/json" --body "@$roleFile" -o none | Out-Null
         Remove-Item $roleFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to add AIPolicy.Apim app role." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Adding AIPolicy.Apim app role" }
         Write-Host "    ✓ 'AIPolicy.Apim' app role created (ID: $apimRoleId)" -ForegroundColor Green
     } else {
         Write-Host "    ✓ 'AIPolicy.Apim' app role already exists" -ForegroundColor Green
@@ -559,13 +645,13 @@ try {
     # --- Gateway App (NEW — APIM JWT audience for client→APIM tokens) ---
     Write-Host "  Creating gateway app 'AIPolicy APIM Gateway'..." -ForegroundColor Gray
 
-    $existingGatewayApp = Invoke-AzRetry ad app list --display-name "AIPolicy APIM Gateway" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingGatewayApp = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app list --display-name "AIPolicy APIM Gateway" --query "[0]" 2>$null) -Operation "Looking up gateway app registration 'AIPolicy APIM Gateway'" -AllowEmpty
     if ($existingGatewayApp) {
         $gatewayAppId = $existingGatewayApp.appId
         $gatewayObjId = $existingGatewayApp.id
         Write-Host "    ✓ Reusing existing gateway app: $gatewayAppId" -ForegroundColor Green
     } else {
-        $gatewayApp = Invoke-AzRetry ad app create --display-name "AIPolicy APIM Gateway" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $gatewayApp = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app create --display-name "AIPolicy APIM Gateway" --sign-in-audience AzureADMultipleOrgs) -Operation "Creating gateway app registration 'AIPolicy APIM Gateway'"
         $gatewayAppId = $gatewayApp.appId
         $gatewayObjId = $gatewayApp.id
         Write-Host "    ✓ Gateway app created (multi-tenant): $gatewayAppId" -ForegroundColor Green
@@ -584,7 +670,7 @@ try {
 
     # Identifier URI
     Invoke-AzRetry ad app update --id $gatewayAppId --identifier-uris "api://$gatewayAppId" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to set gateway app identifier URI." }
+    if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Setting gateway app identifier URI" }
     Write-Host "    ✓ Gateway identifier URI set: api://$gatewayAppId" -ForegroundColor Green
 
     # Expose access_as_user OAuth2 scope on the gateway (this is what APIM validates `aud` against)
@@ -608,7 +694,7 @@ try {
         [System.IO.File]::WriteAllText($scopeFile, $scopeBody, [System.Text.UTF8Encoding]::new($false))
         Invoke-AzRetry rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$gatewayObjId" --headers "Content-Type=application/json" --body "@$scopeFile" -o none | Out-Null
         Remove-Item $scopeFile -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "Failed to expose gateway 'access_as_user' scope." }
+        if ($LASTEXITCODE -ne 0) { Throw-AzFailure -Operation "Exposing gateway 'access_as_user' scope" }
         Write-Host "    ✓ Gateway scope 'access_as_user' exposed" -ForegroundColor Green
     } else {
         Write-Host "    ✓ Gateway scope 'access_as_user' already present" -ForegroundColor Green
@@ -623,13 +709,13 @@ try {
     # --- Client App 1 ---
     Write-Host "  Creating client app 'AIPolicy Sample Client'..." -ForegroundColor Gray
 
-    $existingClient1 = Invoke-AzRetry ad app list --display-name "AIPolicy Sample Client" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingClient1 = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app list --display-name "AIPolicy Sample Client" --query "[0]" 2>$null) -Operation "Looking up client app registration 'AIPolicy Sample Client'" -AllowEmpty
     if ($existingClient1) {
         $client1AppId = $existingClient1.appId
         $client1ObjId = $existingClient1.id
         Write-Host "    ✓ Reusing existing client app 1: $client1AppId" -ForegroundColor Green
     } else {
-        $client1 = Invoke-AzRetry ad app create --display-name "AIPolicy Sample Client" --sign-in-audience AzureADMyOrg | ConvertFrom-Json
+        $client1 = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app create --display-name "AIPolicy Sample Client" --sign-in-audience AzureADMyOrg) -Operation "Creating client app registration 'AIPolicy Sample Client'"
         $client1AppId = $client1.appId
         $client1ObjId = $client1.id
         Write-Host "    ✓ Client app 1 created: $client1AppId" -ForegroundColor Green
@@ -687,7 +773,7 @@ try {
     } else {
     Write-Host "  Creating client app 'AIPolicy Demo Client 2' (multi-tenant)..." -ForegroundColor Gray
 
-    $existingClient2 = Invoke-AzRetry ad app list --display-name "AIPolicy Demo Client 2" --query "[0]" 2>$null | ConvertFrom-Json
+    $existingClient2 = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app list --display-name "AIPolicy Demo Client 2" --query "[0]" 2>$null) -Operation "Looking up client app registration 'AIPolicy Demo Client 2'" -AllowEmpty
     if ($existingClient2) {
         $client2AppId = $existingClient2.appId
         $client2ObjId = $existingClient2.id
@@ -696,7 +782,7 @@ try {
         Invoke-AzRetry ad app update --id $client2AppId --sign-in-audience AzureADMultipleOrgs 2>$null | Out-Null
         Write-Host "    ✓ Client 2 updated to multi-tenant (AzureADMultipleOrgs)" -ForegroundColor Green
     } else {
-        $client2 = Invoke-AzRetry ad app create --display-name "AIPolicy Demo Client 2" --sign-in-audience AzureADMultipleOrgs | ConvertFrom-Json
+        $client2 = ConvertFrom-AzJsonOutput -Output (Invoke-AzRetry ad app create --display-name "AIPolicy Demo Client 2" --sign-in-audience AzureADMultipleOrgs) -Operation "Creating client app registration 'AIPolicy Demo Client 2'"
         $client2AppId = $client2.appId
         $client2ObjId = $client2.id
         Write-Host "    ✓ Client app 2 created (multi-tenant): $client2AppId" -ForegroundColor Green
@@ -922,8 +1008,6 @@ if ($SkipBicep) {
             $ResourceGroupName
             '--template-file'
             "$RepoRoot/infra/bicep/main.bicep"
-            '--parameters'
-            "$RepoRoot/infra/bicep/parameter.json"
             '--parameters'
         ) + $bicepParameterArgs + @(
             '--only-show-errors'

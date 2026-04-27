@@ -5,7 +5,7 @@ resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2025-04-01' = {
   name: redisCacheName
   location: location
   properties: {
-    highAvailability: 'Disabled'
+    highAvailability: 'Enabled'
     minimumTlsVersion: '1.2'
   }
   sku: {
