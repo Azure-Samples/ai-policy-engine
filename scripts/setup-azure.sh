@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# setup-azure.sh — Deploys the Azure OpenAI Chargeback Environment from scratch.
+# setup-azure.sh — Deploys the Azure OpenAI AI Policy Environment from scratch.
 #
 # Automates: Resource Group, ACR, Entra App Registrations, ACR image build,
 # Bicep infrastructure, APIM configuration, and initial plan setup.
@@ -10,13 +10,14 @@
 #
 # Options:
 #   -l, --location LOCATION            Azure region (default: eastus2)
-#   -w, --workload-name NAME           Short prefix for resources (default: chrgbk)
+#   -w, --workload-name NAME           Short prefix for resources (default: aipolicy)
 #   -g, --resource-group NAME          Resource group name (default: rg-{workload}-{location})
 #   -s, --secondary-tenant-id ID       Optional second Entra tenant for cross-tenant demo
 #       --skip-bicep                   Skip the Bicep deployment
 #       --skip-build                   Skip ACR image build
 #       --no-jwt                       Disable JWT-authenticated OpenAI API endpoint
 #       --no-keys                      Disable subscription-key-authenticated OpenAI API endpoint
+#       --no-external-demo-client      Skip the optional 'AIPolicy Demo Client 2' external demo app
 #   -h, --help                         Show this help
 
 set -uo pipefail
@@ -46,13 +47,14 @@ trim_trailing_dashes() { echo "$1" | sed 's/-*$//'; }
 
 # ── Defaults / argument parsing ─────────────────────────────────────────────
 LOCATION="eastus2"
-WORKLOAD_NAME="chrgbk"
+WORKLOAD_NAME="aipolicy"
 RESOURCE_GROUP_NAME=""
 SECONDARY_TENANT_ID=""
 SKIP_BICEP=false
 SKIP_BUILD=false
 ENABLE_JWT=true
 ENABLE_KEYS=true
+INCLUDE_EXTERNAL_DEMO_CLIENT=true
 
 usage() {
     sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# //' | sed 's/^#//'
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         --skip-build)            SKIP_BUILD=true;             shift   ;;
         --no-jwt)                ENABLE_JWT=false;            shift   ;;
         --no-keys)               ENABLE_KEYS=false;           shift   ;;
+        --no-external-demo-client) INCLUDE_EXTERNAL_DEMO_CLIENT=false; shift ;;
         -h|--help)               usage ;;
         *) die "Unknown option: $1" ;;
     esac
@@ -108,7 +111,7 @@ STORAGE_ACCOUNT_NAME=""
 [[ ${#KEY_VAULT_NAME} -gt 24 ]]        && KEY_VAULT_NAME=$(trim_trailing_dashes "${KEY_VAULT_NAME:0:24}")
 
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║   Azure OpenAI Chargeback - Full Environment Setup      ║${NC}"
+echo -e "${CYAN}║   Azure OpenAI AI Policy - Full Environment Setup        ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo "  Location:       $LOCATION"
@@ -118,23 +121,55 @@ echo ""
 
 # ── Helper functions ────────────────────────────────────────────────────────
 
+# az_retry — wrap az invocations with exponential-backoff retry on transient Graph/ARM errors.
+# Usage: az_retry ad app update --id "$x" ...     (drop the 'az' — it is implicit)
+# Prints stdout to caller's stdout, returns the final exit code. Stderr is captured for
+# pattern matching and only surfaced on permanent failure (matching the existing 2>/dev/null style).
+az_retry() {
+    local max_attempts=5
+    local attempt=0 delay exit_code
+    local tmp_stdout tmp_stderr
+    tmp_stdout=$(mktemp)
+    tmp_stderr=$(mktemp)
+    while :; do
+        attempt=$((attempt + 1))
+        az "$@" >"$tmp_stdout" 2>"$tmp_stderr"
+        exit_code=$?
+        if (( exit_code == 0 )); then
+            cat "$tmp_stdout"
+            rm -f "$tmp_stdout" "$tmp_stderr"
+            return 0
+        fi
+        if (( attempt >= max_attempts )) || ! grep -qiE 'RemoteDisconnected|Connection aborted|Read timed out|ReadTimeoutError|ServiceUnavailable|BadGateway|GatewayTimeout|Too Many Requests|HTTPSConnectionPool|ConnectionReset|ConnectionError|Temporary failure in name resolution|Max retries exceeded|\(50[0234]\)|\(429\)' "$tmp_stderr"; then
+            cat "$tmp_stdout"
+            cat "$tmp_stderr" >&2
+            rm -f "$tmp_stdout" "$tmp_stderr"
+            return "$exit_code"
+        fi
+        delay=$(( 2 ** attempt ))
+        (( delay > 30 )) && delay=30
+        echo -e "  ${DARKYELLOW}  ⚠ Transient Azure CLI error (attempt ${attempt}/${max_attempts}). Retrying in ${delay}s...${NC}" >&2
+        sleep "$delay"
+    done
+}
+
 ensure_service_principal() {
     local app_id="$1" display_name="$2"
 
     local sp_id
-    sp_id=$(az ad sp show --id "$app_id" --query "id" -o tsv 2>/dev/null) || true
+    sp_id=$(az_retry ad sp show --id "$app_id" --query "id" -o tsv 2>/dev/null) || true
     if [[ -n "$sp_id" ]]; then
         success "Service principal exists for $display_name"
         return 0
     fi
 
     info "  Creating service principal for $display_name..."
-    az ad sp create --id "$app_id" -o none || die "Failed to create service principal for $display_name ($app_id)."
+    az_retry ad sp create --id "$app_id" -o none || die "Failed to create service principal for $display_name ($app_id)."
 
     local sp_ready=false
     for attempt in $(seq 1 10); do
         sleep 3
-        sp_id=$(az ad sp show --id "$app_id" --query "id" -o tsv 2>/dev/null) || true
+        sp_id=$(az_retry ad sp show --id "$app_id" --query "id" -o tsv 2>/dev/null) || true
         if [[ -n "$sp_id" ]]; then
             sp_ready=true
             break
@@ -148,12 +183,12 @@ ensure_delegated_scope_and_consent() {
     local client_app_id="$1" api_app_id="$2" scope_id="$3" client_display_name="$4"
 
     local existing_access
-    existing_access=$(az ad app show --id "$client_app_id" \
+    existing_access=$(az_retry ad app show --id "$client_app_id" \
         --query "requiredResourceAccess[?resourceAppId=='$api_app_id'].resourceAccess[].id" -o tsv 2>/dev/null) || true
 
     if ! echo "$existing_access" | grep -qx "$scope_id"; then
         info "  Adding delegated scope permission for $client_display_name..."
-        az ad app permission add --id "$client_app_id" --api "$api_app_id" \
+        az_retry ad app permission add --id "$client_app_id" --api "$api_app_id" \
             --api-permissions "${scope_id}=Scope" -o none \
             || die "Failed to add delegated API permission for $client_display_name."
         success "Delegated scope permission added"
@@ -163,7 +198,7 @@ ensure_delegated_scope_and_consent() {
 
     local consent_granted=false
     for attempt in $(seq 1 10); do
-        if az ad app permission admin-consent --id "$client_app_id" -o none 2>/dev/null; then
+        if az_retry ad app permission admin-consent --id "$client_app_id" -o none 2>/dev/null; then
             consent_granted=true
             break
         fi
@@ -291,15 +326,15 @@ echo ""
 phase_header "Phase 3: Entra App Registrations"
 
 # ── API App ──
-info "Creating API app registration 'Chargeback API'..."
+info "Creating API app registration 'AIPolicy API'..."
 scope_id=""
-existing_api_app=$(az ad app list --display-name "Chargeback API" --query "[0]" -o json 2>/dev/null) || true
+existing_api_app=$(az_retry ad app list --display-name "AIPolicy API" --query "[0]" -o json 2>/dev/null) || true
 if [[ -n "$existing_api_app" && "$existing_api_app" != "null" ]]; then
     api_app_id=$(echo "$existing_api_app" | jq -r '.appId')
     api_obj_id=$(echo "$existing_api_app" | jq -r '.id')
     success "Reusing existing API app: $api_app_id"
 else
-    api_app_json=$(az ad app create --display-name "Chargeback API" --sign-in-audience AzureADMultipleOrgs -o json) \
+    api_app_json=$(az_retry ad app create --display-name "AIPolicy API" --sign-in-audience AzureADMultipleOrgs -o json) \
         || die "Failed to create API app."
     api_app_id=$(echo "$api_app_json" | jq -r '.appId')
     api_obj_id=$(echo "$api_app_json" | jq -r '.id')
@@ -307,28 +342,28 @@ else
 fi
 
 # Ensure multi-tenant
-az ad app update --id "$api_app_id" --sign-in-audience AzureADMultipleOrgs 2>/dev/null || true
+az_retry ad app update --id "$api_app_id" --sign-in-audience AzureADMultipleOrgs 2>/dev/null || true
 
 # Add Microsoft Graph openid permission
 graph_openid_id="37f7f235-527c-4136-accd-4a02d197296e"
 info "Ensuring Microsoft Graph openid permission on API app..."
-api_graph_access=$(az ad app show --id "$api_app_id" \
+api_graph_access=$(az_retry ad app show --id "$api_app_id" \
     --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" \
     -o tsv 2>/dev/null) || true
 if ! echo "$api_graph_access" | grep -qx "$graph_openid_id"; then
-    az ad app permission add --id "$api_app_id" \
+    az_retry ad app permission add --id "$api_app_id" \
         --api 00000003-0000-0000-c000-000000000000 \
         --api-permissions "${graph_openid_id}=Scope" -o none 2>/dev/null || true
 fi
 success "Graph openid permission configured on API app"
 
 # Set Application ID URI
-az ad app update --id "$api_app_id" --identifier-uris "api://$api_app_id" \
+az_retry ad app update --id "$api_app_id" --identifier-uris "api://$api_app_id" \
     || die "Failed to set API app identifier URI."
 success "Identifier URI set: api://$api_app_id"
 
 # Resolve or create API scope
-scope_id=$(az ad app show --id "$api_app_id" \
+scope_id=$(az_retry ad app show --id "$api_app_id" \
     --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>/dev/null) || true
 if [[ -z "$scope_id" ]]; then
     scope_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
@@ -336,8 +371,8 @@ if [[ -z "$scope_id" ]]; then
         api: {
             oauth2PermissionScopes: [{
                 id: $id,
-                adminConsentDisplayName: "Access Chargeback API",
-                adminConsentDescription: "Allows the app to access the Chargeback API",
+                adminConsentDisplayName: "Access AIPolicy API",
+                adminConsentDescription: "Allows the app to access the AIPolicy API",
                 type: "Admin",
                 value: "access_as_user",
                 isEnabled: true
@@ -346,7 +381,7 @@ if [[ -z "$scope_id" ]]; then
     }')
     tmp_scope=$(mktemp)
     echo "$scope_body" > "$tmp_scope"
-    az rest --method PATCH \
+    az_retry rest --method PATCH \
         --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
         --headers "Content-Type=application/json" --body "@$tmp_scope" -o none \
         || { rm -f "$tmp_scope"; die "Failed to expose API scope."; }
@@ -357,52 +392,52 @@ else
 fi
 
 info "Ensuring API enterprise application exists..."
-ensure_service_principal "$api_app_id" "Chargeback API"
+ensure_service_principal "$api_app_id" "AIPolicy API"
 
-# ── Chargeback.Export app role ──
-info "Ensuring 'Chargeback.Export' app role..."
-existing_export_role=$(az ad app show --id "$api_app_id" \
-    --query "appRoles[?value=='Chargeback.Export'] | [0].id" -o tsv 2>/dev/null) || true
+# ── AIPolicy.Export app role ──
+info "Ensuring 'AIPolicy.Export' app role..."
+existing_export_role=$(az_retry ad app show --id "$api_app_id" \
+    --query "appRoles[?value=='AIPolicy.Export'] | [0].id" -o tsv 2>/dev/null) || true
 if [[ -z "$existing_export_role" ]]; then
     export_role_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
-    current_roles=$(az ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
+    current_roles=$(az_retry ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
     [[ -z "$current_roles" || "$current_roles" == "null" ]] && current_roles="[]"
     new_role=$(jq -n --arg id "$export_role_id" '{
         id: $id,
         allowedMemberTypes: ["User","Application"],
-        displayName: "Chargeback Export",
-        description: "Allows the user or application to export chargeback billing summaries and audit trails",
-        value: "Chargeback.Export",
+        displayName: "AIPolicy Export",
+        description: "Allows the user or application to export AI policy data",
+        value: "AIPolicy.Export",
         isEnabled: true
     }')
     all_roles=$(echo "$current_roles" | jq --argjson nr "$new_role" '. + [$nr]')
     role_body=$(jq -n --argjson r "$all_roles" '{"appRoles": $r}')
     tmp_role=$(mktemp)
     echo "$role_body" > "$tmp_role"
-    az rest --method PATCH \
+    az_retry rest --method PATCH \
         --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
         --headers "Content-Type=application/json" --body "@$tmp_role" -o none \
-        || { rm -f "$tmp_role"; die "Failed to add Chargeback.Export app role."; }
+        || { rm -f "$tmp_role"; die "Failed to add AIPolicy.Export app role."; }
     rm -f "$tmp_role"
-    success "'Chargeback.Export' app role created (ID: $export_role_id)"
+    success "'AIPolicy.Export' app role created (ID: $export_role_id)"
 else
     export_role_id="$existing_export_role"
-    success "'Chargeback.Export' app role already exists"
+    success "'AIPolicy.Export' app role already exists"
 
     # Ensure allowedMemberTypes includes User
-    allowed_types=$(az ad app show --id "$api_app_id" \
-        --query "appRoles[?value=='Chargeback.Export'] | [0].allowedMemberTypes" -o json 2>/dev/null) || true
+    allowed_types=$(az_retry ad app show --id "$api_app_id" \
+        --query "appRoles[?value=='AIPolicy.Export'] | [0].allowedMemberTypes" -o json 2>/dev/null) || true
     if [[ -n "$allowed_types" ]] && ! echo "$allowed_types" | jq -e 'index("User")' >/dev/null 2>&1; then
         info "  Updating app role to allow User assignments..."
-        current_roles=$(az ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null)
+        current_roles=$(az_retry ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null)
         updated_roles=$(echo "$current_roles" | jq '
-            [.[] | if .value == "Chargeback.Export"
+            [.[] | if .value == "AIPolicy.Export"
                    then .allowedMemberTypes = ["User","Application"]
                    else . end]')
         role_body=$(jq -n --argjson r "$updated_roles" '{"appRoles": $r}')
         tmp_role=$(mktemp)
         echo "$role_body" > "$tmp_role"
-        az rest --method PATCH \
+        az_retry rest --method PATCH \
             --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
             --headers "Content-Type=application/json" --body "@$tmp_role" -o none || true
         rm -f "$tmp_role"
@@ -410,78 +445,78 @@ else
     fi
 fi
 
-# ── Chargeback.Admin app role ──
-info "Ensuring 'Chargeback.Admin' app role..."
-existing_admin_role=$(az ad app show --id "$api_app_id" \
-    --query "appRoles[?value=='Chargeback.Admin'] | [0].id" -o tsv 2>/dev/null) || true
+# ── AIPolicy.Admin app role ──
+info "Ensuring 'AIPolicy.Admin' app role..."
+existing_admin_role=$(az_retry ad app show --id "$api_app_id" \
+    --query "appRoles[?value=='AIPolicy.Admin'] | [0].id" -o tsv 2>/dev/null) || true
 if [[ -z "$existing_admin_role" ]]; then
     admin_role_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
-    current_roles=$(az ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
+    current_roles=$(az_retry ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
     [[ -z "$current_roles" || "$current_roles" == "null" ]] && current_roles="[]"
     new_role=$(jq -n --arg id "$admin_role_id" '{
         id: $id,
         allowedMemberTypes: ["User","Application"],
-        displayName: "Chargeback Admin",
+        displayName: "AIPolicy Admin",
         description: "Allows the user or application to manage billing plans, client assignments, pricing, and usage policies",
-        value: "Chargeback.Admin",
+        value: "AIPolicy.Admin",
         isEnabled: true
     }')
     all_roles=$(echo "$current_roles" | jq --argjson nr "$new_role" '. + [$nr]')
     role_body=$(jq -n --argjson r "$all_roles" '{"appRoles": $r}')
     tmp_role=$(mktemp)
     echo "$role_body" > "$tmp_role"
-    az rest --method PATCH \
+    az_retry rest --method PATCH \
         --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
         --headers "Content-Type=application/json" --body "@$tmp_role" -o none \
-        || { rm -f "$tmp_role"; die "Failed to add Chargeback.Admin app role."; }
+        || { rm -f "$tmp_role"; die "Failed to add AIPolicy.Admin app role."; }
     rm -f "$tmp_role"
-    success "'Chargeback.Admin' app role created (ID: $admin_role_id)"
+    success "'AIPolicy.Admin' app role created (ID: $admin_role_id)"
 else
     admin_role_id="$existing_admin_role"
-    success "'Chargeback.Admin' app role already exists"
+    success "'AIPolicy.Admin' app role already exists"
 fi
 
-# ── Chargeback.Apim app role ──
-info "Ensuring 'Chargeback.Apim' app role..."
-existing_apim_role=$(az ad app show --id "$api_app_id" \
-    --query "appRoles[?value=='Chargeback.Apim'] | [0].id" -o tsv 2>/dev/null) || true
+# ── AIPolicy.Apim app role ──
+info "Ensuring 'AIPolicy.Apim' app role..."
+existing_apim_role=$(az_retry ad app show --id "$api_app_id" \
+    --query "appRoles[?value=='AIPolicy.Apim'] | [0].id" -o tsv 2>/dev/null) || true
 if [[ -z "$existing_apim_role" ]]; then
     apim_role_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
-    current_roles=$(az ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
+    current_roles=$(az_retry ad app show --id "$api_app_id" --query "appRoles" -o json 2>/dev/null) || true
     [[ -z "$current_roles" || "$current_roles" == "null" ]] && current_roles="[]"
     new_role=$(jq -n --arg id "$apim_role_id" '{
         id: $id,
         allowedMemberTypes: ["Application"],
         displayName: "APIM Service",
-        description: "Allows APIM to call the chargeback API precheck and log ingest endpoints",
-        value: "Chargeback.Apim",
+        description: "Allows APIM to call the AIPolicy API precheck and log ingest endpoints",
+        value: "AIPolicy.Apim",
         isEnabled: true
     }')
     all_roles=$(echo "$current_roles" | jq --argjson nr "$new_role" '. + [$nr]')
     role_body=$(jq -n --argjson r "$all_roles" '{"appRoles": $r}')
     tmp_role=$(mktemp)
     echo "$role_body" > "$tmp_role"
-    az rest --method PATCH \
+    az_retry rest --method PATCH \
         --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
         --headers "Content-Type=application/json" --body "@$tmp_role" -o none \
-        || { rm -f "$tmp_role"; die "Failed to add Chargeback.Apim app role."; }
+        || { rm -f "$tmp_role"; die "Failed to add AIPolicy.Apim app role."; }
     rm -f "$tmp_role"
-    success "'Chargeback.Apim' app role created (ID: $apim_role_id)"
+    success "'AIPolicy.Apim' app role created (ID: $apim_role_id)"
 else
     apim_role_id="$existing_apim_role"
-    success "'Chargeback.Apim' app role already exists"
+    success "'AIPolicy.Apim' app role already exists"
 fi
 
 # ── Assign app roles to deploying user ──
 info "Assigning app roles to deploying user..."
-current_user_oid=$(az ad signed-in-user show --query "id" -o tsv 2>/dev/null) || true
+current_user_oid=$(az_retry ad signed-in-user show --query "id" -o tsv 2>/dev/null) || true
 if [[ -n "$current_user_oid" ]]; then
-    api_sp_id=$(az ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
+    api_sp_id=$(az_retry ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
     if [[ -n "$api_sp_id" ]]; then
-        for role_name_id in "Chargeback.Export:$export_role_id" "Chargeback.Admin:$admin_role_id"; do
+        for role_name_id in "AIPolicy.Export:$export_role_id" "AIPolicy.Admin:$admin_role_id"; do
             role_name="${role_name_id%%:*}"
             role_id="${role_name_id##*:}"
-            existing_assignment=$(az rest --method GET \
+            existing_assignment=$(az_retry rest --method GET \
                 --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
                 --query "value[?principalId=='$current_user_oid' && appRoleId=='$role_id'] | [0].id" \
                 -o tsv 2>/dev/null) || true
@@ -493,7 +528,7 @@ if [[ -n "$current_user_oid" ]]; then
                     '{principalId:$pid,resourceId:$rid,appRoleId:$aid}')
                 tmp_assign=$(mktemp)
                 echo "$assign_body" > "$tmp_assign"
-                if az rest --method POST \
+                if az_retry rest --method POST \
                     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
                     --headers "Content-Type=application/json" --body "@$tmp_assign" -o none 2>/dev/null; then
                     success "$role_name role assigned to current user"
@@ -510,44 +545,106 @@ else
     warn "Could not determine current user — assign roles manually in Entra ID"
 fi
 
+# ── Gateway App (APIM JWT audience) ──
+info "Creating gateway app 'AIPolicy APIM Gateway' (multi-tenant)..."
+existing_gateway=$(az_retry ad app list --display-name "AIPolicy APIM Gateway" --query "[0]" -o json 2>/dev/null) || true
+if [[ -n "$existing_gateway" && "$existing_gateway" != "null" ]]; then
+    gateway_app_id=$(echo "$existing_gateway" | jq -r '.appId')
+    gateway_obj_id=$(echo "$existing_gateway" | jq -r '.id')
+    success "Reusing existing gateway app: $gateway_app_id"
+    az_retry ad app update --id "$gateway_app_id" --sign-in-audience AzureADMultipleOrgs 2>/dev/null || true
+else
+    gateway_json=$(az_retry ad app create --display-name "AIPolicy APIM Gateway" --sign-in-audience AzureADMultipleOrgs -o json) \
+        || die "Failed to create gateway app."
+    gateway_app_id=$(echo "$gateway_json" | jq -r '.appId')
+    gateway_obj_id=$(echo "$gateway_json" | jq -r '.id')
+    success "Gateway app created (multi-tenant): $gateway_app_id"
+fi
+
+# Set Application ID URI on gateway
+az_retry ad app update --id "$gateway_app_id" --identifier-uris "api://$gateway_app_id" \
+    || die "Failed to set gateway identifier URI."
+success "Gateway identifier URI set: api://$gateway_app_id"
+
+# Graph openid permission on gateway
+gateway_graph=$(az_retry ad app show --id "$gateway_app_id" \
+    --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" \
+    -o tsv 2>/dev/null) || true
+if ! echo "$gateway_graph" | grep -qx "$graph_openid_id"; then
+    az_retry ad app permission add --id "$gateway_app_id" \
+        --api 00000003-0000-0000-c000-000000000000 \
+        --api-permissions "${graph_openid_id}=Scope" -o none 2>/dev/null || true
+fi
+
+# Expose 'access_as_user' scope on gateway
+gateway_scope_id=$(az_retry ad app show --id "$gateway_app_id" \
+    --query "api.oauth2PermissionScopes[?value=='access_as_user'] | [0].id" -o tsv 2>/dev/null) || true
+if [[ -z "$gateway_scope_id" ]]; then
+    gateway_scope_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+    gateway_scope_body=$(jq -n --arg id "$gateway_scope_id" '{
+        api: {
+            oauth2PermissionScopes: [{
+                id: $id,
+                adminConsentDisplayName: "Access AIPolicy APIM Gateway",
+                adminConsentDescription: "Allows the app to call the AIPolicy APIM gateway",
+                type: "Admin",
+                value: "access_as_user",
+                isEnabled: true
+            }]
+        }
+    }')
+    tmp_gscope=$(mktemp)
+    echo "$gateway_scope_body" > "$tmp_gscope"
+    az_retry rest --method PATCH \
+        --uri "https://graph.microsoft.com/v1.0/applications/$gateway_obj_id" \
+        --headers "Content-Type=application/json" --body "@$tmp_gscope" -o none \
+        || { rm -f "$tmp_gscope"; die "Failed to expose gateway scope."; }
+    rm -f "$tmp_gscope"
+    success "Gateway scope 'access_as_user' exposed"
+else
+    success "Gateway scope 'access_as_user' already present"
+fi
+
+ensure_service_principal "$gateway_app_id" "AIPolicy APIM Gateway"
+
 # ── Client App 1 ──
-info "Creating client app 'Chargeback Sample Client'..."
-existing_client1=$(az ad app list --display-name "Chargeback Sample Client" --query "[0]" -o json 2>/dev/null) || true
+info "Creating client app 'AIPolicy Sample Client'..."
+existing_client1=$(az_retry ad app list --display-name "AIPolicy Sample Client" --query "[0]" -o json 2>/dev/null) || true
 if [[ -n "$existing_client1" && "$existing_client1" != "null" ]]; then
     client1_app_id=$(echo "$existing_client1" | jq -r '.appId')
     client1_obj_id=$(echo "$existing_client1" | jq -r '.id')
     success "Reusing existing client app 1: $client1_app_id"
 else
-    client1_json=$(az ad app create --display-name "Chargeback Sample Client" --sign-in-audience AzureADMyOrg -o json) \
+    client1_json=$(az_retry ad app create --display-name "AIPolicy Sample Client" --sign-in-audience AzureADMyOrg -o json) \
         || die "Failed to create client app 1."
     client1_app_id=$(echo "$client1_json" | jq -r '.appId')
     client1_obj_id=$(echo "$client1_json" | jq -r '.id')
     success "Client app 1 created: $client1_app_id"
 fi
 
-ensure_service_principal "$client1_app_id" "Chargeback Sample Client"
-ensure_delegated_scope_and_consent "$client1_app_id" "$api_app_id" "$scope_id" "Chargeback Sample Client"
+ensure_service_principal "$client1_app_id" "AIPolicy Sample Client"
+ensure_delegated_scope_and_consent "$client1_app_id" "$gateway_app_id" "$gateway_scope_id" "AIPolicy Sample Client"
 
 # Graph openid for Client 1
-client1_graph=$(az ad app show --id "$client1_app_id" \
+client1_graph=$(az_retry ad app show --id "$client1_app_id" \
     --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" \
     -o tsv 2>/dev/null) || true
 if ! echo "$client1_graph" | grep -qx "$graph_openid_id"; then
-    az ad app permission add --id "$client1_app_id" \
+    az_retry ad app permission add --id "$client1_app_id" \
         --api 00000003-0000-0000-c000-000000000000 \
         --api-permissions "${graph_openid_id}=Scope" -o none 2>/dev/null || true
 fi
 
 # Client 1 secret
-client1_secret=$(az ad app credential reset --id "$client1_app_id" \
+client1_secret=$(az_retry ad app credential reset --id "$client1_app_id" \
     --display-name "setup-script" --years 1 --query "password" -o tsv 2>/dev/null) || true
 [[ -n "$client1_secret" ]] && success "Client 1 secret created"
 
-# Assign Chargeback.Admin to Client 1 SP
-client1_sp_id=$(az ad sp show --id "$client1_app_id" --query "id" -o tsv 2>/dev/null) || true
-api_sp_id=$(az ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
+# Assign AIPolicy.Admin to Client 1 SP
+client1_sp_id=$(az_retry ad sp show --id "$client1_app_id" --query "id" -o tsv 2>/dev/null) || true
+api_sp_id=$(az_retry ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
 if [[ -n "$client1_sp_id" && -n "$api_sp_id" ]]; then
-    existing_admin_assign=$(az rest --method GET \
+    existing_admin_assign=$(az_retry rest --method GET \
         --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
         --query "value[?principalId=='$client1_sp_id' && appRoleId=='$admin_role_id'] | [0].id" \
         -o tsv 2>/dev/null) || true
@@ -557,56 +654,63 @@ if [[ -n "$client1_sp_id" && -n "$api_sp_id" ]]; then
             '{principalId:$pid,resourceId:$rid,appRoleId:$aid}')
         tmp_assign=$(mktemp)
         echo "$assign_body" > "$tmp_assign"
-        az rest --method POST \
+        az_retry rest --method POST \
             --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
             --headers "Content-Type=application/json" --body "@$tmp_assign" -o none 2>/dev/null || true
         rm -f "$tmp_assign"
-        success "Chargeback.Admin role assigned to Client 1 SP"
+        success "AIPolicy.Admin role assigned to Client 1 SP"
     else
-        success "Chargeback.Admin role already assigned to Client 1 SP"
+        success "AIPolicy.Admin role already assigned to Client 1 SP"
     fi
 fi
 
-# ── Client App 2 (multi-tenant) ──
-info "Creating client app 'Chargeback Demo Client 2' (multi-tenant)..."
-existing_client2=$(az ad app list --display-name "Chargeback Demo Client 2" --query "[0]" -o json 2>/dev/null) || true
+# ── Client App 2 (multi-tenant, optional) ──
+if [[ "$INCLUDE_EXTERNAL_DEMO_CLIENT" != "true" ]]; then
+    info "Skipping 'AIPolicy Demo Client 2' creation (--no-external-demo-client)"
+    client2_app_id=""
+    client2_obj_id=""
+    client2_secret=""
+else
+info "Creating client app 'AIPolicy Demo Client 2' (multi-tenant)..."
+existing_client2=$(az_retry ad app list --display-name "AIPolicy Demo Client 2" --query "[0]" -o json 2>/dev/null) || true
 if [[ -n "$existing_client2" && "$existing_client2" != "null" ]]; then
     client2_app_id=$(echo "$existing_client2" | jq -r '.appId')
     client2_obj_id=$(echo "$existing_client2" | jq -r '.id')
     success "Reusing existing client app 2: $client2_app_id"
-    az ad app update --id "$client2_app_id" --sign-in-audience AzureADMultipleOrgs 2>/dev/null || true
+    az_retry ad app update --id "$client2_app_id" --sign-in-audience AzureADMultipleOrgs 2>/dev/null || true
     success "Client 2 updated to multi-tenant (AzureADMultipleOrgs)"
 else
-    client2_json=$(az ad app create --display-name "Chargeback Demo Client 2" --sign-in-audience AzureADMultipleOrgs -o json) \
+    client2_json=$(az_retry ad app create --display-name "AIPolicy Demo Client 2" --sign-in-audience AzureADMultipleOrgs -o json) \
         || die "Failed to create client app 2."
     client2_app_id=$(echo "$client2_json" | jq -r '.appId')
     client2_obj_id=$(echo "$client2_json" | jq -r '.id')
     success "Client app 2 created (multi-tenant): $client2_app_id"
 fi
 
-ensure_service_principal "$client2_app_id" "Chargeback Demo Client 2"
-ensure_delegated_scope_and_consent "$client2_app_id" "$api_app_id" "$scope_id" "Chargeback Demo Client 2"
+ensure_service_principal "$client2_app_id" "AIPolicy Demo Client 2"
+ensure_delegated_scope_and_consent "$client2_app_id" "$gateway_app_id" "$gateway_scope_id" "AIPolicy Demo Client 2"
 
 # Graph openid for Client 2
-client2_graph=$(az ad app show --id "$client2_app_id" \
+client2_graph=$(az_retry ad app show --id "$client2_app_id" \
     --query "requiredResourceAccess[?resourceAppId=='00000003-0000-0000-c000-000000000000'].resourceAccess[].id" \
     -o tsv 2>/dev/null) || true
 if ! echo "$client2_graph" | grep -qx "$graph_openid_id"; then
-    az ad app permission add --id "$client2_app_id" \
+    az_retry ad app permission add --id "$client2_app_id" \
         --api 00000003-0000-0000-c000-000000000000 \
         --api-permissions "${graph_openid_id}=Scope" -o none 2>/dev/null || true
 fi
 
 # Public client flow + redirect URI
-az ad app update --id "$client2_app_id" \
+az_retry ad app update --id "$client2_app_id" \
     --public-client-redirect-uris "http://localhost:29783" \
     --enable-id-token-issuance true 2>/dev/null || true
 success "Client 2 public client redirect URI configured (http://localhost:29783)"
 
 # Client 2 secret
-client2_secret=$(az ad app credential reset --id "$client2_app_id" \
+client2_secret=$(az_retry ad app credential reset --id "$client2_app_id" \
     --display-name "setup-script" --years 1 --query "password" -o tsv 2>/dev/null) || true
 [[ -n "$client2_secret" ]] && success "Client 2 secret created"
+fi
 
 echo -e "  ${GREEN}Phase 3 complete ✓${NC}"
 echo ""
@@ -616,17 +720,17 @@ echo ""
 # ============================================================================
 phase_header "Phase 4: ACR Image Build"
 
-image_repository="${ACR_NAME}.azurecr.io/chargeback-api"
+image_repository="${ACR_NAME}.azurecr.io/aipolicy-api"
 run_tag="run-$(date -u +%Y%m%d%H%M%S)"
 if [[ "$SKIP_BUILD" == "true" ]]; then
     info "Retrieving latest image tag from ACR '$ACR_NAME'..."
-    latest_tag=$(az acr repository show-tags --name "$ACR_NAME" --repository chargeback-api \
+    latest_tag=$(az acr repository show-tags --name "$ACR_NAME" --repository aipolicy-api \
         --orderby time_desc --top 1 --query "[0]" -o tsv 2>/dev/null) || true
     if [[ -n "$latest_tag" ]]; then
         image_tag="${image_repository}:${latest_tag}"
         success "Using latest ACR image: $image_tag"
     else
-        die "No images found in ACR repository 'chargeback-api'. Run without --skip-build first."
+        die "No images found in ACR repository 'aipolicy-api'. Run without --skip-build first."
     fi
 else
     image_tag="${image_repository}:${run_tag}"
@@ -637,7 +741,7 @@ if [[ "$SKIP_BUILD" == "true" ]]; then
     echo ""
 else
     info "Writing dashboard auth config for UI build..."
-    ui_env_file="$REPO_ROOT/src/chargeback-ui/.env.production.local"
+    ui_env_file="$REPO_ROOT/src/aipolicyengine-ui/.env.production.local"
     cat > "$ui_env_file" <<EOF
 # Auto-generated by scripts/setup-azure.sh
 VITE_AZURE_CLIENT_ID=$api_app_id
@@ -649,9 +753,9 @@ EOF
     success "UI auth config written: $ui_env_file"
 
     info "Building image in ACR '$ACR_NAME'..."
-    info "  Image: chargeback-api:$run_tag"
+    info "  Image: aipolicy-api:$run_tag"
     az acr build \
-        --image "chargeback-api:${run_tag}" \
+        --image "aipolicy-api:${run_tag}" \
         --resource-group "$RESOURCE_GROUP_NAME" \
         --registry "$ACR_NAME" \
         --file "$REPO_ROOT/src/Dockerfile" \
@@ -676,12 +780,29 @@ else
     info "ACR managed identity pull configured — no admin credentials needed."
 
     info "Checking soft-deleted resource collisions..."
-    deleted_apim=$(az apim deletedservice list --query "[?name=='$APIM_NAME'] | [0].name" -o tsv 2>/dev/null) || true
-    if [[ -n "$deleted_apim" ]]; then
-        info "  Purging soft-deleted APIM '$APIM_NAME'..."
-        az apim deletedservice purge --name "$APIM_NAME" --location "$LOCATION" -o none \
-            || die "Failed to purge soft-deleted APIM service '$APIM_NAME'."
-        success "Purged APIM soft-delete record"
+    deleted_apim_ids=$(az_retry apim deletedservice list --query "[?name=='$APIM_NAME'].id" -o tsv)
+    if [[ $? -ne 0 ]]; then
+        die "Failed to query soft-deleted APIM services named '$APIM_NAME'."
+    fi
+    if [[ -n "$deleted_apim_ids" ]]; then
+        while IFS= read -r deleted_apim_id; do
+            [[ -z "$deleted_apim_id" ]] && continue
+            deleted_apim_location=$(printf '%s\n' "$deleted_apim_id" | sed -n 's#^.*/locations/\([^/]*\)/deletedservices/.*#\1#p')
+            [[ -n "$deleted_apim_location" ]] || die "Could not determine the location for soft-deleted APIM service '$APIM_NAME' from '$deleted_apim_id'."
+
+            info "  Purging soft-deleted APIM '$APIM_NAME' in '$deleted_apim_location'..."
+            purge_output=$(az apim deletedservice purge --service-name "$APIM_NAME" --location "$deleted_apim_location" -o none 2>&1)
+            purge_exit=$?
+
+            if [[ $purge_exit -eq 0 ]]; then
+                success "Purged APIM soft-delete record in $deleted_apim_location"
+            elif grep -qiE 'ServiceNotFound|does not exist' <<<"$purge_output"; then
+                success "APIM soft-delete record already absent in $deleted_apim_location"
+            else
+                printf '%s\n' "$purge_output" >&2
+                die "Failed to purge soft-deleted APIM service '$APIM_NAME' in '$deleted_apim_location'."
+            fi
+        done <<< "$deleted_apim_ids"
     else
         success "No APIM soft-delete collision"
     fi
@@ -723,45 +844,95 @@ else
 
     echo -e "  ${MAGENTA}Starting Bicep deployment (this may take 30-60 minutes for APIM)...${NC}"
     info "  Template: infra/bicep/main.bicep"
+    bicep_parameter_args=(
+        "location=$LOCATION"
+        "workloadName=$WORKLOAD_NAME"
+        "apimInstanceName=$APIM_NAME"
+        "keyVaultName=$KEY_VAULT_NAME"
+        "redisCacheName=$REDIS_CACHE_NAME"
+        "cosmosAccountName=$COSMOS_ACCOUNT_NAME"
+        "logAnalyticsWorkspaceName=$LOG_ANALYTICS_WORKSPACE_NAME"
+        "appInsightsName=$APP_INSIGHTS_NAME"
+        "storageAccountName=$STORAGE_ACCOUNT_NAME"
+        "aiServiceName=$AI_SERVICE_NAME"
+        "containerAppName=$CONTAINER_APP_NAME"
+        "containerAppEnvName=$CONTAINER_APP_ENV_NAME"
+        "containerImage=$image_tag"
+        "acrLoginServer=${ACR_NAME}.azurecr.io"
+        "acrName=$ACR_NAME"
+        "oaiApiName=azure-openai-api"
+        "funcApiName=aipolicy-api"
+        "enableJwt=$ENABLE_JWT"
+        "enableKeys=$ENABLE_KEYS"
+    )
+    bicep_common_args=(
+        --resource-group "$RESOURCE_GROUP_NAME"
+        --template-file "$REPO_ROOT/infra/bicep/main.bicep"
+        --parameters
+        "${bicep_parameter_args[@]}"
+        --only-show-errors
+        -o json
+    )
+
+    info "  Validating Bicep template..."
+    bicep_validation_result=$(az deployment group validate "${bicep_common_args[@]}" 2>&1)
+    bicep_validation_exit=$?
+    if (( bicep_validation_exit != 0 )); then
+        if grep -q "The content for this response was already consumed" <<<"$bicep_validation_result"; then
+            echo -e "  ${DARKYELLOW}  ⚠ Azure CLI validation bug hit: $bicep_validation_result${NC}"
+            echo -e "  ${DARKYELLOW}  Continuing to deployment create so ARM can surface the real error details...${NC}"
+        else
+            echo -e "  ${RED}Bicep validation error details:${NC}" >&2
+            echo "$bicep_validation_result" >&2
+            die "Bicep template validation failed. See error output above."
+        fi
+    else
+        success "Bicep template validation passed"
+    fi
+
+    bicep_deployment_name="${WORKLOAD_NAME}-infra-$(date -u +%Y%m%d%H%M%S)"
+    info "  Deployment name: $bicep_deployment_name"
 
     bicep_result=$(az deployment group create \
-        --resource-group "$RESOURCE_GROUP_NAME" \
-        --template-file "$REPO_ROOT/infra/bicep/main.bicep" \
-        --parameters \
-            location="$LOCATION" \
-            workloadName="$WORKLOAD_NAME" \
-            apimInstanceName="$APIM_NAME" \
-            keyVaultName="$KEY_VAULT_NAME" \
-            redisCacheName="$REDIS_CACHE_NAME" \
-            cosmosAccountName="$COSMOS_ACCOUNT_NAME" \
-            logAnalyticsWorkspaceName="$LOG_ANALYTICS_WORKSPACE_NAME" \
-            appInsightsName="$APP_INSIGHTS_NAME" \
-            storageAccountName="$STORAGE_ACCOUNT_NAME" \
-            aiServiceName="$AI_SERVICE_NAME" \
-            containerAppName="$CONTAINER_APP_NAME" \
-            containerAppEnvName="$CONTAINER_APP_ENV_NAME" \
-            containerImage="$image_tag" \
-            acrLoginServer="${ACR_NAME}.azurecr.io" \
-            acrName="$ACR_NAME" \
-            oaiApiName="azure-openai-api" \
-            funcApiName="chargeback-api" \
-            enableJwt="$ENABLE_JWT" \
-            enableKeys="$ENABLE_KEYS" \
-        --query "properties.outputs" -o json --only-show-errors 2>&1) \
-        || { echo -e "  ${RED}Bicep deployment error details:${NC}"; echo "$bicep_result" >&2; die "Bicep deployment failed."; }
+        --name "$bicep_deployment_name" \
+        "${bicep_common_args[@]}" 2>&1)
+    bicep_exit=$?
+    if (( bicep_exit != 0 )); then
+        echo -e "  ${RED}Bicep deployment error details:${NC}" >&2
+        [[ -n "$bicep_result" ]] && echo "$bicep_result" >&2
 
-    # Extract JSON from output (may have non-JSON lines mixed in)
-    bicep_json=$(echo "$bicep_result" | sed -n '/{/,/}/p')
-    if [[ -z "$bicep_json" ]]; then
+        arm_deployment_error=$(az deployment group show \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$bicep_deployment_name" \
+            --query "properties.error" -o json 2>/dev/null) || true
+        if [[ -n "$arm_deployment_error" && "$arm_deployment_error" != "null" ]]; then
+            echo -e "  ${RED}ARM deployment error payload:${NC}" >&2
+            echo "$arm_deployment_error" | jq . >&2 2>/dev/null || echo "$arm_deployment_error" >&2
+        fi
+
+        failed_operations=$(az deployment operation group list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$bicep_deployment_name" \
+            --query "[?properties.provisioningState=='Failed'].{resource:properties.targetResource.resourceName,statusMessage:properties.statusMessage}" \
+            -o json 2>/dev/null) || true
+        if [[ -n "$failed_operations" && "$failed_operations" != "[]" && "$failed_operations" != "null" ]]; then
+            echo -e "  ${RED}Failed deployment operations:${NC}" >&2
+            echo "$failed_operations" | jq . >&2 2>/dev/null || echo "$failed_operations" >&2
+        fi
+
+        die "Bicep deployment failed. See error output above."
+    fi
+
+    if ! echo "$bicep_result" | jq -e '.' >/dev/null 2>&1; then
         echo -e "  ${RED}Unexpected deployment output:${NC}" >&2
         echo "$bicep_result" >&2
         die "Bicep deployment succeeded but output was not valid JSON."
     fi
     success "Bicep deployment complete"
 
-    container_app_url=$(echo "$bicep_json" | jq -r '.containerAppUrlInfo.value // empty') || true
-    app_insights_conn=$(echo "$bicep_json" | jq -r '.appInsightsConnectionString.value // empty') || true
-    log_analytics_wb_url=$(echo "$bicep_json" | jq -r '.logAnalyticsWorkbookUrl.value // empty') || true
+    container_app_url=$(echo "$bicep_result" | jq -r '.properties.outputs.containerAppUrlInfo.value // empty') || true
+    app_insights_conn=$(echo "$bicep_result" | jq -r '.properties.outputs.appInsightsConnectionString.value // empty') || true
+    log_analytics_wb_url=$(echo "$bicep_result" | jq -r '.properties.outputs.logAnalyticsWorkbookUrl.value // empty') || true
 
     echo -e "  ${GREEN}Phase 5 complete ✓${NC}"
     echo ""
@@ -791,7 +962,7 @@ cosmos_endpoint=$(az cosmosdb show --name "$COSMOS_ACCOUNT_NAME" \
     --query "documentEndpoint" -o tsv 2>/dev/null) || true
 if [[ -n "$cosmos_endpoint" ]]; then
     az containerapp update --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
-        --set-env-vars "ConnectionStrings__chargeback=$cosmos_endpoint" -o none \
+        --set-env-vars "ConnectionStrings__aipolicy=$cosmos_endpoint" -o none \
         || die "Failed to update Container App Cosmos connection."
     success "Cosmos DB connection configured: $cosmos_endpoint"
 else
@@ -867,13 +1038,13 @@ else
     warn "No AI Services account found — skipping role assignment"
 fi
 
-# Chargeback.Apim role to APIM managed identity
-info "Assigning 'Chargeback.Apim' app role to APIM managed identity..."
-api_sp_id=$(az ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
+# AIPolicy.Apim role to APIM managed identity
+info "Assigning 'AIPolicy.Apim' app role to APIM managed identity..."
+api_sp_id=$(az_retry ad sp show --id "$api_app_id" --query "id" -o tsv 2>/dev/null) || true
 if [[ -n "$api_sp_id" && -n "$apim_principal" ]]; then
-    apim_sp_id=$(az ad sp show --id "$apim_principal" --query "id" -o tsv 2>/dev/null) || true
+    apim_sp_id=$(az_retry ad sp show --id "$apim_principal" --query "id" -o tsv 2>/dev/null) || true
     [[ -z "$apim_sp_id" ]] && apim_sp_id="$apim_principal"
-    existing_apim_assignment=$(az rest --method GET \
+    existing_apim_assignment=$(az_retry rest --method GET \
         --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
         --query "value[?principalId=='$apim_sp_id' && appRoleId=='$apim_role_id'] | [0].id" \
         -o tsv 2>/dev/null) || true
@@ -883,19 +1054,19 @@ if [[ -n "$api_sp_id" && -n "$apim_principal" ]]; then
             '{principalId:$pid,resourceId:$rid,appRoleId:$aid}')
         tmp_assign=$(mktemp)
         echo "$assign_body" > "$tmp_assign"
-        if az rest --method POST \
+        if az_retry rest --method POST \
             --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" \
             --headers "Content-Type=application/json" --body "@$tmp_assign" -o none 2>/dev/null; then
-            success "Chargeback.Apim role assigned to APIM managed identity"
+            success "AIPolicy.Apim role assigned to APIM managed identity"
         else
-            warn "Could not assign Chargeback.Apim role to APIM — assign manually"
+            warn "Could not assign AIPolicy.Apim role to APIM — assign manually"
         fi
         rm -f "$tmp_assign"
     else
-        success "Chargeback.Apim role already assigned to APIM managed identity"
+        success "AIPolicy.Apim role already assigned to APIM managed identity"
     fi
 else
-    warn "Could not resolve service principals — assign Chargeback.Apim role manually"
+    warn "Could not resolve service principals — assign AIPolicy.Apim role manually"
 fi
 
 echo -e "  ${GREEN}Phase 6 complete ✓${NC}"
@@ -912,8 +1083,8 @@ az apim nv create --resource-group "$RESOURCE_GROUP_NAME" --service-name "$APIM_
 success "EntraTenantId"
 
 az apim nv create --resource-group "$RESOURCE_GROUP_NAME" --service-name "$APIM_NAME" \
-    --named-value-id ExpectedAudience --display-name "ExpectedAudience" --value "api://$api_app_id" -o none 2>/dev/null || true
-success "ExpectedAudience = api://$api_app_id"
+    --named-value-id ExpectedAudience --display-name "ExpectedAudience" --value "api://$gateway_app_id" -o none 2>/dev/null || true
+success "ExpectedAudience = api://$gateway_app_id"
 
 az apim nv create --resource-group "$RESOURCE_GROUP_NAME" --service-name "$APIM_NAME" \
     --named-value-id ContainerAppUrl --display-name "ContainerAppUrl" --value "https://$container_app_url" -o none 2>/dev/null || true
@@ -949,12 +1120,13 @@ if [[ "$ENABLE_JWT" == "true" ]]; then
     policy_xml=$(<"$REPO_ROOT/policies/entra-jwt-policy.xml")
     policy_body=$(jq -n --arg xml "$policy_xml" '{"properties":{"format":"rawxml","value":$xml}}')
     tmp_policy=$(mktemp)
+    tmp_policy_response=$(mktemp)
     echo "$policy_body" > "$tmp_policy"
     policy_uri="https://management.azure.com/subscriptions/$subscription_id/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.ApiManagement/service/$APIM_NAME/apis/azure-openai-api-jwt/policies/policy?api-version=2022-08-01"
-    az rest --method PUT --uri "$policy_uri" \
-        --headers "Content-Type=application/json" --body "@$tmp_policy" -o none \
-        || { rm -f "$tmp_policy"; die "Failed to upload APIM policy."; }
-    rm -f "$tmp_policy"
+    az_retry rest --method PUT --uri "$policy_uri" \
+        --headers "Content-Type=application/json" --body "@$tmp_policy" --output-file "$tmp_policy_response" -o none \
+        || { rm -f "$tmp_policy" "$tmp_policy_response"; die "Failed to upload APIM policy."; }
+    rm -f "$tmp_policy" "$tmp_policy_response"
     success "APIM policy uploaded (entra-jwt-policy.xml)"
 else
     info "JWT API disabled — skipping JWT policy upload"
@@ -976,12 +1148,13 @@ if [[ "$ENABLE_KEYS" == "true" ]]; then
     key_policy_xml=$(<"$REPO_ROOT/policies/subscription-key-policy.xml")
     key_policy_body=$(jq -n --arg xml "$key_policy_xml" '{"properties":{"format":"rawxml","value":$xml}}')
     tmp_key_policy=$(mktemp)
+    tmp_key_policy_response=$(mktemp)
     echo "$key_policy_body" > "$tmp_key_policy"
     key_policy_uri="https://management.azure.com/subscriptions/$subscription_id/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.ApiManagement/service/$APIM_NAME/apis/azure-openai-api-keys/policies/policy?api-version=2022-08-01"
-    az rest --method PUT --uri "$key_policy_uri" \
-        --headers "Content-Type=application/json" --body "@$tmp_key_policy" -o none \
-        || { rm -f "$tmp_key_policy"; die "Failed to upload subscription-key APIM policy."; }
-    rm -f "$tmp_key_policy"
+    az_retry rest --method PUT --uri "$key_policy_uri" \
+        --headers "Content-Type=application/json" --body "@$tmp_key_policy" --output-file "$tmp_key_policy_response" -o none \
+        || { rm -f "$tmp_key_policy" "$tmp_key_policy_response"; die "Failed to upload subscription-key APIM policy."; }
+    rm -f "$tmp_key_policy" "$tmp_key_policy_response"
     success "APIM policy uploaded (subscription-key-policy.xml)"
 else
     info "Key-based API disabled — skipping subscription-key policy upload"
@@ -1002,7 +1175,7 @@ redirect_body=$(jq -n \
     '{"spa":{"redirectUris":[$u1,$u2]}}')
 tmp_redirect=$(mktemp)
 echo "$redirect_body" > "$tmp_redirect"
-az rest --method PATCH \
+az_retry rest --method PATCH \
     --uri "https://graph.microsoft.com/v1.0/applications/$api_obj_id" \
     --headers "Content-Type=application/json" --body "@$tmp_redirect" -o none \
     || { rm -f "$tmp_redirect"; die "Failed to set redirect URIs on API app."; }
@@ -1012,7 +1185,7 @@ success "API app redirect URIs: https://$container_app_url, http://localhost:517
 info "Setting SPA redirect URIs on client app 1..."
 tmp_redirect=$(mktemp)
 echo "$redirect_body" > "$tmp_redirect"
-az rest --method PATCH \
+az_retry rest --method PATCH \
     --uri "https://graph.microsoft.com/v1.0/applications/$client1_obj_id" \
     --headers "Content-Type=application/json" --body "@$tmp_redirect" -o none \
     || { rm -f "$tmp_redirect"; die "Failed to set redirect URIs on client app 1."; }
@@ -1118,31 +1291,36 @@ phase9_failed=false
 
     # ── Client assignments ──
     info "Assigning clients to plans..."
-    client1_body=$(jq -n --arg pid "$ent_plan_id" '{planId:$pid,displayName:"Chargeback Sample Client"}')
+    client1_body=$(jq -n --arg pid "$ent_plan_id" '{planId:$pid,displayName:"AIPolicy Sample Client"}')
     curl -sf -X PUT -H "Authorization: Bearer $access_token" \
         -H "Content-Type: application/json" -d "$client1_body" \
         "$base_url/api/clients/$client1_app_id/$tenant_id" -o /dev/null --max-time 15
     success "Client 1 → Enterprise plan (tenant: $tenant_id)"
 
-    client2_body=$(jq -n --arg pid "$start_plan_id" '{planId:$pid,displayName:"Chargeback Demo Client 2"}')
-    curl -sf -X PUT -H "Authorization: Bearer $access_token" \
-        -H "Content-Type: application/json" -d "$client2_body" \
-        "$base_url/api/clients/$client2_app_id/$tenant_id" -o /dev/null --max-time 15
-    success "Client 2 → Starter plan (tenant: $tenant_id)"
-
-    if [[ -n "$SECONDARY_TENANT_ID" ]]; then
-        info "Provisioning service principals in secondary tenant $SECONDARY_TENANT_ID..."
-        warn "You must run the following commands while logged into the secondary tenant:"
-        echo -e "  ${YELLOW}    az login --tenant $SECONDARY_TENANT_ID${NC}"
-        echo -e "  ${YELLOW}    az ad sp create --id $api_app_id${NC}"
-        echo -e "  ${YELLOW}    az ad sp create --id $client2_app_id${NC}"
-        echo -e "  ${YELLOW}    az login --tenant $tenant_id   # switch back${NC}"
-
-        client2_sec_body=$(jq -n --arg pid "$start_plan_id" '{planId:$pid,displayName:"Chargeback Demo Client 2 (Secondary Tenant)"}')
+    if [[ "$INCLUDE_EXTERNAL_DEMO_CLIENT" == "true" && -n "$client2_app_id" ]]; then
+        client2_body=$(jq -n --arg pid "$start_plan_id" '{planId:$pid,displayName:"AIPolicy Demo Client 2"}')
         curl -sf -X PUT -H "Authorization: Bearer $access_token" \
-            -H "Content-Type: application/json" -d "$client2_sec_body" \
-            "$base_url/api/clients/$client2_app_id/$SECONDARY_TENANT_ID" -o /dev/null --max-time 15
-        success "Client 2 → Starter plan (secondary tenant: $SECONDARY_TENANT_ID)"
+            -H "Content-Type: application/json" -d "$client2_body" \
+            "$base_url/api/clients/$client2_app_id/$tenant_id" -o /dev/null --max-time 15
+        success "Client 2 → Starter plan (tenant: $tenant_id)"
+
+        if [[ -n "$SECONDARY_TENANT_ID" ]]; then
+            info "Provisioning service principals in secondary tenant $SECONDARY_TENANT_ID..."
+            warn "You must run the following commands while logged into the secondary tenant:"
+            echo -e "  ${YELLOW}    az login --tenant $SECONDARY_TENANT_ID${NC}"
+            echo -e "  ${YELLOW}    az ad sp create --id $api_app_id${NC}"
+            echo -e "  ${YELLOW}    az ad sp create --id $gateway_app_id${NC}"
+            echo -e "  ${YELLOW}    az ad sp create --id $client2_app_id${NC}"
+            echo -e "  ${YELLOW}    az login --tenant $tenant_id   # switch back${NC}"
+
+            client2_sec_body=$(jq -n --arg pid "$start_plan_id" '{planId:$pid,displayName:"AIPolicy Demo Client 2 (Secondary Tenant)"}')
+            curl -sf -X PUT -H "Authorization: Bearer $access_token" \
+                -H "Content-Type: application/json" -d "$client2_sec_body" \
+                "$base_url/api/clients/$client2_app_id/$SECONDARY_TENANT_ID" -o /dev/null --max-time 15
+            success "Client 2 → Starter plan (secondary tenant: $SECONDARY_TENANT_ID)"
+        fi
+    else
+        info "Skipping Client 2 plan registration (--no-external-demo-client)"
     fi
 
     # Write plan IDs to temp files so the parent shell can pick them up
@@ -1185,22 +1363,30 @@ cat > "$demo_env_file" <<EOF
 # Update deployment IDs if your Azure OpenAI deployment names differ.
 DemoClient__TenantId=$tenant_id
 DemoClient__SecondaryTenantId=${SECONDARY_TENANT_ID}
-DemoClient__ApiScope=api://$api_app_id/.default
+DemoClient__ApiScope=api://$gateway_app_id/.default
 DemoClient__ApimBase=https://${APIM_NAME}.azure-api.net/jwt
 DemoClient__ApiVersion=2024-02-01
-DemoClient__ChargebackBase=https://$container_app_url
-DemoClient__Clients__0__Name="Chargeback Sample Client"
+DemoClient__AIPolicyBase=https://$container_app_url
+DemoClient__Clients__0__Name="AIPolicy Sample Client"
 DemoClient__Clients__0__AppId=$client1_app_id
 DemoClient__Clients__0__Secret=$client1_secret_env
 DemoClient__Clients__0__Plan=Enterprise
 DemoClient__Clients__0__DeploymentId=gpt-4o
 DemoClient__Clients__0__TenantId=$tenant_id
-DemoClient__Clients__1__Name="Chargeback Demo Client 2"
+EOF
+
+if [[ "$INCLUDE_EXTERNAL_DEMO_CLIENT" == "true" && -n "$client2_app_id" ]]; then
+    cat >> "$demo_env_file" <<EOF
+DemoClient__Clients__1__Name="AIPolicy Demo Client 2"
 DemoClient__Clients__1__AppId=$client2_app_id
 DemoClient__Clients__1__Secret=$client2_secret_env
 DemoClient__Clients__1__Plan=Starter
 DemoClient__Clients__1__DeploymentId=gpt-4o-mini
 DemoClient__Clients__1__TenantId=$tenant_id
+EOF
+fi
+
+cat >> "$demo_env_file" <<EOF
 DemoClient__AgentInstructions="You are a concise Azure platform assistant. Keep responses to one sentence."
 DemoClient__Prompts__0="What is Azure API Management in one sentence?"
 DemoClient__Prompts__1="Explain token-based billing in one sentence."
@@ -1231,6 +1417,8 @@ jq -n \
     --arg demoClientEnvFile "$demo_env_file" \
     --arg apiAppId "$api_app_id" \
     --arg apiObjId "$api_obj_id" \
+    --arg gatewayAppId "$gateway_app_id" \
+    --arg gatewayObjId "$gateway_obj_id" \
     --arg adminRoleId "$admin_role_id" \
     --arg client1AppId "$client1_app_id" \
     --arg client1ObjId "$client1_obj_id" \
@@ -1270,11 +1458,21 @@ echo "  APIM Gateway:      https://${APIM_NAME}.azure-api.net"
 echo ""
 echo -e "  ${CYAN}── Entra App Registrations ──${NC}"
 echo "  API App ID:        $api_app_id"
-echo "  API Audience:      api://$api_app_id"
+echo "  API Audience:      api://$api_app_id   (dashboard UI → Container App, plan seeding)"
+echo "  Gateway App ID:    $gateway_app_id"
+echo "  Gateway Audience:  api://$gateway_app_id   (client → APIM — used by demo DemoClient__ApiScope)"
 echo "  Client 1 App ID:   $client1_app_id"
 [[ -n "${client1_secret:-}" ]] && echo -e "  Client 1 Secret:   ${DARKYELLOW}$client1_secret${NC}"
-echo "  Client 2 App ID:   $client2_app_id"
-[[ -n "${client2_secret:-}" ]] && echo -e "  Client 2 Secret:   ${DARKYELLOW}$client2_secret${NC}"
+if [[ "$INCLUDE_EXTERNAL_DEMO_CLIENT" == "true" && -n "$client2_app_id" ]]; then
+    echo "  Client 2 App ID:   $client2_app_id"
+    [[ -n "${client2_secret:-}" ]] && echo -e "  Client 2 Secret:   ${DARKYELLOW}$client2_secret${NC}"
+else
+    echo -e "  Client 2:          ${GRAY}(skipped — --no-external-demo-client)${NC}"
+fi
+echo ""
+echo -e "  ${DARKYELLOW}⚠ Token audience changed: clients going through APIM must request${NC}"
+echo -e "  ${DARKYELLOW}  api://$gateway_app_id/.default. Cached tokens targeting the old API${NC}"
+echo -e "  ${DARKYELLOW}  audience will receive 401 from APIM until refreshed.${NC}"
 echo ""
 if [[ -n "${ui_env_file:-}" ]]; then
     echo -e "  ${CYAN}── Dashboard UI Auth Config ──${NC}"

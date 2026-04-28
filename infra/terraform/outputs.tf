@@ -18,7 +18,7 @@ output "apim_gateway_url" {
 }
 
 output "api_app_id" {
-  description = "Application (client) ID of the Chargeback API app registration."
+  description = "Application (client) ID of the AI Policy API app registration."
   value       = module.identity.api_app_id
 }
 
@@ -28,23 +28,23 @@ output "gateway_app_id" {
 }
 
 output "client1_app_id" {
-  description = "Application (client) ID of the Chargeback Sample Client."
+  description = "Application (client) ID of the AI Policy Sample Client."
   value       = module.identity.client1_app_id
 }
 
 output "client1_secret" {
-  description = "Client secret for the Chargeback Sample Client."
+  description = "Client secret for the AI Policy Sample Client."
   value       = module.identity.client1_secret
   sensitive   = true
 }
 
 output "client2_app_id" {
-  description = "Application (client) ID of the Chargeback Demo Client 2."
+  description = "Application (client) ID of the AI Policy Demo Client 2."
   value       = module.identity.client2_app_id
 }
 
 output "client2_secret" {
-  description = "Client secret for the Chargeback Demo Client 2."
+  description = "Client secret for the AI Policy Demo Client 2."
   value       = module.identity.client2_secret
   sensitive   = true
 }

@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="AIPolicyEngine.Api/AIPolicyEngine.Api.csproj" />
+  <Project Path="AIPolicyEngine.AppHost/AIPolicyEngine.AppHost.csproj" />
+  <Project Path="AIPolicyEngine.Benchmarks/AIPolicyEngine.Benchmarks.csproj" />
+  <Project Path="AIPolicyEngine.LoadTest/AIPolicyEngine.LoadTest.csproj" />
+  <Project Path="AIPolicyEngine.ServiceDefaults/AIPolicyEngine.ServiceDefaults.csproj" />
+  <Project Path="AIPolicyEngine.Tests/AIPolicyEngine.Tests.csproj" />
+</Solution>

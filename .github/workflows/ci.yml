@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -26,17 +29,17 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore src/Chargeback.slnx
+        run: dotnet restore src/AIPolicyEngine.slnx
 
       - name: Build
-        run: dotnet build src/Chargeback.slnx --no-restore --configuration Release
+        run: dotnet build src/AIPolicyEngine.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test src/Chargeback.Tests/Chargeback.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test src/AIPolicyEngine.Tests/AIPolicyEngine.Tests.csproj --no-build --configuration Release --verbosity normal
 
       - name: Check for vulnerable packages
         run: |
-          dotnet list src/Chargeback.slnx package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          dotnet list src/AIPolicyEngine.slnx package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
           if grep -qi "has the following vulnerable packages" vulnerable.txt; then
             echo "::error::Vulnerable packages detected!"
             exit 1

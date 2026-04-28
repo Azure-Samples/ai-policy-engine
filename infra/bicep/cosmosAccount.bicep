@@ -37,10 +37,10 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
 
 resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
   parent: cosmosAccount
-  name: 'chargeback'
+  name: 'aipolicy'
   properties: {
     resource: {
-      id: 'chargeback'
+      id: 'aipolicy'
     }
   }
 }

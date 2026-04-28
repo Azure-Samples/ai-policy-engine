@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds the Chargeback API container image and deploys it to the provisioned infrastructure.
+# Builds the AI Policy API container image and deploys it to the provisioned infrastructure.
 #
 # Post-deploy script to run after Terraform (or Bicep) has provisioned the infrastructure.
 # Builds the Docker image (multi-stage: Node.js UI + .NET API) via ACR Tasks,
@@ -16,16 +16,16 @@
 #   ./deploy-container.sh -g <resource-group> [-w <workload-name>] [-t <tag>] [-s]
 #
 # Examples:
-#   ./deploy-container.sh -g rg-chrgbk-eastus2
-#   ./deploy-container.sh -g rg-chrgbk-eastus2 -w chrgbk -t v1.0.0
-#   ./deploy-container.sh -g rg-chrgbk-eastus2 -s   # skip build
+#   ./deploy-container.sh -g rg-aipolicy-eastus2
+#   ./deploy-container.sh -g rg-aipolicy-eastus2 -w aipolicy -t v1.0.0
+#   ./deploy-container.sh -g rg-aipolicy-eastus2 -s   # skip build
 
 set -euo pipefail
 
 # ── Defaults ─────────────────────────────────────────────────────────
 
 RESOURCE_GROUP_NAME=""
-WORKLOAD_NAME="chrgbk"
+WORKLOAD_NAME="aipolicy"
 TAG=""
 SKIP_BUILD=false
 
@@ -34,7 +34,7 @@ SKIP_BUILD=false
 usage() {
     echo "Usage: $0 -g <resource-group> [-w <workload-name>] [-t <tag>] [-s]"
     echo "  -g  Resource group containing the deployed infrastructure (required)"
-    echo "  -w  Workload name prefix (default: chrgbk)"
+    echo "  -w  Workload name prefix (default: aipolicy)"
     echo "  -t  Image tag (default: timestamped run-YYYYMMDDHHMMSS)"
     echo "  -s  Skip the build step"
     exit 1
@@ -70,7 +70,7 @@ die()        { printf '\033[0;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 
 echo ""
 cyan "╔══════════════════════════════════════════════════════════╗"
-cyan "║  Chargeback API — Container Build & Deploy              ║"
+cyan "║  AI Policy API — Container Build & Deploy                ║"
 cyan "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -109,7 +109,7 @@ fi
     --name "$container_app_name" \
     --resource-group "$RESOURCE_GROUP_NAME" \
     --query "properties.configuration.ingress.fqdn" -o tsv)
-[[ -z "$api_app_id" ]] && api_app_id=$(az ad app list --display-name "Chargeback API" --query "[0].appId" -o tsv)
+[[ -z "$api_app_id" ]] && api_app_id=$(az ad app list --display-name "AI Policy API" --query "[0].appId" -o tsv)
 
 green "    Tenant: $tenant_id"
 green "    API App: $api_app_id"
@@ -180,6 +180,11 @@ if [[ -f "$tf_dir/terraform.tfstate" ]]; then
     popd > /dev/null
 fi
 
+if [[ -z "$gateway_app_id" ]]; then
+    # Fallback: look up by display name (Bicep-path deployments)
+    gateway_app_id=$(az ad app list --display-name "AI Policy APIM Gateway" --query "[0].appId" -o tsv 2>/dev/null || true)
+fi
+
 if [[ -n "$gateway_app_id" ]]; then
     gw_uris=$(az ad app show --id "$gateway_app_id" --query "identifierUris[]" -o tsv)
     if ! echo "$gw_uris" | grep -qF "api://$gateway_app_id"; then
@@ -221,8 +226,8 @@ yellow "  Step 1c: Ensuring deployer has Admin and Export roles..."
 
 current_user_id=$(az ad signed-in-user show --query "id" -o tsv)
 app_roles_json=$(az ad app show --id "$api_app_id" --query "appRoles[].{id:id,value:value}" -o json)
-admin_role_id=$(echo "$app_roles_json" | jq -r '.[] | select(.value == "Chargeback.Admin") | .id')
-export_role_id=$(echo "$app_roles_json" | jq -r '.[] | select(.value == "Chargeback.Export") | .id')
+admin_role_id=$(echo "$app_roles_json" | jq -r '.[] | select(.value == "AIPolicy.Admin") | .id')
+export_role_id=$(echo "$app_roles_json" | jq -r '.[] | select(.value == "AIPolicy.Export") | .id')
 
 existing_assignments=$(az rest --method GET \
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$api_sp_id/appRoleAssignedTo" 2>/dev/null || echo '{"value":[]}')
@@ -260,15 +265,15 @@ assign_role() {
     fi
 }
 
-assign_role "$admin_role_id" "Chargeback.Admin"
-assign_role "$export_role_id" "Chargeback.Export"
+assign_role "$admin_role_id" "AIPolicy.Admin"
+assign_role "$export_role_id" "AIPolicy.Export"
 
 # ── Step 2: Write UI auth config ─────────────────────────────────────
 
 echo ""
 yellow "  Step 2: Writing dashboard auth config..."
 
-ui_env_file="$REPO_ROOT/src/chargeback-ui/.env.production.local"
+ui_env_file="$REPO_ROOT/src/aipolicyengine-ui/.env.production.local"
 cat > "$ui_env_file" <<EOF
 VITE_AZURE_TENANT_ID=$tenant_id
 VITE_AZURE_CLIENT_ID=$api_app_id
@@ -280,7 +285,7 @@ green "    ✓ Wrote $ui_env_file"
 
 # ── Step 3: Build & push image via ACR Tasks ─────────────────────────
 
-image_name="chargeback-api"
+image_name="aipolicy-api"
 if [[ -z "$TAG" ]]; then
     TAG="run-$(date -u +'%Y%m%d%H%M%S')"
 fi

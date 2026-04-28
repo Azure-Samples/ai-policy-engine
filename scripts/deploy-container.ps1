@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the Chargeback API container image and deploys it to the provisioned infrastructure.
+    Builds the AI Policy API container image and deploys it to the provisioned infrastructure.
 .DESCRIPTION
     Post-deploy script to run after Terraform (or Bicep) has provisioned the infrastructure.
     Builds the Docker image (multi-stage: Node.js UI + .NET API), pushes to ACR,
@@ -14,19 +14,19 @@
 .PARAMETER ResourceGroupName
     Resource group containing the deployed infrastructure.
 .PARAMETER WorkloadName
-    Workload name prefix used during infrastructure deployment (default: chrgbk).
+    Workload name prefix used during infrastructure deployment (default: aipolicy).
 .PARAMETER Tag
     Image tag (default: timestamped run-YYYYMMDDHHMMSS).
 .PARAMETER SkipBuild
     Skip the Docker build step (push and update only — assumes image is already built locally).
 .EXAMPLE
-    .\deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2
+    .\deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 .EXAMPLE
-    .\deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2 -WorkloadName chrgbk -Tag v1.0.0
+    .\deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2 -WorkloadName aipolicy -Tag v1.0.0
 #>
 param(
     [Parameter(Mandatory = $true)][string]$ResourceGroupName,
-    [string]$WorkloadName = "chrgbk",
+    [string]$WorkloadName = "aipolicy",
     [string]$Tag = "",
     [switch]$SkipBuild
 )
@@ -39,7 +39,7 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  Chargeback API — Container Build & Deploy              ║" -ForegroundColor Cyan
+Write-Host "║  AI Policy API — Container Build & Deploy                ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -76,7 +76,7 @@ if ([string]::IsNullOrWhiteSpace($containerAppFqdn)) {
     $containerAppFqdn = az containerapp show --name $containerAppName --resource-group $ResourceGroupName --query "properties.configuration.ingress.fqdn" -o tsv
 }
 if ([string]::IsNullOrWhiteSpace($apiAppId)) {
-    $apiAppId = az ad app list --display-name "Chargeback API" --query "[0].appId" -o tsv
+    $apiAppId = az ad app list --display-name "AI Policy API" --query "[0].appId" -o tsv
 }
 Write-Host "    Tenant: $tenantId" -ForegroundColor Green
 Write-Host "    API App: $apiAppId" -ForegroundColor Green
@@ -124,6 +124,11 @@ if (Test-Path (Join-Path $tfDir "terraform.tfstate")) {
     try { $gatewayAppId = (terraform output -raw gateway_app_id 2>$null) } catch {}
     Pop-Location
 }
+if ([string]::IsNullOrWhiteSpace($gatewayAppId)) {
+    # Fallback: look up by display name (Bicep-path deployments)
+    $gwLookup = az ad app list --display-name "AI Policy APIM Gateway" --query "[0].appId" -o tsv 2>$null
+    if (-not [string]::IsNullOrWhiteSpace($gwLookup)) { $gatewayAppId = $gwLookup }
+}
 if (-not [string]::IsNullOrWhiteSpace($gatewayAppId)) {
     $gwUris = @(az ad app show --id $gatewayAppId --query "identifierUris[]" -o tsv)
     if ($gwUris -notcontains "api://$gatewayAppId") {
@@ -165,13 +170,13 @@ Write-Host "  Step 1c: Ensuring deployer has Admin and Export roles..." -Foregro
 
 $currentUserId = az ad signed-in-user show --query "id" -o tsv
 $appRoles = az ad app show --id $apiAppId --query "appRoles[].{id:id,value:value}" -o json | ConvertFrom-Json
-$adminRoleId = ($appRoles | Where-Object { $_.value -eq 'Chargeback.Admin' }).id
-$exportRoleId = ($appRoles | Where-Object { $_.value -eq 'Chargeback.Export' }).id
+$adminRoleId = ($appRoles | Where-Object { $_.value -eq 'AIPolicy.Admin' }).id
+$exportRoleId = ($appRoles | Where-Object { $_.value -eq 'AIPolicy.Export' }).id
 
 $existingAssignments = az rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$apiSpId/appRoleAssignedTo" 2>$null | ConvertFrom-Json
 $userAssignments = @($existingAssignments.value | Where-Object { $_.principalId -eq $currentUserId })
 
-foreach ($role in @(@{id=$adminRoleId; name='Chargeback.Admin'}, @{id=$exportRoleId; name='Chargeback.Export'})) {
+foreach ($role in @(@{id=$adminRoleId; name='AIPolicy.Admin'}, @{id=$exportRoleId; name='AIPolicy.Export'})) {
     if (-not $role.id) { Write-Host "    ⊘ $($role.name) role not found on app — skipping" -ForegroundColor DarkGray; continue }
     $hasRole = $userAssignments | Where-Object { $_.appRoleId -eq $role.id }
     if ($hasRole) {
@@ -193,7 +198,7 @@ foreach ($role in @(@{id=$adminRoleId; name='Chargeback.Admin'}, @{id=$exportRol
 Write-Host ""
 Write-Host "  Step 2: Writing dashboard auth config..." -ForegroundColor Yellow
 
-$uiEnvDir = Join-Path $RepoRoot "src\chargeback-ui"
+$uiEnvDir = Join-Path $RepoRoot "src\aipolicyengine-ui"
 $uiEnvFile = Join-Path $uiEnvDir ".env.production.local"
 $uiEnvContent = @(
     "VITE_AZURE_TENANT_ID=$tenantId"
@@ -207,7 +212,7 @@ Write-Host "    ✓ Wrote $uiEnvFile" -ForegroundColor Green
 
 # ── Step 3: Build Docker image ───────────────────────────────────────
 
-$imageRepository = "$acrLoginServer/chargeback-api"
+$imageRepository = "$acrLoginServer/aipolicy-api"
 if ([string]::IsNullOrWhiteSpace($Tag)) {
     $Tag = "run-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
 }

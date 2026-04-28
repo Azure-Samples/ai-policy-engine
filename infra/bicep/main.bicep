@@ -2,11 +2,11 @@
 param apimInstanceName string
 param oaiApiName string
 param funcApiName string
-@description('Name of the Container App for the .NET chargeback API.')
-param containerAppName string = 'ca-chargeback'
+@description('Name of the Container App for the .NET AI Policy API.')
+param containerAppName string = 'ca-aipolicy'
 @description('Name of the Container App Environment.')
-param containerAppEnvName string = 'cae-chargeback'
-@description('Container image for the chargeback API.')
+param containerAppEnvName string = 'cae-aipolicy'
+@description('Container image for the AI Policy API.')
 param containerImage string = 'mcr.microsoft.com/dotnet/aspnet:10.0'
 param keyVaultName string
 param redisCacheName string
@@ -14,10 +14,10 @@ param cosmosAccountName string
 param logAnalyticsWorkspaceName string
 
 @description('Name of the Application Insights resource.')
-param appInsightsName string = 'ai-chargeback'
+param appInsightsName string = 'ai-aipolicy'
 
 @description('Display name for the Azure Monitor workbook dashboard.')
-param workbookDisplayName string = 'Chargeback Log Analytics Dashboard'
+param workbookDisplayName string = 'AI Policy Log Analytics Dashboard'
 
 @description('Purview client app ID for Agent 365 integration (leave empty to skip).')
 param purviewClientAppId string = ''

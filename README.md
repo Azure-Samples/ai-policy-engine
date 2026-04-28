@@ -29,8 +29,6 @@ A single ASP.NET Minimal API handles authentication/authorization pre-checks, mo
 
 **🏗️ Tech Stack**: .NET 10, Azure Container Apps, ASP.NET Minimal APIs, .NET Aspire, React/TypeScript, Azure Managed Redis, CosmosDB, Azure API Management, Bicep/Terraform, OpenTelemetry + Azure Monitor, Microsoft Purview
 
-**⚙️ Internal Naming Note**: The codebase uses "Chargeback" as the internal project name (legacy naming, rename to "GatewayPolicy" pending in a future release). All namespaces, containers, and project folders will be updated in the next phase.
-
 ## Quick Start
 
 ### Local Development
@@ -39,7 +37,7 @@ A single ASP.NET Minimal API handles authentication/authorization pre-checks, mo
 # Clone and run (requires .NET 10 SDK + Docker for Redis)
 git clone https://github.com/your-org/azure-ai-gateway-policy-engine.git
 cd azure-ai-gateway-policy-engine/src
-dotnet run --project Chargeback.AppHost
+dotnet run --project AIPolicyEngine.AppHost
 ```
 
 The Aspire dashboard opens automatically at `https://localhost:17224` and provides resource status, logs, traces, and metrics for all services.
@@ -67,7 +65,7 @@ terraform apply
 
 # Stage 2: Build and deploy the container to the provisioned ACR
 cd ../..
-./scripts/deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2
+./scripts/deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 
 # For multi-tenant: provision SPs in secondary tenant
 cd infra/terraform
@@ -92,7 +90,7 @@ dotnet user-secrets --project demo set "DemoClient:TenantId" "<tenant-id>"
 dotnet user-secrets --project demo set "DemoClient:ApiScope" "api://<gateway-app-id>/.default"
 dotnet user-secrets --project demo set "DemoClient:ApimBase" "https://<apim-name>.azure-api.net"
 dotnet user-secrets --project demo set "DemoClient:ApiVersion" "2025-04-01-preview"
-dotnet user-secrets --project demo set "DemoClient:ChargebackBase" "https://<container-app-fqdn>"
+dotnet user-secrets --project demo set "DemoClient:AIPolicyEngineBase" "https://<container-app-fqdn>"
 dotnet user-secrets --project demo set "DemoClient:Clients:0:Name" "Enterprise Client"
 dotnet user-secrets --project demo set "DemoClient:Clients:0:AppId" "<client-app-id>"
 dotnet user-secrets --project demo set "DemoClient:Clients:0:Secret" "<client-secret>"
@@ -125,7 +123,7 @@ Each demo client can specify its own `TenantId`. If omitted, it inherits the glo
 ```mermaid
 graph LR
     A[Client Apps] -->|Bearer Token| B[APIM Gateway]
-    B -->|Inbound: Pre-check<br/>Auth + Route + Rate Limit| C[Chargeback.Api]
+    B -->|Inbound: Pre-check<br/>Auth + Route + Rate Limit| C[AIPolicyEngine.Api]
     B --> D[AI Models<br/>OpenAI, Foundry, etc]
     C --> E[Azure Managed Redis<br/>Hot Cache]
     C --> F[CosmosDB<br/>Source of Truth]
@@ -136,7 +134,7 @@ graph LR
     C -->|WebSocket| I
 ```
 
-**Core Architecture**: A single **Azure Container App** (`Chargeback.Api`) hosts all gateway policy logic:
+**Core Architecture**: A single **Azure Container App** (`AIPolicyEngine.Api`) hosts all gateway policy logic:
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
@@ -208,7 +206,7 @@ All decisions are cached in Redis for sub-millisecond latency; all configuration
 - **Per-client consumption tracking**: Effective requests, token usage, model tier breakdown
 - **Monthly billing exports**: CSV downloads with tier-level detail
 - **Audit trail per customer**: Complete request log for any client+tenant combination
-- **Role-based access**: Export requires `Chargeback.Export` app role
+- **Role-based access**: Export requires `AIPolicyEngine.Export` app role
 
 ### ⚡ APIM Policy Enforcement at the Gateway
 - Precheck-based authentication + routing + rate limiting
@@ -249,7 +247,7 @@ The React SPA provides five pages:
 - **Export** — Two report types:
   - **Billing Summary**: Rolled-up per-client usage for a month
   - **Client Audit Trail**: Every request for a specific client
-  - Requires `Chargeback.Export` app role
+  - Requires `AIPolicyEngine.Export` app role
 
 ## Authentication
 
@@ -257,8 +255,8 @@ Authentication uses **Entra ID (Azure AD) App Registrations** with JWT bearer to
 
 | App Registration | Audience | Purpose |
 |-----------------|----------|---------|
-| **Chargeback APIM Gateway** (multi-tenant) | `api://{gateway-app-id}` | External clients authenticate against this to call OpenAI via APIM |
-| **Chargeback API** (single-tenant) | `api://{api-app-id}` | Backend API — only APIM's managed identity and dashboard users access this |
+| **AIPolicyEngine APIM Gateway** (multi-tenant) | `api://{gateway-app-id}` | External clients authenticate against this to call OpenAI via APIM |
+| **AIPolicyEngine API** (single-tenant) | `api://{api-app-id}` | Backend API — only APIM's managed identity and dashboard users access this |
 
 The APIM policy (`policies/entra-jwt-policy.xml`) validates incoming tokens against the **Gateway** app audience and extracts claims for chargeback routing:
 
@@ -308,16 +306,16 @@ curl -X PUT "https://<container-app>/api/clients/<clientAppId>/<tenantId>" \
 
 ### Export Role Configuration
 
-The export endpoints require the `Chargeback.Export` app role. To set this up:
+The export endpoints require the `AIPolicyEngine.Export` app role. To set this up:
 
 1. **Define the app role** in the API app registration (Entra ID → App registrations → your API app → App roles):
-   - Display name: `Chargeback Export`
-   - Value: `Chargeback.Export`
+   - Display name: `AIPolicyEngine Export`
+   - Value: `AIPolicyEngine.Export`
    - Allowed member types: Applications (for automated export via Function App/App Registration)
 
 2. **Assign the role** to an App Registration for automated export:
    - Go to Enterprise applications → find the App Registration's service principal
-   - App role assignments → Add assignment → select `Chargeback.Export`
+   - App role assignments → Add assignment → select `AIPolicyEngine.Export`
 
 3. **Configure the API** with the Entra ID settings in `appsettings.json`:
    ```json
@@ -349,27 +347,27 @@ The App Registration can then use client credentials flow to obtain a token and 
 | `/api/plans` | GET/POST/PUT/DELETE | Billing plan CRUD (create, update, delete plans) |
 | `/api/pricing` | GET/PUT/DELETE | Model pricing and multiplier management |
 | `/api/quotas` | GET/PUT/DELETE | Per-client quota overrides (exceptions to plan limits) |
-| `/api/export/available-periods` | GET | Available billing periods and clients for export (role: `Chargeback.Export`) |
-| `/api/export/billing-summary` | GET | Monthly billing summary CSV for all customers (role: `Chargeback.Export`) |
-| `/api/export/client-audit` | GET | Customer-specific audit trail CSV with per-model breakdown (role: `Chargeback.Export`) |
+| `/api/export/available-periods` | GET | Available billing periods and clients for export (role: `AIPolicyEngine.Export`) |
+| `/api/export/billing-summary` | GET | Monthly billing summary CSV for all customers (role: `AIPolicyEngine.Export`) |
+| `/api/export/client-audit` | GET | Customer-specific audit trail CSV with per-model breakdown (role: `AIPolicyEngine.Export`) |
 | `/ws/logs` | WS | WebSocket endpoint for real-time usage updates |
 
 ## Observability
 
-Telemetry is configured via `Chargeback.ServiceDefaults` using the [Azure Monitor OpenTelemetry distro](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable):
+Telemetry is configured via `AIPolicyEngine.ServiceDefaults` using the [Azure Monitor OpenTelemetry distro](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable):
 
 | Custom Metric | Description | Dimensions |
 |---------------|-------------|------------|
-| `chargeback.tokens_processed` | Total tokens processed across all requests | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
-| `chargeback.cost_total` | Cumulative cost in USD | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
-| `chargeback.requests_processed` | Total chargeback requests handled | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
+| `AIPolicyEngine.tokens_processed` | Total tokens processed across all requests | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
+| `AIPolicyEngine.cost_total` | Cumulative cost in USD | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
+| `AIPolicyEngine.requests_processed` | Total chargeback requests handled | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
 
 Distributed traces, structured logs, and metrics flow to Azure Monitor / Application Insights. The Aspire dashboard provides a local development view of all telemetry.
 The infrastructure deployment also creates an Azure Monitor workbook dashboard (`logAnalyticsWorkbook.bicep`) with 30-day token/cost trend, top clients, status distribution, and quota/rate-limit event views from Log Analytics.
 
 ## Purview Integration
 
-The Chargeback API integrates with the **Microsoft Agent Framework Purview SDK** for DLP policy validation and audit emission.
+The AIPolicyEngine API integrates with the **Microsoft Agent Framework Purview SDK** for DLP policy validation and audit emission.
 
 **Requirements**:
 - Microsoft 365 E5 license (or E5 Compliance add-on)
@@ -384,19 +382,19 @@ Purview evaluates content against organizational DLP policies before processing 
 
 ```
 src/
-├── Chargeback.slnx                    # Solution file
-├── Chargeback.AppHost/                # .NET Aspire orchestrator — local dev environment with all services
-├── Chargeback.ServiceDefaults/        # OpenTelemetry + Azure Monitor configuration, shared by all services
-├── Chargeback.Api/                    # ASP.NET Minimal API — core policy engine
+├── AIPolicyEngine.slnx                    # Solution file
+├── AIPolicyEngine.AppHost/                # .NET Aspire orchestrator — local dev environment with all services
+├── AIPolicyEngine.ServiceDefaults/        # OpenTelemetry + Azure Monitor configuration, shared by all services
+├── AIPolicyEngine.Api/                    # ASP.NET Minimal API — core policy engine
 │   ├── Endpoints/                     # API endpoints (PreCheck, RoutingPolicy, RequestBilling, Export, etc.)
 │   ├── Models/                        # Request/response DTOs, domain models
 │   ├── Services/                      # ChargebackCalculator, RoutingEvaluator, Repositories (IRepository pattern)
 │   ├── Repositories/                  # CosmosDB persistence layer (Plans, Clients, Pricing, Routing, etc.)
 │   └── Program.cs                     # API configuration, dependency injection
-├── Chargeback.Tests/                  # Unit and integration tests (198+ tests, 100% critical path coverage)
-├── Chargeback.Benchmarks/             # BenchmarkDotNet performance tests (routing, pricing calculations)
-├── Chargeback.LoadTest/               # Load testing project
-└── chargeback-ui/                     # React/TypeScript dashboard (5 pages, adaptive billing UI)
+├── AIPolicyEngine.Tests/                  # Unit and integration tests (198+ tests, 100% critical path coverage)
+├── AIPolicyEngine.Benchmarks/             # BenchmarkDotNet performance tests (routing, pricing calculations)
+├── AIPolicyEngine.LoadTest/               # Load testing project
+└── AIPolicyEngine-ui/                     # React/TypeScript dashboard (5 pages, adaptive billing UI)
     ├── src/types.ts                   # TypeScript interfaces for API contracts
     ├── src/api.ts                     # API client with error handling
     ├── src/pages/                     # Dashboard, Clients, Plans, Routing, Export pages
@@ -413,7 +411,7 @@ policies/
 infra/
 ├── bicep/                             # Bicep IaC modules
 │   ├── main.bicep                     # Main deployment template
-│   ├── containerApp.bicep             # Azure Container App for Chargeback.Api
+│   ├── containerApp.bicep             # Azure Container App for AIPolicyEngine.Api
 │   ├── appInsights.bicep              # Application Insights + Log Analytics
 │   ├── cosmosAccount.bicep            # Azure CosmosDB account + containers
 │   ├── redisCache.bicep               # Azure Managed Redis
@@ -449,7 +447,7 @@ Infrastructure is defined in Bicep modules under `infra/bicep/`:
 
 | Module | Resource |
 |--------|----------|
-| `containerApp.bicep` | Azure Container App for Chargeback.Api |
+| `containerApp.bicep` | Azure Container App for AIPolicyEngine.Api |
 | `appInsights.bicep` | Application Insights + Log Analytics workspace |
 | `logAnalyticsWorkbook.bicep` | Azure Monitor workbook dashboard (Log Analytics KQL) |
 | `redisCache.bicep` | Azure Managed Redis (Balanced_B0) |
@@ -478,7 +476,7 @@ terraform apply
 
 # Then build and deploy the container (also verifies Entra app config)
 cd ../..
-./scripts/deploy-container.ps1 -ResourceGroupName rg-chrgbk-eastus2
+./scripts/deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 ```
 
 > **Note**: The `deploy-container.ps1` script automatically verifies and fixes Entra ID app configuration (identifier URIs, SPA redirect URIs, service principals, and role assignments for the deploying user). This works around known eventual-consistency issues in the AzureAD Terraform provider.
@@ -515,7 +513,7 @@ DemoClient__SecondaryTenantId=<optional-second-tenant-for-multi-tenant-demo>
 DemoClient__ApiScope=api://<gateway-app-id>/.default
 DemoClient__ApimBase=https://<apim-name>.azure-api.net
 DemoClient__ApiVersion=2025-04-01-preview
-DemoClient__ChargebackBase=https://<container-app-fqdn>
+DemoClient__AIPolicyEngineBase=https://<container-app-fqdn>
 DemoClient__Clients__0__Name=Enterprise Client
 DemoClient__Clients__0__AppId=<client-app-id>
 DemoClient__Clients__0__Secret=<client-secret>
@@ -524,9 +522,9 @@ DemoClient__Clients__0__DeploymentId=gpt-4.1
 DemoClient__Clients__0__TenantId=<tenant-id>
 ```
 
-For local React dashboard development, copy `src/chargeback-ui/.env.sample` to `src/chargeback-ui/.env.local` and set your Entra app values.
+For local React dashboard development, copy `src/AIPolicyEngine-ui/.env.sample` to `src/AIPolicyEngine-ui/.env.local` and set your Entra app values.
 
-When running via Aspire, connection strings and service discovery are configured automatically by the `Chargeback.AppHost` project.
+When running via Aspire, connection strings and service discovery are configured automatically by the `AIPolicyEngine.AppHost` project.
 
 ## Documentation
 
@@ -535,8 +533,8 @@ When running via Aspire, connection strings and service discovery are configured
 | Deployment Guide | [docs/DOTNET_DEPLOYMENT_GUIDE.md](docs/DOTNET_DEPLOYMENT_GUIDE.md) |
 | Setup Script | [scripts/setup-azure.ps1](scripts/setup-azure.ps1) |
 | Demo Client | [demo/](demo/) |
-| Benchmarks | [src/Chargeback.Benchmarks/](src/Chargeback.Benchmarks/) |
-| Load Tests | [src/Chargeback.LoadTest/](src/Chargeback.LoadTest/) |
+| Benchmarks | [src/AIPolicyEngine.Benchmarks/](src/AIPolicyEngine.Benchmarks/) |
+| Load Tests | [src/AIPolicyEngine.LoadTest/](src/AIPolicyEngine.LoadTest/) |
 
 ## FAQ
 
@@ -579,7 +577,7 @@ When running via Aspire, connection strings and service discovery are configured
 
 - 📊 **Aspire Dashboard** — Local development view of all traces, logs, and metrics
 - 📈 **Azure Monitor** — Production telemetry via OpenTelemetry + Azure Monitor distro
-- 🔍 **Custom Metrics** — `chargeback.tokens_processed`, `chargeback.cost_total`, `chargeback.requests_processed`
+- 🔍 **Custom Metrics** — `AIPolicyEngine.tokens_processed`, `AIPolicyEngine.cost_total`, `AIPolicyEngine.requests_processed`
 - 🚨 **Automated Alerts** — Configure in Application Insights for cost thresholds and anomalies
 
 ## Contributing
@@ -596,6 +594,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**🎯 Ready to get started?** `dotnet run --project src/Chargeback.AppHost`
+**🎯 Ready to get started?** `dotnet run --project src/AIPolicyEngine.AppHost`
 
 **💡 Need help?** Check our [FAQ](#faq) or the [Deployment Guide](docs/DOTNET_DEPLOYMENT_GUIDE.md).

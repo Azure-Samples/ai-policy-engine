@@ -1,8 +1,0 @@
-<Solution>
-  <Project Path="Chargeback.Api/Chargeback.Api.csproj" />
-  <Project Path="Chargeback.AppHost/Chargeback.AppHost.csproj" />
-  <Project Path="Chargeback.Benchmarks/Chargeback.Benchmarks.csproj" />
-  <Project Path="Chargeback.LoadTest/Chargeback.LoadTest.csproj" />
-  <Project Path="Chargeback.ServiceDefaults/Chargeback.ServiceDefaults.csproj" />
-  <Project Path="Chargeback.Tests/Chargeback.Tests.csproj" />
-</Solution>

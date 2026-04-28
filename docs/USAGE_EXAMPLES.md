@@ -148,7 +148,7 @@ console.log(await response.json());
 
 ## Dashboard API Examples
 
-The chargeback dashboard API uses the same Entra Bearer token authentication.
+The AI Policy dashboard API uses the same Entra Bearer token authentication.
 
 ```bash
 TOKEN=$(az account get-access-token --resource api://YOUR-API-APP-ID --query accessToken -o tsv)

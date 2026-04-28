@@ -87,7 +87,7 @@ secrets.json
 **/BenchmarkDotNet.Artifacts/
 
 # Load test reports
-src/Chargeback.LoadTest/reports/
+src/AIPolicyEngine.LoadTest/reports/
 **/parameter.json
 
 .agentic/

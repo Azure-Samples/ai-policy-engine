@@ -125,7 +125,7 @@
 		<!-- If routing produced a different deployment, rewrite the backend URL path -->
 		<choose>
 			<when condition="@(!string.IsNullOrEmpty((string)context.Variables["routedDeployment"]) &amp;&amp; (string)context.Variables["routedDeployment"] != (string)context.Variables["deploymentId"])">
-				<!-- Preserve the original deployment ID for audit/chargeback logging -->
+				<!-- Preserve the original deployment ID for audit/policy logging -->
 				<set-variable name="originalDeploymentId" value="@((string)context.Variables["deploymentId"])" />
 				<!-- Update deploymentId to the routed deployment so downstream logic
 				     (backend call, rate limiting, logging) all use the actual deployment -->
@@ -188,7 +188,7 @@
             var parsedResponse = context.Variables.GetValueOrDefault<Newtonsoft.Json.Linq.JObject>("parsedResponse");
             return parsedResponse != null ? parsedResponse.ToString() : string.Empty;
         }" />
-		<!-- Fire-and-forget: send usage data to chargeback API without waiting for response.
+		<!-- Fire-and-forget: send usage data to AI Policy API without waiting for response.
 		     This eliminates latency on the response path for maximum scalability. -->
 		<send-one-way-request mode="new">
 			<set-url>{{ContainerAppUrl}}/api/log</set-url>

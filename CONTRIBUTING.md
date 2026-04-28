@@ -2,7 +2,7 @@
 
 ## Welcome Contributors!
 
-Thank you for your interest in contributing to the Azure API Management OpenAI Chargeback Environment project.
+Thank you for your interest in contributing to the Azure API Management AI Policy Engine Environment project.
 
 ## Code of Conduct
 
@@ -43,18 +43,18 @@ Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 ### Local Development
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/apim-openai-chargeback-environment.git
-cd apim-openai-chargeback-environment/dotnet
+git clone https://github.com/YOUR_USERNAME/ai-policy-engine.git
+cd ai-policy-engine/dotnet
 
 # Run the full stack with .NET Aspire
-dotnet run --project Chargeback.AppHost
+dotnet run --project AIPolicyEngine.AppHost
 ```
 
 The Aspire dashboard opens automatically and orchestrates all services (API, Redis, etc.).
 
 ### Frontend Development (separate terminal)
 ```bash
-cd src/chargeback-ui
+cd src/aipolicyengine-ui
 npm install
 npm run dev
 ```
@@ -62,19 +62,19 @@ npm run dev
 ## Project Structure
 
 ```
+demo/                  # Demo console app
 src/
-├── Chargeback.slnx              # Solution file
-├── Chargeback.AppHost/          # .NET Aspire orchestrator
-├── Chargeback.ServiceDefaults/  # OpenTelemetry + Azure Monitor
-├── Chargeback.Api/              # Main API project
+├── AIPolicyEngine.slnx              # Solution file
+├── AIPolicyEngine.AppHost/          # .NET Aspire orchestrator
+├── AIPolicyEngine.ServiceDefaults/  # OpenTelemetry + Azure Monitor
+├── AIPolicyEngine.Api/              # Main API project
 │   ├── Endpoints/               # Minimal API endpoints
 │   ├── Models/                  # DTOs and data models
 │   └── Services/                # Business logic
-├── Chargeback.Tests/            # xUnit tests
-├── Chargeback.Benchmarks/       # BenchmarkDotNet perf tests
-├── Chargeback.LoadTest/         # NBomber load tests
-├── demo/                  # Demo console app
-├── chargeback-ui/               # React/TypeScript dashboard
+├── AIPolicyEngine.Tests/            # xUnit tests
+├── AIPolicyEngine.Benchmarks/       # BenchmarkDotNet perf tests
+├── AIPolicyEngine.LoadTest/         # NBomber load tests
+├── AIPolicyEngine-ui/               # React/TypeScript dashboard
 └── Dockerfile                   # Multi-stage Docker build
 ```
 
@@ -97,13 +97,13 @@ src/
 ### Running Tests
 ```bash
 cd src
-dotnet test Chargeback.Tests
+dotnet test AIPolicyEngine.Tests
 ```
 
 ### Running Benchmarks
 ```bash
 cd src
-dotnet run -c Release --project Chargeback.Benchmarks -- --filter *
+dotnet run -c Release --project AIPolicyEngine.Benchmarks -- --filter *
 ```
 
 ### Test Categories

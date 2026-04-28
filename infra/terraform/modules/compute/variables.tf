@@ -71,7 +71,7 @@ variable "entra_tenant_id" {
 }
 
 variable "api_app_id" {
-  description = "Application (client) ID of the Chargeback API app registration."
+  description = "Application (client) ID of the AI Policy API app registration."
   type        = string
 }
 

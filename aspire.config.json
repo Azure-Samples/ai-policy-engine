@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/AIPolicyEngine.AppHost/AIPolicyEngine.AppHost.csproj"
+  }
+}

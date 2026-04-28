@@ -1,8 +1,8 @@
 # Copy to terraform.tfvars and fill in values
 subscription_id       = "<your-subscription-id>"
 location              = "eastus2"
-workload_name         = "chrgbk"
+workload_name         = "aipolicy"
 apim_publisher_email  = "admin@example.com"
-apim_publisher_name   = "Chargeback Admin"
+apim_publisher_name   = "AI Policy Admin"
 secondary_tenant_id   = ""  # Set for multi-tenant demo
 container_image       = "mcr.microsoft.com/dotnet/aspnet:10.0"

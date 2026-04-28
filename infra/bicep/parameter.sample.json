@@ -18,7 +18,7 @@
       "value": "azure-openai-api"
     },
     "funcApiName": {
-      "value": "chargeback-api"
+      "value": "aipolicy-api"
     },
     "workloadName": {
       "value": "<your-workload-name>"
@@ -39,7 +39,7 @@
       "value": "cae-<your-suffix>"
     },
     "containerImage": {
-      "value": "<your-acr-name>.azurecr.io/chargeback-api:latest"
+      "value": "<your-acr-name>.azurecr.io/aipolicy-api:latest"
     },
     "appInsightsName": {
       "value": "ai-<your-suffix>"

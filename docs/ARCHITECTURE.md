@@ -110,7 +110,7 @@ Audit logs and billing summaries are persisted to Cosmos DB for long-term financ
 All Azure resources are provisioned via **Bicep** modules located in `infra/` and `infra/`.
 
 ### Container Apps
-- The Chargeback API and React SPA are packaged into a single container image.
+- The AIPolicyEngine API and React SPA are packaged into a single container image.
 - Azure Container Apps provides automatic scaling, ingress, and revision management.
 - Health probes are configured for liveness and readiness checks.
 

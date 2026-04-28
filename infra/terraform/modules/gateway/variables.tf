@@ -57,12 +57,12 @@ variable "container_app_id" {
 }
 
 variable "api_app_id" {
-  description = "Application (client) ID of the Chargeback API app registration."
+  description = "Application (client) ID of the AI Policy API app registration."
   type        = string
 }
 
 variable "gateway_app_id" {
-  description = "Application (client) ID of the APIM Gateway app registration (multi-tenant, client-facing)."
+  description = "Application (client) ID of the AI Policy APIM Gateway app registration (multi-tenant, client-facing)."
   type        = string
 }
 

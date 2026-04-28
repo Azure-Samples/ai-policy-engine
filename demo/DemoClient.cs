@@ -39,7 +39,7 @@ using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
 Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
-Console.WriteLine("║  Azure OpenAI Chargeback Demo — Agent Framework (rc2)   ║");
+Console.WriteLine("║  Azure AIPolicyEngine Demo —     Agent Framework         ║");
 Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
 Console.ResetColor();
 Console.WriteLine();
@@ -137,14 +137,14 @@ foreach (var client in settings.Clients)
     }
 
     Console.WriteLine();
-    Console.Write("  Fetching chargeback summary... ");
-    await PrintChargebackSummaryAsync(http, settings.ChargebackBase, client.AppId);
+    Console.Write("  Fetching AI Policy summary... ");
+    await PrintChargebackSummaryAsync(http, settings.AIPolicyBase, client.AppId);
     Console.WriteLine();
 }
 
 Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("Demo complete! Check the dashboard at:");
-Console.WriteLine($"  {settings.ChargebackBase}/");
+Console.WriteLine($"  {settings.AIPolicyBase}/");
 Console.ResetColor();
 
 static void LoadEnvironmentFiles()
@@ -252,12 +252,12 @@ static async Task<string?> AcquireAccessTokenAsync(
 
 static async Task PrintChargebackSummaryAsync(
     HttpClient http,
-    string chargebackBase,
+    string aiPolicyEngineBase,
     string clientAppId)
 {
     try
     {
-        var cbResponse = await http.GetStringAsync($"{chargebackBase}/chargeback");
+        var cbResponse = await http.GetStringAsync($"{aiPolicyEngineBase}/chargeback");
         using var cbDoc = JsonDocument.Parse(cbResponse);
 
         if (!cbDoc.RootElement.TryGetProperty("logs", out var logs))
@@ -451,7 +451,7 @@ file sealed class DemoClientSettings
     public required string ApiScope { get; init; }
     public required string ApimBase { get; init; }
     public required string ApiVersion { get; init; }
-    public required string ChargebackBase { get; init; }
+    public required string AIPolicyBase { get; init; }
     public required IReadOnlyList<DemoClientConfig> Clients { get; init; }
     public required IReadOnlyList<string> Prompts { get; init; }
     public required string AgentInstructions { get; init; }
@@ -509,7 +509,7 @@ file sealed class DemoClientSettings
             ApiScope = ReadRequired(section, "ApiScope"),
             ApimBase = ReadRequired(section, "ApimBase"),
             ApiVersion = ReadRequired(section, "ApiVersion"),
-            ChargebackBase = ReadRequired(section, "ChargebackBase"),
+            AIPolicyBase = ReadRequired(section, "AIPolicyBase"),
             Clients = clients,
             Prompts = prompts,
             AgentInstructions = instructions

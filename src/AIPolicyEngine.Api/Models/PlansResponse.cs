@@ -1,0 +1,6 @@
+namespace AIPolicyEngine.Api.Models;
+
+public sealed class PlansResponse
+{
+    public List<PlanData> Plans { get; set; } = [];
+}

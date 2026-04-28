@@ -1,5 +1,5 @@
 @description('Display name for the Azure Monitor workbook.')
-param workbookDisplayName string = 'Chargeback Log Analytics Dashboard'
+param workbookDisplayName string = 'AI Policy Log Analytics Dashboard'
 
 @description('Name of the Log Analytics workspace.')
 param logAnalyticsWorkspaceName string
@@ -26,7 +26,7 @@ var workbookData = {
     {
       type: 1
       content: {
-        json: '## Chargeback Operations Dashboard\nThis workbook pulls 30-day operational chargeback data from Log Analytics / Application Insights telemetry.'
+        json: '## AI Policy Operations Dashboard\nThis workbook pulls 30-day operational AI Policy data from Log Analytics / Application Insights telemetry.'
       }
       name: 'text - 0'
     }

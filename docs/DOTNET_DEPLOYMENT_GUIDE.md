@@ -21,8 +21,8 @@ Complete guide for deploying the Azure AI Gateway Policy Engine to Azure.
 ## Quick Deploy (Automated)
 
 ```powershell
-git clone https://github.com/your-org/apim-openai-chargeback-environment.git
-cd apim-openai-chargeback-environment
+git clone https://github.com/your-org/ai-policy-engine.git
+cd ai-policy-engine
 ./scripts/setup-azure.ps1 -Location eastus2 -WorkloadName myproject
 ```
 
@@ -48,44 +48,49 @@ For users who want to deploy step-by-step or need to customize the process.
 
 ```bash
 az login
-az group create --name rg-chargeback --location eastus2
+az group create --name rg-aipolicyengine --location eastus2
 ```
 
 ### 2. Create ACR and Build Docker Image
 
 ```bash
 # Create Azure Container Registry
-az acr create --resource-group rg-chargeback --name acrchargeback --sku Basic --admin-enabled true
+az acr create --resource-group rg-aipolicyengine --name acraipolicyengine --sku Basic --admin-enabled true
 
 # Login to ACR
-az acr login --name acrchargeback
+az acr login --name acraipolicyengine
 
 # Build and push the Docker image from the dotnet/ directory
 cd src
-docker build -t acrchargeback.azurecr.io/chargeback-api:latest .
-docker push acrchargeback.azurecr.io/chargeback-api:latest
+docker build -t acraipolicyengine.azurecr.io/aipolicyengine-api:latest .
+docker push acraipolicyengine.azurecr.io/aipolicyengine-api:latest
 cd ..
 ```
 
 ### 3. Register Entra ID Apps
 
-You need two app registrations: one for the **API** (audience) and one or more **client apps**.
+You need four app registrations (see `scripts/setup-azure.ps1` for the automated path):
 
-#### 3a. API App Registration (Audience)
+1. **AI Policy Engine API** — audience for dashboard UI calls direct to the Container App and APIM → Container App (MI) calls. Hosts `AIPolicy.Export`, `AIPolicy.Admin`, `AIPolicy.Apim` app roles. Exposes `access_as_user` for the dashboard UI.
+2. **AI Policy APIM Gateway** — audience for client → APIM tokens (`ExpectedAudience`). Exposes `access_as_user`. Clients request `api://{gatewayAppId}/.default` (or `/access_as_user` for interactive flows).
+3. **AI Policy Sample Client** — internal demo client with `access_as_user` delegated permission on the Gateway app, and the `AIPolicy.Admin` app-role on the API app (used for client-credentials plan seeding).
+4. **AI Policy Demo Client 2** *(optional)* — external/multi-tenant demo client with `access_as_user` delegated permission on the Gateway app.
+
+#### 3a. API App Registration (Container App audience)
 
 ```bash
 # Create the API app
 az ad app create \
-  --display-name "Chargeback API" \
-  --identifier-uris "api://chargeback-api" \
+  --display-name "AI Policy Engine API" \
+  --identifier-uris "api://aipolicyengine-api" \
   --sign-in-audience "AzureADMyOrg"
 
 # Note the appId from the output — this is your ExpectedAudience
-API_APP_ID=$(az ad app list --display-name "Chargeback API" --query "[0].appId" -o tsv)
+API_APP_ID=$(az ad app list --display-name "AIPolicyEngine API" --query "[0].appId" -o tsv)
 
 # Expose an API scope
 az ad app update --id $API_APP_ID \
-  --set "api.oauth2PermissionScopes=[{\"id\":\"$(uuidgen)\",\"adminConsentDescription\":\"Access Chargeback API\",\"adminConsentDisplayName\":\"access_as_user\",\"isEnabled\":true,\"type\":\"User\",\"userConsentDescription\":\"Access Chargeback API\",\"userConsentDisplayName\":\"access_as_user\",\"value\":\"access_as_user\"}]"
+  --set "api.oauth2PermissionScopes=[{\"id\":\"$(uuidgen)\",\"adminConsentDescription\":\"Access AIPolicyEngine API\",\"adminConsentDisplayName\":\"access_as_user\",\"isEnabled\":true,\"type\":\"User\",\"userConsentDescription\":\"Access AIPolicyEngine API\",\"userConsentDisplayName\":\"access_as_user\",\"value\":\"access_as_user\"}]"
 ```
 
 #### 3b. Client App Registration
@@ -93,13 +98,13 @@ az ad app update --id $API_APP_ID \
 ```bash
 # Create a client app
 az ad app create \
-  --display-name "Chargeback Client" \
+  --display-name "AI Policy Client" \
   --sign-in-audience "AzureADMyOrg"
 
-CLIENT_APP_ID=$(az ad app list --display-name "Chargeback Client" --query "[0].appId" -o tsv)
+CLIENT_APP_ID=$(az ad app list --display-name "AI Policy Client" --query "[0].appId" -o tsv)
 
 # Create a client secret (for client_credentials flow)
-az ad app credential reset --id $CLIENT_APP_ID --display-name "chargeback-secret"
+az ad app credential reset --id $CLIENT_APP_ID --display-name "aipolicy-secret"
 
 # Grant the client app permission to the API scope
 az ad app permission add --id $CLIENT_APP_ID \
@@ -117,7 +122,7 @@ After deployment, you'll need the Container App URL. Come back to this step afte
 ```bash
 # Add SPA redirect URI (replace with your Container App URL)
 az ad app update --id $CLIENT_APP_ID \
-  --spa-redirect-uris "https://ca-chargeback.<region>.azurecontainerapps.io"
+  --spa-redirect-uris "https://ca-aipolicy.<region>.azurecontainerapps.io"
 ```
 
 #### Understanding `azp` vs `appid` JWT Claims
@@ -134,17 +139,17 @@ The policy (`entra-jwt-policy.xml`) handles this automatically with a fallback: 
 cd infra
 
 # Get ACR credentials
-ACR_PASSWORD=$(az acr credential show --name acrchargeback --query "passwords[0].value" -o tsv)
+ACR_PASSWORD=$(az acr credential show --name acraipolicy --query "passwords[0].value" -o tsv)
 
 # Deploy all infrastructure
 az deployment group create \
-  --resource-group rg-chargeback \
+  --resource-group rg-aipolicy \
   --template-file main.bicep \
   --parameters @parameter.json \
   --parameters \
-    containerImage=acrchargeback.azurecr.io/chargeback-api:latest \
-    acrLoginServer=acrchargeback.azurecr.io \
-    acrUsername=acrchargeback \
+    containerImage=acraipolicy.azurecr.io/aipolicy-api:latest \
+    acrLoginServer=acraipolicy.azurecr.io \
+    acrUsername=acraipolicy \
     acrPassword=$ACR_PASSWORD
 
 cd ..
@@ -158,13 +163,13 @@ The Bicep template generates a Redis connection string without the access key. U
 
 ```bash
 # Get the Redis access key
-REDIS_KEY=$(az redis list-keys --resource-group rg-chargeback --name redis-chrgbk --query "primaryKey" -o tsv)
+REDIS_KEY=$(az redis list-keys --resource-group rg-aipolicy --name redis-aipolicy --query "primaryKey" -o tsv)
 
 # Update the Container App env var with the full connection string
 az containerapp update \
-  --resource-group rg-chargeback \
-  --name ca-chrgbk \
-  --set-env-vars "ConnectionStrings__redis=redis-chrgbk.redis.cache.windows.net:6380,password=$REDIS_KEY,ssl=True,abortConnect=False"
+  --resource-group rg-aipolicy \
+  --name ca-aipolicy \
+  --set-env-vars "ConnectionStrings__redis=redis-aipolicy.redis.cache.windows.net:6380,password=$REDIS_KEY,ssl=True,abortConnect=False"
 ```
 
 ### 6. Post-Deploy: APIM Configuration
@@ -172,17 +177,20 @@ az containerapp update \
 #### 6a. Set Named Values
 
 ```bash
-APIM_NAME=apim-chrgbk
+APIM_NAME=apim-aipolicy
 TENANT_ID=$(az account show --query tenantId -o tsv)
-CONTAINER_APP_URL="https://$(az containerapp show --resource-group rg-chargeback --name ca-chrgbk --query 'properties.configuration.ingress.fqdn' -o tsv)"
+CONTAINER_APP_URL="https://$(az containerapp show --resource-group rg-aipolicy --name ca-aipolicy --query 'properties.configuration.ingress.fqdn' -o tsv)"
 
-az apim nv create --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim nv create --resource-group rg-aipolicy --service-name $APIM_NAME \
   --named-value-id EntraTenantId --display-name EntraTenantId --value $TENANT_ID
 
-az apim nv create --resource-group rg-chargeback --service-name $APIM_NAME \
-  --named-value-id ExpectedAudience --display-name ExpectedAudience --value "api://chargeback-api"
+az apim nv create --resource-group rg-aipolicy --service-name $APIM_NAME \
+  --named-value-id ExpectedAudience --display-name ExpectedAudience --value "api://<gateway-app-id>"
 
-az apim nv create --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim nv create --resource-group rg-aipolicy --service-name $APIM_NAME \
+  --named-value-id ContainerAppAudience --display-name ContainerAppAudience --value "api://<api-app-id>"
+
+az apim nv create --resource-group rg-aipolicy --service-name $APIM_NAME \
   --named-value-id ContainerAppUrl --display-name ContainerAppUrl --value $CONTAINER_APP_URL
 ```
 
@@ -190,7 +198,7 @@ az apim nv create --resource-group rg-chargeback --service-name $APIM_NAME \
 
 ```bash
 # The API uses Entra JWT auth, not subscription keys
-az apim api update --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim api update --resource-group rg-aipolicy --service-name $APIM_NAME \
   --api-id azure-openai-api --subscription-required false
 ```
 
@@ -199,7 +207,7 @@ az apim api update --resource-group rg-chargeback --service-name $APIM_NAME \
 Ensure the API path is `openai` (not `openapi`):
 
 ```bash
-az apim api update --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim api update --resource-group rg-aipolicy --service-name $APIM_NAME \
   --api-id azure-openai-api --path openai
 ```
 
@@ -209,13 +217,13 @@ The backend URL should point to your Azure AI Services endpoint:
 
 ```bash
 # The Bicep template configures this, but verify:
-az apim backend show --resource-group rg-chargeback --service-name $APIM_NAME --backend-id openAiBackend
+az apim backend show --resource-group rg-aipolicy --service-name $APIM_NAME --backend-id openAiBackend
 ```
 
 #### 6e. Upload APIM Policy
 
 ```bash
-az apim api policy create --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim api policy create --resource-group rg-aipolicy --service-name $APIM_NAME \
   --api-id azure-openai-api \
   --policy-file policies/entra-jwt-policy.xml \
   --policy-format xml
@@ -226,12 +234,12 @@ az apim api policy create --resource-group rg-chargeback --service-name $APIM_NA
 APIM uses managed identity to call Azure OpenAI. The Bicep template assigns this role, but verify:
 
 ```bash
-APIM_PRINCIPAL_ID=$(az apim show --resource-group rg-chargeback --name $APIM_NAME --query identity.principalId -o tsv)
+APIM_PRINCIPAL_ID=$(az apim show --resource-group rg-aipolicy --name $APIM_NAME --query identity.principalId -o tsv)
 
 az role assignment create \
   --assignee $APIM_PRINCIPAL_ID \
   --role "Cognitive Services User" \
-  --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/rg-chargeback"
+  --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/rg-aipolicy"
 ```
 
 ### 7. Post-Deploy: Set SPA Redirect URIs
@@ -239,7 +247,7 @@ az role assignment create \
 Now that you have the Container App URL, update the Entra app:
 
 ```bash
-CONTAINER_APP_FQDN=$(az containerapp show --resource-group rg-chargeback --name ca-chrgbk --query 'properties.configuration.ingress.fqdn' -o tsv)
+CONTAINER_APP_FQDN=$(az containerapp show --resource-group rg-aipolicy --name ca-aipolicy --query 'properties.configuration.ingress.fqdn' -o tsv)
 
 az ad app update --id $CLIENT_APP_ID \
   --spa-redirect-uris "https://$CONTAINER_APP_FQDN"
@@ -268,7 +276,7 @@ curl -X PUT "$CONTAINER_APP_URL/api/clients" \
 curl "$CONTAINER_APP_URL/api/usage"
 
 # Test through APIM with a token
-TOKEN=$(az account get-access-token --resource api://chargeback-api --query accessToken -o tsv)
+TOKEN=$(az account get-access-token --resource api://<gateway-app-id> --query accessToken -o tsv)
 curl -X POST "https://$APIM_NAME.azure-api.net/openai/deployments/gpt-4o/chat/completions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -277,10 +285,10 @@ curl -X POST "https://$APIM_NAME.azure-api.net/openai/deployments/gpt-4o/chat/co
 # Configure DemoClient secrets
 dotnet user-secrets --project DemoClient init
 dotnet user-secrets --project DemoClient set "DemoClient:TenantId" "<tenant-id>"
-dotnet user-secrets --project DemoClient set "DemoClient:ApiScope" "api://<api-app-id>/.default"
+dotnet user-secrets --project DemoClient set "DemoClient:ApiScope" "api://<gateway-app-id>/.default"
 dotnet user-secrets --project DemoClient set "DemoClient:ApimBase" "https://$APIM_NAME.azure-api.net"
 dotnet user-secrets --project DemoClient set "DemoClient:ApiVersion" "2024-02-01"
-dotnet user-secrets --project DemoClient set "DemoClient:ChargebackBase" "$CONTAINER_APP_URL"
+dotnet user-secrets --project DemoClient set "DemoClient:AIPolicyBase" "$CONTAINER_APP_URL"
 dotnet user-secrets --project DemoClient set "DemoClient:Clients:0:Name" "Demo Client"
 dotnet user-secrets --project DemoClient set "DemoClient:Clients:0:AppId" "<client-app-id>"
 dotnet user-secrets --project DemoClient set "DemoClient:Clients:0:Secret" "<client-secret>"
@@ -290,7 +298,7 @@ dotnet user-secrets --project DemoClient set "DemoClient:Clients:0:DeploymentId"
 # setup-azure.ps1 also generates demo/.env.local with DemoClient__* values.
 # For a manual template, copy demo/.env.sample.
 # DemoClient automatically loads .env.local/.env when present.
-# setup-azure.ps1 also generates src/Chargeback-ui/.env.production.local so the deployed dashboard uses the current Entra app IDs.
+# setup-azure.ps1 also generates src/aipolicy-ui/.env.production.local so the deployed dashboard uses the current Entra app IDs.
 
 # Run the DemoClient (Agent Framework 1.0.0-rc2) for synthetic traffic
 cd src
@@ -307,14 +315,14 @@ Parameters for `main.bicep` (see `infra/bicep/parameter.json` for example values
 |-----------|----------|---------|-------------|
 | `apimInstanceName` | Yes | — | Name of the APIM instance |
 | `oaiApiName` | Yes | — | Name of the OpenAI API in APIM |
-| `funcApiName` | Yes | — | Name of the Chargeback API in APIM |
+| `funcApiName` | Yes | — | Name of the AI Policy API in APIM |
 | `apiSpecFileUri` | Yes | — | URI to the Azure OpenAI API spec JSON |
 | `workloadName` | Yes | — | Short name used to generate unique resource names |
 | `location` | Yes | — | Azure region (e.g. `eastus2`) |
-| `containerAppName` | No | `ca-chargeback` | Container App name |
-| `containerAppEnvName` | No | `cae-chargeback` | Container App Environment name |
+| `containerAppName` | No | `ca-aipolicy` | Container App name |
+| `containerAppEnvName` | No | `cae-aipolicy` | Container App Environment name |
 | `containerImage` | No | `mcr.microsoft.com/dotnet/aspnet:10.0` | Docker image for the Container App |
-| `appInsightsName` | No | `ai-chargeback` | Application Insights resource name |
+| `appInsightsName` | No | `ai-aipolicy` | Application Insights resource name |
 | `purviewClientAppId` | No | `""` | Entra app ID for Purview (leave empty to skip) |
 | `acrLoginServer` | No | `""` | ACR server (e.g. `myacr.azurecr.io`) |
 | `acrUsername` | No | `""` | ACR admin username |
@@ -374,7 +382,7 @@ Additional Purview variables (set manually if using Purview):
 | Variable | Description |
 |----------|-------------|
 | `PURVIEW_TENANT_ID` | Tenant ID (auto-detected from token if not set) |
-| `PURVIEW_APP_NAME` | App name shown in Purview audit (default: "Chargeback API") |
+| `PURVIEW_APP_NAME` | App name shown in Purview audit (default: "AI Policy API") |
 | `PURVIEW_APP_LOCATION` | App URL for Purview policy location |
 | `PURVIEW_IGNORE_EXCEPTIONS` | If true, Purview errors are logged but not thrown |
 | `PURVIEW_BACKGROUND_JOB_LIMIT` | Max queued background audit jobs (default: 100) |
@@ -389,19 +397,19 @@ Custom OpenTelemetry metrics are queryable in Application Insights:
 ```kusto
 // Token usage by tenant
 customMetrics
-| where name == "chargeback.tokens_processed"
+| where name == "aipolicy.tokens_processed"
 | extend tenant_id = tostring(customDimensions.tenant_id)
 | summarize total_tokens = sum(value) by tenant_id, bin(timestamp, 1h)
 
 // Cost distribution by model
 customMetrics
-| where name == "chargeback.cost_total"
+| where name == "aipolicy.cost_total"
 | extend model = tostring(customDimensions.model)
 | summarize avg_cost = avg(value), total_cost = sum(value) by model
 
 // Request volume by client app
 customMetrics
-| where name == "chargeback.requests_processed"
+| where name == "aipolicy.requests_processed"
 | extend client_app = tostring(customDimensions.client_app_id)
 | summarize request_count = sum(value) by client_app, bin(timestamp, 1h)
 ```
@@ -426,7 +434,7 @@ az ad app update --id $CLIENT_APP_ID \
 
 **Fix**: Verify and update the named value:
 ```bash
-az apim nv update --resource-group rg-chargeback --service-name $APIM_NAME \
+az apim nv update --resource-group rg-aipolicy --service-name $APIM_NAME \
   --named-value-id ContainerAppUrl --value "https://<correct-container-app-fqdn>"
 ```
 

@@ -7,7 +7,7 @@ variable "location" {
 variable "workload_name" {
   description = "Short name used as prefix for all resources"
   type        = string
-  default     = "chrgbk"
+  default     = "aipolicy"
 }
 
 variable "subscription_id" {
@@ -17,7 +17,7 @@ variable "subscription_id" {
 }
 
 variable "container_image" {
-  description = "Container image for the Chargeback API"
+  description = "Container image for the AI Policy API"
   type        = string
   default     = "mcr.microsoft.com/dotnet/aspnet:10.0"
 }
@@ -43,7 +43,7 @@ variable "apim_publisher_email" {
 variable "apim_publisher_name" {
   description = "APIM publisher name"
   type        = string
-  default     = "Chargeback Admin"
+  default     = "AI Policy Admin"
 }
 
 variable "openai_api_spec_url" {

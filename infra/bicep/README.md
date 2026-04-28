@@ -7,9 +7,9 @@ This repository contains Bicep files for deploying an Azure API Management insta
 - `main.bicep`: The main Bicep file that orchestrates the deployment of all resources.
 - `apimInstance.bicep`: Bicep file for deploying the API Management instance.
 - `apimOaiApi.bicep`: Bicep file for deploying the OpenAI API in API Management.
-- `apimFuncApi.bicep`: Bicep file for deploying the chargeback API in API Management.
+- `apimFuncApi.bicep`: Bicep file for deploying the AI Policy API in API Management.
 - `apimLogger.bicep`: Bicep file for configuring the API Management logger.
-- `containerApp.bicep`: Bicep file for deploying the Container App (chargeback API).
+- `containerApp.bicep`: Bicep file for deploying the Container App (AI Policy API).
 - `appInsights.bicep`: Bicep file for deploying Application Insights.
 - `backendFrontendApp.bicep`: Bicep file for deploying the backend/frontend Entra app registrations.
 - `keyVault.bicep`: Bicep file for deploying the Key Vault.
@@ -98,8 +98,8 @@ This repository contains Bicep files for deploying an Azure API Management insta
 
 - **API Management Instance**: An instance of Azure API Management.
 - **OpenAI API**: An API imported from a given JSON file.
-- **Chargeback API**: An API for the chargeback Container App.
-- **Container App**: An Azure Container App running the chargeback API.
+- **AI Policy API**: An API for the AI Policy Container App.
+- **Container App**: An Azure Container App running the AI Policy API.
 - **Application Insights**: Application Insights for telemetry and monitoring.
 - **Key Vault**: An Azure Key Vault.
 - **Log Analytics Workspace**: A Log Analytics Workspace.

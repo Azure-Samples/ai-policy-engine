@@ -1,0 +1,44 @@
+{
+  "agents": {
+    "mcnulty": {
+      "persistent_name": "McNulty",
+      "universe": "The Wire",
+      "role": "Lead",
+      "created_at": "2026-03-31T15:27:14Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "freamon": {
+      "persistent_name": "Freamon",
+      "universe": "The Wire",
+      "role": "Backend Dev",
+      "created_at": "2026-03-31T15:27:14Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "kima": {
+      "persistent_name": "Kima",
+      "universe": "The Wire",
+      "role": "Frontend Dev",
+      "created_at": "2026-03-31T15:27:14Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "bunk": {
+      "persistent_name": "Bunk",
+      "universe": "The Wire",
+      "role": "Tester",
+      "created_at": "2026-03-31T15:27:14Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "sydnor": {
+      "persistent_name": "Sydnor",
+      "universe": "The Wire",
+      "role": "Infra/DevOps",
+      "created_at": "2026-03-31T15:27:14Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
