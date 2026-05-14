@@ -2,6 +2,11 @@ name: ai-policy-engine
 metadata:
   template: azd-init
 
+infra:
+  provider: terraform
+  path: infra/terraform
+  module: main
+
 services:
   api:
     project: ./src/AIPolicyEngine.Api
