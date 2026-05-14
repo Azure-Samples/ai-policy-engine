@@ -449,3 +449,38 @@ infra:
 **Learning:** azd requires explicit `infra:` section to use Terraform. Without it, azd assumes Bicep. Always declare the provider in multi-IaC repos.
 
 **Status:** ✅ Fixed. `azd up` should now execute Terraform instead of looking for Bicep files.
+
+### 2026-05-14 — Auth Alignment: azd vs az Tenant Cross-Tenant Fix (COMPLETE)
+
+**Problem:** `azd provision --preview` hit AADSTS530084 (Conditional Access Policy / token protection violation) during Terraform provider initialization.
+
+**Root Cause:** Cross-tenant auth mismatch between azd and az CLI:
+- `azd` was logged in as `admin@MngEnvMCAP176415.onmicrosoft.com` in tenant `99e1e9a1-3a8f-4088-ad5d-60be65ecc59a`
+- `az` CLI was logged into a DIFFERENT tenant (Microsoft corporate tenant)
+- Terraform `azurerm` and `azuread` providers default to az CLI auth, NOT azd auth
+- When Terraform tried to create resources in the target subscription (which belongs to tenant `99e1e9a1-3a8f-4088-ad5d-60be65ecc59a`), it used az CLI credentials from the wrong tenant → cross-tenant token request hit corp-tenant Conditional Access Policy → AADSTS530084
+
+**Fix:**
+1. Zack ran `az login` to authenticate az CLI to the same tenant as azd (`99e1e9a1-3a8f-4088-ad5d-60be65ecc59a`)
+2. Verified auth alignment:
+   - `az account show`: tenantId = `99e1e9a1-3a8f-4088-ad5d-60be65ecc59a`, subscription = `00c828c0-d681-4c8c-b7de-b8d72887c19e`
+   - `azd auth login --check-status`: logged in as `admin@MngEnvMCAP176415.onmicrosoft.com`
+   - ENTRA_ID_TENANT_ID in `.azure/ai-policy-engine-k8m2/.env`: `99e1e9a1-3a8f-4088-ad5d-60be65ecc59a`
+3. All three match → auth aligned
+
+**Validation:** Ran `azd provision --preview` → **SUCCESS**
+- Terraform plan generated successfully
+- 77 resources to add, 0 to change, 0 to destroy
+- Plan saved to: `.azure/ai-policy-engine-k8m2/infra/terraform/main.tfplan`
+- No auth errors, no Conditional Access Policy violations
+- Exit code 0
+
+**Key Learning:** When using azd + Terraform, **both azd AND az CLI must be logged into the same tenant**. The azd CLI handles azd environment management, but Terraform providers use az CLI credentials by default. Cross-tenant auth causes CAP violations even if both identities have access to the target subscription.
+
+**Diagnostic Pattern:**
+1. Check azd identity: `azd auth login --check-status`
+2. Check az CLI identity: `az account show` → look at `tenantId` field
+3. Check azd env tenant: Read `ENTRA_ID_TENANT_ID` from `.azure/{env-name}/.env`
+4. All three must match. If they don't, run `az login` to align az CLI with azd's tenant.
+
+**Status:** ✅ Fixed. Auth aligned. Provision preview succeeds. Ready for `azd up` when Zack approves.
