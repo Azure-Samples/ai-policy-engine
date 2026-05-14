@@ -62,6 +62,23 @@ All model routing and per-request multiplier pricing features are complete and t
 
 **Test Results:** 200/200 tests pass (30 new Phase 2 integration tests from Bunk B5.7 + B5.8).
 
+### 2026-05-14 — PR #29: SPA Publish + Terraform Migration (In Review)
+
+**Branch:** `fix/spa-publish-and-terraform-migration` (seiggy fork remote)
+
+**Changes:**
+1. **SPA Publish Fix:** `src/chargeback-ui/` production build output correctly maps to `wwwroot/spa/`. Build pipeline verified.
+2. **Cosmos Firewall:** Bicep now exposes ports 10250 + 10255 for Cosmos connection; firewall rule added for host.
+3. **Bicep Scaffolding Removal:** Empty/unused Bicep modules removed; repository prepped for Terraform migration.
+
+**Cross-Fork Pattern:**
+- Sydnor pushed to seiggy remote (personal fork); gh CLI auth blocked by SAML wall
+- Coordinator used GitHub MCP to create PR against main repo
+- PR #29 now open at https://github.com/Azure-Samples/ai-policy-engine/pull/29
+- Awaiting review/merge on main
+
+**Status:** ✅ PR opened successfully; work complete, deployment pending.
+
 ### 2026-03-31 — Phase 3 Complete: APIM Auto-Router Policies (S3.1–S3.3)
 
 **Phase 3 Status:** ✅ COMPLETE (Sydnor)
