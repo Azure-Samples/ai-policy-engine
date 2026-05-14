@@ -96,6 +96,41 @@
 **Why:** Not all customers need DLP. Offer choice. Fail-open prioritizes availability — transient content-check failures don't create outages. Only explicit HTTP 451 blocks requests.
 **Trade-offs:** 4 policies to maintain (base + DLP × 2 auth types); future changes must be applied consistently across variants
 
+### 2026-05-14T15:54:00Z: User directive — Always validate infra fixes before committing
+**By:** Zack Way (via Copilot)  
+**Status:** Accepted  
+**What:** When fixing infrastructure/deploy errors, the team must validate fixes by actually running the relevant `azd` command (e.g., `azd provision`, `azd up`) BEFORE committing. Do not write commits with unvalidated fixes — keeps the commit tree clean of speculative/bad history.  
+**Why:** User request — captured for team memory
+
+### 2026-05-14T15:54:00Z: azd Terraform Provider Configuration
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** Added `infra:` section to `azure.yaml` to declare Terraform as the IaC provider for azd:
+```yaml
+infra:
+  provider: terraform
+  path: infra/terraform
+  module: main
+```
+**Why:** azd CLI defaults to Bicep when no `infra:` section is declared. This configuration is required to use Terraform with azd.  
+**Impact:** `azd provision` now invokes Terraform instead of looking for `infra/main.bicep`. No Terraform module changes needed.  
+**Validation:** `azd provision --preview` succeeds through Terraform plan phase (blocked only by Azure tenant Conditional Access policy, not code).
+
+### 2026-05-14T15:54:00Z: azd Terraform Provider Requires main.tfvars.json Template
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** Created `infra/terraform/main.tfvars.json` as a template file with azd environment variable substitution:
+```json
+{
+  "subscription_id": "${AZURE_SUBSCRIPTION_ID}",
+  "location": "${AZURE_LOCATION}",
+  "workload_name": "${AZURE_ENV_NAME}"
+}
+```
+**Why:** azd's Terraform provider requires this file alongside `main.tf` to map azd environment variables to Terraform input variables. Without it, azd cannot initialize the Terraform module.  
+**Impact:** `azd provision` now correctly reads Terraform variables from the template. File is intentionally uncommitted per Zack's directive to validate infra fixes before committing.  
+**Validation:** Ran `azd provision --preview` — "file not found" error resolved; Terraform plan succeeds.
+
 ## Governance
 
 - All meaningful changes require team consensus

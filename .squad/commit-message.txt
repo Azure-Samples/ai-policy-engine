@@ -1,0 +1,10 @@
+Fix: Add missing terraform provider configuration to azure.yaml
+
+Sydnor identified that azure.yaml was missing the infra provider block,
+causing azd to default to Bicep and look for infra/main.bicep instead of
+the actual Terraform infrastructure at infra/terraform/.
+
+Added infra provider block pointing to terraform module at infra/terraform/main
+to properly configure Azure Developer CLI for Terraform deployments.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

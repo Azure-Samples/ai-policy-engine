@@ -499,3 +499,25 @@ This is the first phase of the two-phase flow:
 **Test results:** 231/231 tests pass (4 skipped), 0 regressions. Build clean.
 
 **Decision:** Observability is production-ready. No more TODOs or stub comments. The service will emit real Agent365 telemetry when enabled.
+
+---
+
+### 2026-05-14 — Cross-Agent Note: azd Terraform Provider Configuration
+
+**From:** Sydnor (Infra/DevOps)  
+**Note:** When using Terraform with Azure Developer CLI (azd), the zure.yaml file must explicitly declare an infra: provider block pointing to the terraform module. If omitted, azd defaults to Bicep and looks for infra/main.bicep, which will fail if Terraform is the actual IaC provider. Example config:
+
+\\\yaml
+infra:
+  provider: terraform
+  module: infra/terraform
+\\\
+
+This applies to any project mixing IaC tools or migrating from Bicep to Terraform.
+
+### 2026-05-14 — Cross-Agent Note: Infrastructure Changes Must Be Validated Before Commit
+
+**From:** Zack Way (User directive captured by Scribe)  
+**Note:** When fixing infrastructure/deployment errors, **always validate fixes by running the relevant `azd` command** (e.g., `azd provision --preview`, `azd up`) **BEFORE committing**. Do not write commits with unvalidated infrastructure changes. This keeps the commit tree clean of speculative/bad infrastructure history and ensures only known-working fixes enter the codebase.
+
+**Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.

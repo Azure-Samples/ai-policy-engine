@@ -389,3 +389,10 @@ All work is done. Phase 0–5 complete. 222 total tests passing. Backend storage
 
 **Baseline:** 221 tests before → 231 tests after (10 new, all passing; 4 skipped)
 
+### 2026-05-14 — Cross-Agent Note: Infrastructure Changes Must Be Validated Before Commit
+
+**From:** Zack Way (User directive captured by Scribe)  
+**Note:** When fixing infrastructure/deployment errors, **always validate fixes by running the relevant `azd` command** (e.g., `azd provision --preview`, `azd up`) **BEFORE committing**. Do not write commits with unvalidated infrastructure changes. This keeps the commit tree clean of speculative/bad infrastructure history and ensures only known-working fixes enter the codebase.
+
+**Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.
+
