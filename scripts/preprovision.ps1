@@ -203,6 +203,8 @@ if (-not [string]::IsNullOrWhiteSpace($apiSpId) -and -not [string]::IsNullOrWhit
 # 3. (Re)generate the SPA build-time env file so vite bakes in the correct IDs.
 #    This file is git-ignored and must always reflect the current azd-managed app,
 #    overwriting any stale values (e.g. from legacy setup-azure.ps1 runs).
+#    VITE_API_URL is set to empty string so the UI uses relative URLs (same-origin).
+#    This works because the UI is served from the same Container App as the API.
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $spaEnvFile = Join-Path $repoRoot "src/aipolicyengine-ui/.env.production.local"
 $spaEnvContent = @"
@@ -212,6 +214,7 @@ VITE_AZURE_TENANT_ID=$tenantId
 VITE_AZURE_API_APP_ID=$appId
 VITE_AZURE_AUTHORITY=https://login.microsoftonline.com/$tenantId
 VITE_AZURE_SCOPE=api://$appId/access_as_user
+VITE_API_URL=
 "@
 Set-Content -Path $spaEnvFile -Value $spaEnvContent -Encoding utf8
 Write-Host "  ✓ Wrote $spaEnvFile" -ForegroundColor Green

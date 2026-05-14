@@ -71,15 +71,16 @@ if ($existing.Count -gt 0) {
 # ---------------------------------------------------------------------------
 # Register the Container App FQDN as a SPA redirect URI on the API Entra app.
 # Required so MSAL.js in the dashboard can complete the auth-code flow against
-# https://<container-app-fqdn>. Without this, login fails with AADSTS50011.
+# https://<container-app-fqdn>. Without this, login fails with AADSTS500113.
 # ---------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Post-provisioning: Registering SPA redirect URI on API Entra app ===" -ForegroundColor Cyan
 
-$appId = azd env get-values | Select-String "^CONTAINER_APP_CLIENT_ID=" | ForEach-Object { $_.Line -replace "^CONTAINER_APP_CLIENT_ID=", "" } | ForEach-Object { $_.Trim('"') }
+# Use the Terraform-managed api_app_id (not the legacy CONTAINER_APP_CLIENT_ID)
+$appId = azd env get-values | Select-String "^api_app_id=" | ForEach-Object { $_.Line -replace "^api_app_id=", "" } | ForEach-Object { $_.Trim('"') }
 
 if ([string]::IsNullOrEmpty($appId)) {
-    Write-Host "Skipping: CONTAINER_APP_CLIENT_ID not set in azd env." -ForegroundColor Yellow
+    Write-Host "Skipping: api_app_id not set in azd env." -ForegroundColor Yellow
 } elseif ($containerApps.Count -eq 0) {
     Write-Host "Skipping: container app not resolved earlier." -ForegroundColor Yellow
 } else {

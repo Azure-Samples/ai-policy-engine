@@ -174,6 +174,8 @@ fi
 # (Re)generate the SPA build-time env file so vite bakes in the correct IDs.
 # This file is git-ignored and must always reflect the current azd-managed app,
 # overwriting any stale values (e.g. from legacy setup-azure.ps1 runs).
+# VITE_API_URL is set to empty string so the UI uses relative URLs (same-origin).
+# This works because the UI is served from the same Container App as the API.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPA_ENV_FILE="$SCRIPT_DIR/../src/aipolicyengine-ui/.env.production.local"
 cat > "$SPA_ENV_FILE" <<EOF
@@ -183,6 +185,7 @@ VITE_AZURE_TENANT_ID=$TENANT_ID
 VITE_AZURE_API_APP_ID=$APP_ID
 VITE_AZURE_AUTHORITY=https://login.microsoftonline.com/$TENANT_ID
 VITE_AZURE_SCOPE=api://$APP_ID/access_as_user
+VITE_API_URL=
 EOF
 echo "  ✓ Wrote $SPA_ENV_FILE"
 

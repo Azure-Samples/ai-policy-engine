@@ -92,16 +92,17 @@ fi
 # ---------------------------------------------------------------------------
 # Register the Container App FQDN as a SPA redirect URI on the API Entra app.
 # Required so MSAL.js in the dashboard can complete the auth-code flow against
-# https://<container-app-fqdn>. Without this, login fails with AADSTS50011.
+# https://<container-app-fqdn>. Without this, login fails with AADSTS500113.
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Post-provisioning: Registering SPA redirect URI on API Entra app ==="
 
-APP_ID=$(get_azd_env CONTAINER_APP_CLIENT_ID)
+# Use the Terraform-managed api_app_id (not the legacy CONTAINER_APP_CLIENT_ID)
+APP_ID=$(get_azd_env api_app_id)
 FQDN=$(echo "$API_CONTAINER_APP_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('properties',{}).get('configuration',{}).get('ingress',{}).get('fqdn',''))" 2>/dev/null || true)
 
 if [ -z "${APP_ID:-}" ]; then
-    echo "Skipping: CONTAINER_APP_CLIENT_ID not set in azd env."
+    echo "Skipping: api_app_id not set in azd env."
 elif [ -z "${FQDN:-}" ]; then
     echo "Skipping: container app has no ingress FQDN."
 else
