@@ -107,7 +107,7 @@ Audit logs and billing summaries are persisted to Cosmos DB for long-term financ
 ## Deployment Architecture
 
 ### Infrastructure as Code
-All Azure resources are provisioned via **Bicep** modules located in `infra/` and `infra/`.
+All Azure resources are provisioned via **Terraform** modules located in `infra/terraform/`.
 
 ### Container Apps
 - The AIPolicyEngine API and React SPA are packaged into a single container image.
@@ -115,7 +115,7 @@ All Azure resources are provisioned via **Bicep** modules located in `infra/` an
 - Health probes are configured for liveness and readiness checks.
 
 ### Multi-Region Support
-Both Container Apps and APIM support multi-region deployment via the Bicep modules. Deploy additional regions by parameterizing the infrastructure templates.
+Both Container Apps and APIM support multi-region deployment. Deploy additional regions by parameterizing the Terraform modules.
 
 ### CI/CD
 ```
@@ -124,10 +124,10 @@ Source Control (Git)
 Build Pipeline
 ├── dotnet build / dotnet test
 ├── Container image build
-└── Bicep validation (what-if)
+└── Terraform validate / plan
 ↓
 Deploy Pipeline
-├── Infrastructure (Bicep)
+├── Infrastructure (Terraform)
 ├── Container image push → Container Apps
 ├── APIM policy deployment
 └── Health check verification

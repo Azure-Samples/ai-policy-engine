@@ -13,7 +13,7 @@ Complete guide for deploying the Azure AI Gateway Policy Engine to Azure.
 | Azure subscription | — | Contributor role required |
 
 **Permissions needed**:
-- **Subscription Contributor** — to create resource groups and deploy Bicep
+- **Subscription Contributor** — to create resource groups and deploy Terraform infrastructure
 - **Entra ID admin** (or Application Administrator role) — to register apps and grant admin consent
 
 ---
@@ -22,17 +22,19 @@ Complete guide for deploying the Azure AI Gateway Policy Engine to Azure.
 
 ```powershell
 git clone https://github.com/your-org/ai-policy-engine.git
-cd ai-policy-engine
-./scripts/setup-azure.ps1 -Location eastus2 -WorkloadName myproject
+cd ai-policy-engine/infra/terraform
+cp terraform.tfvars.sample terraform.tfvars  # Edit with your values
+terraform init
+terraform apply
+
+# Stage 2: Build and deploy the container
+cd ../..
+./scripts/deploy-container.ps1 -ResourceGroupName rg-aipolicy-eastus2
 ```
 
-**What the script does**:
-1. Creates a resource group
-2. Creates an Azure Container Registry and builds the Docker image
-3. Registers Entra ID app registrations (API + client)
-4. Deploys all Bicep infrastructure modules
-5. Configures APIM named values and policies
-6. Sets SPA redirect URIs on the Entra app
+**What the scripts do**:
+1. `terraform apply` — provisions all Azure resources (Container App, APIM, CosmosDB, Redis, Key Vault, ACR, etc.)
+2. `deploy-container.ps1` — builds the Docker image, pushes to ACR, updates the Container App, and verifies Entra configuration
 
 **Expect**: 30–60 minutes total (APIM provisioning takes the bulk of the time).
 
@@ -133,33 +135,20 @@ The APIM policy extracts the client application ID from the JWT token:
 
 The policy (`entra-jwt-policy.xml`) handles this automatically with a fallback: it checks `azp` first, then falls back to `appid`.
 
-### 4. Deploy Bicep
+### 4. Deploy Terraform
 
 ```bash
-cd infra
-
-# Get ACR credentials
-ACR_PASSWORD=$(az acr credential show --name acraipolicy --query "passwords[0].value" -o tsv)
-
-# Deploy all infrastructure
-az deployment group create \
-  --resource-group rg-aipolicy \
-  --template-file main.bicep \
-  --parameters @parameter.json \
-  --parameters \
-    containerImage=acraipolicy.azurecr.io/aipolicy-api:latest \
-    acrLoginServer=acraipolicy.azurecr.io \
-    acrUsername=acraipolicy \
-    acrPassword=$ACR_PASSWORD
-
-cd ..
+cd infra/terraform
+cp terraform.tfvars.sample terraform.tfvars  # Edit with your values
+terraform init
+terraform apply
 ```
 
-Note the `containerAppUrlInfo` from the deployment output — you'll need it for the next steps.
+Note the `container_app_url` from the Terraform output — you'll need it for the next steps.
 
 ### 5. Post-Deploy: Fix Redis Connection String
 
-The Bicep template generates a Redis connection string without the access key. Update it:
+The Terraform `data` module outputs the Redis hostname. Update the Container App env var if needed:
 
 ```bash
 # Get the Redis access key
@@ -216,7 +205,7 @@ az apim api update --resource-group rg-aipolicy --service-name $APIM_NAME \
 The backend URL should point to your Azure AI Services endpoint:
 
 ```bash
-# The Bicep template configures this, but verify:
+# The Terraform gateway module configures this, but verify:
 az apim backend show --resource-group rg-aipolicy --service-name $APIM_NAME --backend-id openAiBackend
 ```
 
@@ -231,7 +220,7 @@ az apim api policy create --resource-group rg-aipolicy --service-name $APIM_NAME
 
 #### 6f. Assign Cognitive Services User Role to APIM
 
-APIM uses managed identity to call Azure OpenAI. The Bicep template assigns this role, but verify:
+APIM uses managed identity to call Azure OpenAI. The Terraform `gateway` module assigns this role, but verify:
 
 ```bash
 APIM_PRINCIPAL_ID=$(az apim show --resource-group rg-aipolicy --name $APIM_NAME --query identity.principalId -o tsv)
@@ -307,33 +296,19 @@ dotnet run demo/DemoClient.cs
 
 ---
 
-## Bicep Parameters Reference
+## Terraform Variables Reference
 
-Parameters for `main.bicep` (see `infra/bicep/parameter.json` for example values):
+Input variables for `infra/terraform/variables.tf` (see `infra/terraform/terraform.tfvars.sample` for example values):
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `apimInstanceName` | Yes | — | Name of the APIM instance |
-| `oaiApiName` | Yes | — | Name of the OpenAI API in APIM |
-| `funcApiName` | Yes | — | Name of the AI Policy API in APIM |
-| `apiSpecFileUri` | Yes | — | URI to the Azure OpenAI API spec JSON |
-| `workloadName` | Yes | — | Short name used to generate unique resource names |
-| `location` | Yes | — | Azure region (e.g. `eastus2`) |
-| `containerAppName` | No | `ca-aipolicy` | Container App name |
-| `containerAppEnvName` | No | `cae-aipolicy` | Container App Environment name |
-| `containerImage` | No | `mcr.microsoft.com/dotnet/aspnet:10.0` | Docker image for the Container App |
-| `appInsightsName` | No | `ai-aipolicy` | Application Insights resource name |
-| `purviewClientAppId` | No | `""` | Entra app ID for Purview (leave empty to skip) |
-| `acrLoginServer` | No | `""` | ACR server (e.g. `myacr.azurecr.io`) |
-| `acrUsername` | No | `""` | ACR admin username |
-| `acrPassword` | No | `""` | ACR admin password (secure) |
-| `keyVaultName` | Yes | — | Azure Key Vault name |
-| `redisCacheName` | Yes | — | Azure Cache for Redis name |
-| `logAnalyticsWorkspaceName` | Yes | — | Log Analytics workspace name |
-| `storageAccountName` | Yes | — | Storage account name |
-| `appServicePlanName` | Yes | — | App Service Plan name (legacy frontend) |
-| `backendAppName` | Yes | — | Backend App Service name (legacy) |
-| `frontendAppName` | Yes | — | Frontend App Service name |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `workload_name` | Yes | Short name used to generate unique resource names |
+| `location` | Yes | Azure region (e.g. `eastus2`) |
+| `subscription_id` | Yes | Azure subscription ID |
+| `tenant_id` | Yes | Entra tenant ID |
+| `entra_api_app_id` | Yes | App registration for the Container App audience |
+| `entra_gateway_app_id` | Yes | App registration for APIM JWT audience |
+| `purview_client_app_id` | No | Entra app ID for Purview (leave empty to skip) |
 
 ---
 
@@ -365,17 +340,17 @@ return !string.IsNullOrEmpty(azp) ? azp : jwt?.Claims.GetValueOrDefault("appid",
 
 ## Environment Variables Reference
 
-Variables configured on the Container App by `containerApp.bicep`:
+Variables configured on the Container App by the Terraform `compute` module:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ASPNETCORE_URLS` | Auto | Set to `http://+:8080` by Bicep |
-| `ConnectionStrings__redis` | Yes | Redis connection string (needs manual password fix post-deploy) |
+| `ASPNETCORE_URLS` | Auto | Set to `http://+:8080` by Terraform |
+| `ConnectionStrings__redis` | Yes | Redis connection string |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | App Insights telemetry export |
 | `PURVIEW_CLIENT_APP_ID` | No | Entra app ID for Purview API |
-| `AZURE_SUBSCRIPTION_ID` | Auto | Set by Bicep from deployment context |
-| `AZURE_RESOURCE_GROUP` | Auto | Set by Bicep from deployment context |
-| `REDIS_NAME` | Auto | Redis cache name (set by Bicep) |
+| `AZURE_SUBSCRIPTION_ID` | Auto | Set by Terraform from deployment context |
+| `AZURE_RESOURCE_GROUP` | Auto | Set by Terraform from deployment context |
+| `REDIS_NAME` | Auto | Redis cache name (set by Terraform) |
 
 Additional Purview variables (set manually if using Purview):
 

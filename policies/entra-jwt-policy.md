@@ -95,7 +95,7 @@ If `routedDeployment` is null/empty or matches the requested deployment, no rout
 <authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
 ```
 
-- Routes the request to the pre-configured `openAiBackend` backend (defined in `infra/bicep/apimOaiApi.bicep`).
+- Routes the request to the pre-configured `openAiBackend` backend (defined in `infra/terraform/modules/gateway/main.tf`).
 - Authenticates to Azure OpenAI via APIM's **managed identity** with the Cognitive Services resource scope — **no API keys are used**.
 
 ### 1.7 Request Body Transformation

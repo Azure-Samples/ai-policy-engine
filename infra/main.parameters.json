@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "${AZURE_ENV_NAME}" },
+    "location": { "value": "${AZURE_LOCATION}" },
+
+    "entraIdTenantId": { "value": "${ENTRA_ID_TENANT_ID}" },
+    "containerAppClientId": { "value": "${CONTAINER_APP_CLIENT_ID}" },
+    "purviewClientAppId": { "value": "${PURVIEW_CLIENT_APP_ID}" },
+
+    "existingApimName": { "value": "${EXISTING_APIM_NAME}" },
+    "existingApimResourceGroup": { "value": "${EXISTING_APIM_RESOURCE_GROUP}" },
+    "existingCosmosName": { "value": "${EXISTING_COSMOS_NAME}" },
+    "existingCosmosResourceGroup": { "value": "${EXISTING_COSMOS_RESOURCE_GROUP}" },
+    "existingRedisName": { "value": "${EXISTING_REDIS_NAME}" },
+    "existingRedisResourceGroup": { "value": "${EXISTING_REDIS_RESOURCE_GROUP}" },
+    "existingCaeName": { "value": "${EXISTING_CAE_NAME}" },
+    "existingCaeResourceGroup": { "value": "${EXISTING_CAE_RESOURCE_GROUP}" },
+    "existingAcrName": { "value": "${EXISTING_ACR_NAME}" },
+    "existingAcrResourceGroup": { "value": "${EXISTING_ACR_RESOURCE_GROUP}" },
+    "existingKeyVaultName": { "value": "${EXISTING_KEYVAULT_NAME}" },
+    "existingKeyVaultResourceGroup": { "value": "${EXISTING_KEYVAULT_RESOURCE_GROUP}" },
+    "existingAiServicesName": { "value": "${EXISTING_AI_SERVICES_NAME}" },
+    "existingAiServicesResourceGroup": { "value": "${EXISTING_AI_SERVICES_RESOURCE_GROUP}" },
+    "existingFoundryHubName": { "value": "${EXISTING_FOUNDRY_HUB_NAME}" },
+    "existingFoundryResourceGroup": { "value": "${EXISTING_FOUNDRY_RESOURCE_GROUP}" },
+
+    "vnetName": { "value": "${VNET_NAME}" },
+    "vnetResourceGroup": { "value": "${VNET_RESOURCE_GROUP}" },
+    "subnetContainerApps": { "value": "${SUBNET_CONTAINER_APPS}" },
+    "subnetPrivateEndpoints": { "value": "${SUBNET_PRIVATE_ENDPOINTS}" },
+
+    "deployModelName": { "value": "${DEPLOY_MODEL_NAME}" },
+    "deployModelVersion": { "value": "${DEPLOY_MODEL_VERSION}" },
+    "deployModelCapacity": { "value": "${DEPLOY_MODEL_CAPACITY}" }
+  }
+}

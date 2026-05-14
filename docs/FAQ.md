@@ -39,7 +39,7 @@ An enterprise-ready policy engine that sits between your applications and AI mod
 | Azure Monitor / Application Insights | Log Analytics | Per workspace retention settings |
 
 ### Multi-region support?
-Yes. Both Azure Container Apps and Azure API Management support multi-region deployment. The Bicep modules in `infra/` can be parameterized for additional regions.
+Yes. Both Azure Container Apps and Azure API Management support multi-region deployment. The Terraform modules in `infra/terraform/` can be parameterized for additional regions.
 
 ### Do I need subscription keys?
 **No.** All authentication uses Entra ID JWT bearer tokens exclusively. Subscription key requirements are disabled on all APIM APIs.
@@ -145,17 +145,13 @@ Or register customers manually via API after deployment.
 
 ## Deployment & Infrastructure
 
-### Should I use Terraform or Bicep?
-Both paths deploy the **identical infrastructure**:
+### How do I deploy the infrastructure?
+Infrastructure is deployed with Terraform (two-stage):
 
-| Aspect | Bicep | Terraform |
-|--------|-------|-----------|
-| **Simplicity** | One-command `setup-azure.ps1` | Two-stage deploy (infra, then container) |
-| **State Management** | Implicit (Azure deployment history) | Explicit (tfstate file) |
-| **Team Preference** | Smaller teams, quick start | Teams already using Terraform |
-| **Customization** | Straightforward parameter edits | Better for complex variable hierarchies |
+1. **Stage 1**: Deploy infrastructure — `cd infra/terraform && terraform apply`
+2. **Stage 2**: Build and deploy the container — `./scripts/deploy-container.ps1 -ResourceGroupName <rg>`
 
-**Recommendation**: Start with Bicep for simplicity. If you already have Terraform infrastructure, use the Terraform path for consistency.
+The two-stage approach is required because the container image depends on the ACR provisioned by Terraform. Enterprise environments typically block public container registries; `deploy-container.ps1` builds the Docker image, pushes it to the deployed ACR, and updates the Container App.
 
 ### What if the deployment script fails?
 1. Check the error message — most failures are permission-related (Contributor role, Entra admin)
@@ -164,12 +160,12 @@ Both paths deploy the **identical infrastructure**:
 4. See the [Deployment Guide](DOTNET_DEPLOYMENT_GUIDE.md) for manual step-by-step instructions
 
 ### Can I deploy to multiple regions?
-**Yes.** The Bicep and Terraform modules support multi-region deployment. Parameters allow you to:
+**Yes.** The Terraform modules support multi-region deployment. Parameters allow you to:
 - Specify region for each resource group
 - Configure region-specific APIM instances
 - Set up cross-region failover with APIM backends
 
-See `infra/bicep/main.bicep` and `infra/terraform/variables.tf` for region parameters.
+See `infra/terraform/variables.tf` for region parameters.
 
 ---
 
@@ -245,7 +241,7 @@ Or follow the step-by-step guide in [`docs/DOTNET_DEPLOYMENT_GUIDE.md`](./DOTNET
 - (Optional) Microsoft Purview account
 
 ### What IaC tool is used?
-**Bicep** exclusively. Infrastructure modules live in `infra/` (AI services) and `infra/` (API Management).
+**Terraform** exclusively. Infrastructure modules live in `infra/terraform/` with six modules: `monitoring`, `data`, `ai_services`, `identity`, `compute`, and `gateway`.
 
 ---
 

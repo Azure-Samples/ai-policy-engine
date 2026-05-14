@@ -15,12 +15,15 @@ RUN dotnet restore AIPolicyEngine.Api/AIPolicyEngine.Api.csproj
 
 COPY AIPolicyEngine.ServiceDefaults/ AIPolicyEngine.ServiceDefaults/
 COPY AIPolicyEngine.Api/ AIPolicyEngine.Api/
-RUN dotnet publish AIPolicyEngine.Api/AIPolicyEngine.Api.csproj -c Release -o /app/publish --no-restore
+# Stage the SPA build into the API's wwwroot before publish so the dotnet
+# static web assets manifest includes the SPA. Without this, UseStaticFiles
+# uses an empty manifest and 404s on /index.html etc.
+COPY --from=node-build /ui/dist/ AIPolicyEngine.Api/wwwroot/
+RUN dotnet publish AIPolicyEngine.Api/AIPolicyEngine.Api.csproj -c Release -o /app/publish --no-restore -p:SkipSpaBuild=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=build /app/publish .
-COPY --from=node-build /ui/dist ./wwwroot/
 ENTRYPOINT ["dotnet", "AIPolicyEngine.Api.dll"]

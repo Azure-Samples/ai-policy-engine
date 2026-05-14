@@ -2,7 +2,7 @@
 #
 # Builds the AI Policy API container image and deploys it to the provisioned infrastructure.
 #
-# Post-deploy script to run after Terraform (or Bicep) has provisioned the infrastructure.
+# Post-deploy script to run after Terraform has provisioned the infrastructure.
 # Builds the Docker image (multi-stage: Node.js UI + .NET API) via ACR Tasks,
 # and updates the Container App to use the new image.
 #
@@ -181,7 +181,7 @@ if [[ -f "$tf_dir/terraform.tfstate" ]]; then
 fi
 
 if [[ -z "$gateway_app_id" ]]; then
-    # Fallback: look up by display name (Bicep-path deployments)
+    # Fallback: look up by display name
     gateway_app_id=$(az ad app list --display-name "AI Policy APIM Gateway" --query "[0].appId" -o tsv 2>/dev/null || true)
 fi
 

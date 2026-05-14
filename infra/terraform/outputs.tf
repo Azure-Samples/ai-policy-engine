@@ -17,6 +17,11 @@ output "apim_gateway_url" {
   value       = module.gateway.apim_gateway_url
 }
 
+output "key_vault_name" {
+  description = "Name of the Key Vault instance."
+  value       = module.compute.key_vault_name
+}
+
 output "api_app_id" {
   description = "Application (client) ID of the AI Policy API app registration."
   value       = module.identity.api_app_id

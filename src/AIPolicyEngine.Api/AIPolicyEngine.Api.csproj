@@ -1,9 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>d8417dc0-654f-419e-b927-151d4d9336ad</UserSecretsId>
+    <SpaRoot>..\aipolicyengine-ui\</SpaRoot>
+    <SpaDist>$(MSBuildProjectDirectory)\wwwroot\</SpaDist>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,5 +28,78 @@
   <ItemGroup>
     <ProjectReference Include="..\AIPolicyEngine.ServiceDefaults\AIPolicyEngine.ServiceDefaults.csproj" />
   </ItemGroup>
+
+  <!--
+    Build the React SPA into wwwroot before .NET SDK static web assets discovery runs,
+    so `dotnet publish /t:PublishContainer` (used by AZD) produces an image containing
+    the dashboard. Incremental: only rebuilds when SPA sources or package files change.
+  -->
+  <!--
+    SkipSpaBuild=true bypasses the npm restore/build steps. Set this when the
+    SPA artifacts are already staged into wwwroot/ by an outer build system
+    (e.g. a multi-stage Docker build that compiles the SPA in a Node image
+    before invoking `dotnet publish` in a Node-less .NET SDK image).
+  -->
+  <Target Name="EnsureNpmRestored" Condition="'$(SkipSpaBuild)' != 'true' AND !Exists('$(SpaRoot)node_modules')">
+    <Message Importance="high" Text="Restoring SPA dependencies via 'npm ci' in $(SpaRoot)..." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+  </Target>
+
+  <!--
+    SPA source files. Declared at project scope (not inside the BuildSpa target
+    body) so MSBuild can include them in the target's Inputs="..." incremental
+    check — items defined inside a target body are not visible to that target's
+    Inputs/Outputs evaluation, which happens before the target executes.
+  -->
+  <ItemGroup>
+    <SpaSource Include="$(SpaRoot)src\**\*;$(SpaRoot)public\**\*;$(SpaRoot)index.html" />
+  </ItemGroup>
+
+  <Target Name="BuildSpa"
+          Condition="'$(SkipSpaBuild)' != 'true'"
+          DependsOnTargets="EnsureNpmRestored"
+          BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths;PrepareForBuild"
+          Inputs="$(SpaRoot)package.json;$(SpaRoot)package-lock.json;$(SpaRoot)vite.config.ts;$(SpaRoot)tsconfig.json;$(SpaRoot)\.env.production.local;@(SpaSource)"
+          Outputs="$(SpaDist)index.html">
+    <Message Importance="high" Text="Building SPA via 'npm run build' (output: $(SpaDist))..." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+    <!--
+      Invalidate the SDK's static web assets caches under obj/. Without this,
+      a previous build's compressed-asset paths (referencing old hashed file
+      names) cause the StaticWebAssets compression target to fail with
+      "asset can not be found" errors when vite emits new hashes.
+    -->
+    <ItemGroup>
+      <_StaleSwaCache Include="$(IntermediateOutputPath)staticwebassets\**\*" />
+      <_StaleSwaCache Include="$(IntermediateOutputPath)compressed\**\*" />
+      <_StaleSwaCache Include="$(IntermediateOutputPath)staticwebassets.*.json" />
+      <_StaleSwaCache Include="$(IntermediateOutputPath)*.dswa.cache.json" />
+      <_StaleSwaCache Include="$(IntermediateOutputPath)swae.*.cache" />
+    </ItemGroup>
+    <Delete Files="@(_StaleSwaCache)" ContinueOnError="true" />
+    <!--
+      The Web SDK evaluates `<Content Include="wwwroot\**" />` at project
+      load time, capturing whatever hashed asset names happened to be in
+      wwwroot before this target ran. `npm run build` (with vite's
+      `emptyOutDir: true`) then deletes those files and writes new ones
+      with different hashes, leaving @(Content) referencing files that no
+      longer exist. ResolveProjectStaticWebAssets then fails with
+      "No file exists for the asset...". Drop any stale Content items
+      whose backing files were removed by the SPA build.
+    -->
+    <ItemGroup>
+      <_StaleContent Include="@(Content)" Condition="!Exists('%(FullPath)')" />
+      <Content Remove="@(_StaleContent)" />
+    </ItemGroup>
+    <!--
+      Re-glob wwwroot so files produced by `npm run build` are picked up as
+      Content / StaticWebAsset items even though the SDK's wildcard was
+      evaluated before the wwwroot directory existed.
+    -->
+    <ItemGroup>
+      <_BuiltSpaFile Include="wwwroot\**\*" />
+      <Content Include="@(_BuiltSpaFile)" Exclude="@(Content)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 
 </Project>

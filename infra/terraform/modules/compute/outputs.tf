@@ -44,6 +44,11 @@ output "key_vault_id" {
   value       = azurerm_key_vault.this.id
 }
 
+output "key_vault_name" {
+  description = "Name of the Key Vault."
+  value       = azurerm_key_vault.this.name
+}
+
 output "container_app_id" {
   description = "Resource ID of the Container App."
   value       = azurerm_container_app.this.id
