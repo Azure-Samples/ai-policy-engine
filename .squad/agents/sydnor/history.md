@@ -324,3 +324,49 @@ Mimics Azure OpenAI content_filter format for client compatibility.
 - Document policy selection criteria in deployment guides
 - Test fail-open behavior under content-check service outages
 
+### 2026-04-17 — Cross-Fork PR: SPA Publish + Cosmos Firewall + Bicep Migration
+
+**Task:** Ship three critical fixes as a single PR from fork to mainline:
+1. Fix dotnet publish stale static web asset error (MSBuild target ordering + vite config)
+2. Fix Cosmos DB public network access drift (explicit Terraform firewall rules)
+3. Remove Bicep infrastructure; standardize on Terraform
+
+**Branch:** `fix/spa-publish-and-terraform-migration` (pushed to seiggy fork)
+**Commit:** `fa9f36c0` — 54 files changed, 1,743 insertions(+), 8,409 deletions(-)
+
+**Cross-Fork PR Pattern:**
+- Branch created off `main`, pushed to fork remote: `git push -u seiggy <branch>`
+- PR opened from `seiggy:<branch>` → `Azure-Samples/ai-policy-engine:main`
+- Requires `gh pr create --repo <upstream> --head <fork>:<branch>`
+- SAML authorization required for Microsoft Open Source org access
+
+**GOTCHA:** gh CLI authenticated but needs SAML authorization for cross-org PRs. Must authorize via web browser:
+```
+https://github.com/enterprises/microsoftopensource/sso?authorization_request=...
+```
+
+**Alternative:** Create PR manually via GitHub UI if SAML auth blocks CLI:
+1. Navigate to fork: https://github.com/seiggy/ai-policy-engine
+2. GitHub auto-detects pushed branch and shows "Compare & pull request" banner
+3. Click banner → select base repo `Azure-Samples/ai-policy-engine:main`
+4. Fill in title/body → Create pull request
+
+**Commit Message Strategy:**
+- Used temp file + `git commit -F` for long multi-section commit message
+- Structured sections: Problem, Root Cause, Solution, Files Changed
+- Co-authored-by trailer at end for Copilot attribution
+
+**Key Learnings:**
+- Cross-fork PRs to Microsoft Open Source org require SAML authorization
+- Large commits benefit from temp file commit messages (avoid shell quoting hell)
+- When shipping multiple independent fixes together, use clear section headers in commit message
+- Always clean up temp files (commit-msg.txt, pr-body.txt) after use
+
+**Files Changed:**
+- **SPA Fix:** src/AIPolicyEngine.Api/AIPolicyEngine.Api.csproj, src/aipolicyengine-ui/vite.config.ts, src/AIPolicyEngine.Api/.gitignore
+- **Cosmos Firewall:** infra/terraform/modules/data/main.tf
+- **Bicep Removal:** Deleted infra/bicep/* (23 files), scripts/setup-azure.{ps1,sh}
+- **Documentation:** README.md, CONTRIBUTING.md, docs/*, policies/*.md, .squad/*
+
+**PR Status:** Branch pushed, awaiting SAML authorization to complete PR creation via gh CLI. Alternative: manual PR creation via GitHub UI.
+
