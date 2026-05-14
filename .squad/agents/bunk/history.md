@@ -11,11 +11,32 @@
 - `src/Chargeback.Benchmarks/` — Performance benchmarks
 - `src/Chargeback.LoadTest/` — Load test scenarios
 
+## Core Context
+
+**Test Coverage by Phase (2026-03-31 to 2026-04-11):**
+
+Phase 0 Tests (36 new tests): Repository pattern, cached storage, cache warming, data migration. Tests validate cache hit/miss, write-through, Redis/Cosmos failure recovery, migration idempotency. 129 tests total (93 → 129). All passing.
+
+Phase 1 Tests (41 new tests): Routing evaluation, multiplier pricing, overage calculation, routing validation. Tests verify exact deployment matching, default multipliers (zero→1.0), boundary conditions, atomic policy validation. Design decisions captured: strict validation on empty Foundry list (currently skipped in endpoints — noted discrepancy for Freamon).
+
+Phase 2 Tests (10 new tests): Routing enforcement endpoints (F2.1–F2.7). Tests validate request-based quota, deployment-scoped rate limiting, audit trail capture, Foundry validation. 235 tests total (225 → 235). All passing, zero regressions.
+
+**Test Patterns Established:**
+
+- Use FakeRedis for in-memory Redis simulation
+- NSubstitute for interface mocking (IRepository, ICacheWarmable, etc.)
+- Verify Redis state via Database API, not mocked Received() calls
+- Static/pure logic tested directly (RoutingEvaluator, ChargebackCalculator)
+- Test entity approach (TestEntity, not production models) to avoid coupling
+- Comprehensive edge cases: failures, boundary conditions, empty state, idempotency, cancellation
+
+**Known Discrepancy:**
+
+RoutingPolicyEndpoints.ValidateDeployments skips validation when Foundry is empty (endpoint impl). RoutingPolicyValidator + spec say empty Foundry should fail all rules. Noted for team discussion.
+
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
-
-### 2026-03-31: B5.1 + B5.2 — Phase 0 Storage Migration Tests
+<!-- Active learnings from ongoing work below -->
 
 **What:** Wrote 36 unit tests across 3 test files for the Phase 0 storage migration architecture:
 - `src/Chargeback.Tests/Repositories/CachedRepositoryTests.cs` — 16 tests covering cache hit, cache miss, write-through, delete, eviction recovery, Cosmos failure, Redis failure, null handling, cancellation
@@ -396,3 +417,22 @@ All work is done. Phase 0–5 complete. 222 total tests passing. Backend storage
 
 **Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.
 
+### 2026-05-14T16:22:25Z — Cross-Agent Learning: Large azd + Terraform Deployment Pattern
+
+**From:** Scribe (based on Sydnor's successful execution)
+
+**Pattern Validated:**
+- `azd up` with 77+ Azure resources succeeds in ~9m59s when auth alignment is correct (azd + az CLI on same tenant)
+- Longest pole is always Redis Enterprise (~6m22s for this deployment)
+- Terraform dependency graph executes efficiently; no manual intervention needed
+- Role assignments applied post-compute; service-to-service auth succeeds only after full provisioning
+- Parallel provisioning: tests can start after API container is ready, but role assignments still completing
+
+**Key Learning for Test Authors:**
+When writing tests for deployed infrastructure:
+1. Don't run integration tests immediately after `azd up` completes — role assignments may still be cascading (~20-25s each).
+2. Build test fixtures that wait for service health endpoints to return 200 OK.
+3. Test infrastructure dependencies in the correct order: authentication/identity first, then data access, then business logic.
+4. Use fail-open patterns for transient service-to-service auth issues (role assignments may be pending).
+
+**Captured in Skill:** `.squad/skills/azd-terraform-large-deployment/SKILL.md` — Full guide for auth alignment, provider configuration, timing, troubleshooting, validation patterns.

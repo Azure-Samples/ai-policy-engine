@@ -174,3 +174,22 @@ All work is done. Phase 0 (storage), Phase 1 (routing + pricing), Phase 2 (enfor
 
 **Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.
 
+### 2026-05-14T16:22:25Z — Cross-Agent Learning: Large azd + Terraform Deployment Pattern
+
+**From:** Scribe (based on Sydnor's successful execution)
+
+**Pattern Validated:**
+- `azd up` with 77+ Azure resources succeeds in ~9m59s when auth alignment is correct (azd + az CLI on same tenant)
+- Longest pole is always Redis Enterprise (~6m22s for this deployment)
+- Container App deployed and reachable within 9-10m
+- APIM policies configured to call precheck/log endpoints post-compute
+- All infrastructure outputs available immediately after `azd up` succeeds
+
+**Key Learning for Frontend/UI Agents:**
+When deploying via azd:
+1. Your frontend assets are deployed to the Container App's wwwroot/spa directory. Build output must match app directory structure.
+2. APIM gateway is configured to route requests through policies before backend. Your APIs see pre-authenticated requests (policy enforces auth).
+3. Named values in APIM (like Container App URL) are populated during deployment. If you need dynamic configuration, update it post-deployment.
+4. SPA builds should succeed locally before pushing to production; deployment mirrors local build if Dockerfile and vite.config.ts are correct.
+
+**Captured in Skill:** `.squad/skills/azd-terraform-large-deployment/SKILL.md` — Full guide for auth alignment, provider configuration, timing, troubleshooting, validation patterns.

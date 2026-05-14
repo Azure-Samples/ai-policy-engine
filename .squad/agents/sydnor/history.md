@@ -13,11 +13,27 @@
 - `src/Dockerfile` — Container build
 - `scripts/` — Deployment and utility scripts
 
+## Core Context
+
+**Project Phases Completed (2026-03-31 to 2026-04-11):**
+
+Phase 0 (Storage): CosmosDB established as durable source-of-truth; Redis as write-through cache. Configuration container created for plans, clients, pricing, usage policies. No infrastructure changes needed — existing Cosmos + Redis sufficient.
+
+Phase 1 (Model Routing): Backend routing + multiplier pricing complete. 7 routing endpoints ready (F2.1–F2.7). Precheck response includes routedDeployment, requestingDeployment, routingPolicyId. Rate limiting now deployment-scoped. All API contracts stable. Infrastructure unchanged.
+
+Phase 2 (Backend Implementation): Agent365 Observability SDK integrated alongside Purview DLP. Phase 1 implemented with real scope calls (InvokeAgentScope, InferenceScope). APIM DLP policy variants created (precheck-only vs. content-check). All 235 tests passing.
+
+Phase 3 (APIM Router): Auto-router policies deployed for both subscription-key and entra-jwt auth types. Policies extract routedDeployment from precheck response and rewrite backend URL. Logging extended with routing metadata.
+
+**Current Work (2026-05-14):**
+
+PR #29 (SPA publish + Terraform migration) in review. Terraform configuration aligned with azd provider. Infrastructure now deployable via `azd up`. Full infrastructure validation completed — 77 resources provisioned in 9m59s, all services operational.
+
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
+<!-- Active learnings from ongoing work below -->
 
-### 2026-03-31 — Phase 0 Complete: Backend Storage Architecture Established
+### 2026-05-14 — SPA Publish + Terraform Migration Complete
 
 **Phase 0 Status:** ✅ COMPLETE (Freamon + Bunk)
 
