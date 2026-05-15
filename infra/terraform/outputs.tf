@@ -80,6 +80,11 @@ output "app_insights_connection_string" {
   sensitive   = true
 }
 
+output "AZURE_CONTAINER_REGISTRY_ENDPOINT" {
+  description = "Login server of the Container Registry (used by azd for Docker image publishing)."
+  value       = module.compute.acr_login_server
+}
+
 output "demo_env_file_path" {
   description = "Path to the generated demo/.env.local file."
   value       = local_file.demo_env.filename

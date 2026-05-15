@@ -8,8 +8,8 @@ $ErrorActionPreference = "Stop"
 Write-Host "=== Post-provisioning: Configuring Cosmos DB data-plane RBAC ===" -ForegroundColor Cyan
 
 # Read outputs from azd environment
-$resourceGroup = azd env get-values | Select-String "^AZURE_RESOURCE_GROUP=" | ForEach-Object { $_.Line -replace "^AZURE_RESOURCE_GROUP=", "" } | ForEach-Object { $_.Trim('"') }
-$cosmosEndpoint = azd env get-values | Select-String "^COSMOS_ENDPOINT=" | ForEach-Object { $_.Line -replace "^COSMOS_ENDPOINT=", "" } | ForEach-Object { $_.Trim('"') }
+$resourceGroup = azd env get-values | Select-String "^resource_group_name=" | ForEach-Object { $_.Line -replace "^resource_group_name=", "" } | ForEach-Object { $_.Trim('"') }
+$cosmosEndpoint = azd env get-values | Select-String "^cosmos_endpoint=" | ForEach-Object { $_.Line -replace "^cosmos_endpoint=", "" } | ForEach-Object { $_.Trim('"') }
 
 if ([string]::IsNullOrEmpty($resourceGroup)) {
     Write-Host "Skipping: AZURE_RESOURCE_GROUP not set" -ForegroundColor Yellow
@@ -125,6 +125,67 @@ if ([string]::IsNullOrEmpty($appId)) {
                     Write-Host "  ✓ Registered $redirectUri as SPA redirect URI." -ForegroundColor Green
                 } else {
                     Write-Host "  ✗ Failed to register redirect URI (continuing)." -ForegroundColor Red
+                }
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Assign the deploying user to the AIPolicy.Admin app role.
+# This allows the user to access protected endpoints like /api/routing-policies
+# which require the AdminPolicy authorization policy (= AIPolicy.Admin role).
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "=== Post-provisioning: Assigning AIPolicy.Admin role to deploying user ===" -ForegroundColor Cyan
+
+if ([string]::IsNullOrEmpty($appId)) {
+    Write-Host "Skipping: api_app_id not set in azd env." -ForegroundColor Yellow
+} else {
+    # Get the API app's service principal object ID
+    $spObjectId = az ad sp show --id $appId --query "id" -o tsv 2>$null
+    if ([string]::IsNullOrEmpty($spObjectId)) {
+        Write-Host "Skipping: Could not resolve service principal for app $appId." -ForegroundColor Yellow
+    } else {
+        # Get the AIPolicy.Admin app role ID
+        $adminRoleId = az ad sp show --id $appId --query "appRoles[?value=='AIPolicy.Admin'].id | [0]" -o tsv 2>$null
+        if ([string]::IsNullOrEmpty($adminRoleId)) {
+            Write-Host "Skipping: Could not find AIPolicy.Admin app role on app $appId." -ForegroundColor Yellow
+        } else {
+            # Get the current user's object ID
+            $userObjectId = az ad signed-in-user show --query "id" -o tsv 2>$null
+            if ([string]::IsNullOrEmpty($userObjectId)) {
+                Write-Host "Skipping: Could not resolve current user object ID." -ForegroundColor Yellow
+            } else {
+                # Check if user already has the Admin role
+                $existingAssignments = az rest --method GET `
+                    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$spObjectId/appRoleAssignedTo" `
+                    --query "value[?principalId=='$userObjectId' && appRoleId=='$adminRoleId']" `
+                    -o json 2>$null | ConvertFrom-Json
+
+                if ($existingAssignments.Count -gt 0) {
+                    Write-Host "AIPolicy.Admin role already assigned — skipping." -ForegroundColor Green
+                } else {
+                    Write-Host "Assigning AIPolicy.Admin role to user..."
+                    $bodyObj = @{
+                        principalId = $userObjectId
+                        resourceId  = $spObjectId
+                        appRoleId   = $adminRoleId
+                    }
+                    $bodyJson = $bodyObj | ConvertTo-Json -Compress
+                    $tmp = New-TemporaryFile
+                    Set-Content -Path $tmp -Value $bodyJson -Encoding utf8
+                    az rest --method POST `
+                        --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$spObjectId/appRoleAssignedTo" `
+                        --headers "Content-Type=application/json" `
+                        --body "@$tmp" -o none 2>$null
+                    Remove-Item $tmp -Force
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "  ✓ AIPolicy.Admin role assigned successfully." -ForegroundColor Green
+                        Write-Host "  ⚠ User must log out and log back in to receive a fresh token with the Admin role." -ForegroundColor Yellow
+                    } else {
+                        Write-Host "  ✗ Failed to assign role (continuing)." -ForegroundColor Red
+                    }
                 }
             }
         }

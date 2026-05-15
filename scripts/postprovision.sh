@@ -154,4 +154,59 @@ print(json.dumps({'spa': {'redirectUris': existing}}))
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# Assign the deploying user to the AIPolicy.Admin app role.
+# This allows the user to access protected endpoints like /api/routing-policies
+# which require the AdminPolicy authorization policy (= AIPolicy.Admin role).
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Post-provisioning: Assigning AIPolicy.Admin role to deploying user ==="
+
+if [ -z "${APP_ID:-}" ]; then
+    echo "Skipping: api_app_id not set in azd env."
+else
+    SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query "id" -o tsv 2>/dev/null || true)
+    if [ -z "${SP_OBJECT_ID:-}" ]; then
+        echo "Skipping: Could not resolve service principal for app $APP_ID."
+    else
+        ADMIN_ROLE_ID=$(az ad sp show --id "$APP_ID" --query "appRoles[?value=='AIPolicy.Admin'].id | [0]" -o tsv 2>/dev/null || true)
+        if [ -z "${ADMIN_ROLE_ID:-}" ]; then
+            echo "Skipping: Could not find AIPolicy.Admin app role on app $APP_ID."
+        else
+            USER_OBJECT_ID=$(az ad signed-in-user show --query "id" -o tsv 2>/dev/null || true)
+            if [ -z "${USER_OBJECT_ID:-}" ]; then
+                echo "Skipping: Could not resolve current user object ID."
+            else
+                EXISTING_COUNT=$(az rest --method GET \
+                    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECT_ID/appRoleAssignedTo" \
+                    --query "value[?principalId=='$USER_OBJECT_ID' && appRoleId=='$ADMIN_ROLE_ID'] | length(@)" \
+                    -o tsv 2>/dev/null || echo "0")
+                
+                if [ "$EXISTING_COUNT" -gt 0 ]; then
+                    echo "AIPolicy.Admin role already assigned — skipping."
+                else
+                    echo "Assigning AIPolicy.Admin role to user..."
+                    BODY=$(python3 -c "import json; print(json.dumps({'principalId': '$USER_OBJECT_ID', 'resourceId': '$SP_OBJECT_ID', 'appRoleId': '$ADMIN_ROLE_ID'}))" 2>/dev/null || echo "")
+                    if [ -z "$BODY" ]; then
+                        echo "  ✗ python3 not available — cannot serialize request body. Install python3 or assign role manually."
+                    else
+                        TMP=$(mktemp)
+                        echo "$BODY" > "$TMP"
+                        if az rest --method POST \
+                            --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECT_ID/appRoleAssignedTo" \
+                            --headers "Content-Type=application/json" \
+                            --body "@$TMP" -o none 2>/dev/null; then
+                            echo "  ✓ AIPolicy.Admin role assigned successfully."
+                            echo "  ⚠ User must log out and log back in to receive a fresh token with the Admin role."
+                        else
+                            echo "  ✗ Failed to assign role (continuing)."
+                        fi
+                        rm -f "$TMP"
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+
 echo "=== Post-provisioning complete ==="
