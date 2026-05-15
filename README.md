@@ -3,7 +3,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Azure](https://img.shields.io/badge/Azure-0078D4?logo=microsoft-azure&logoColor=white)](https://azure.microsoft.com)
 [![AI Models](https://img.shields.io/badge/AI_Models-412991?logo=openai&logoColor=white)](https://learn.microsoft.com/en-us/azure/ai-services/openai/)
-[![Bicep](https://img.shields.io/badge/Bicep-0078D4?logo=microsoft-azure&logoColor=white)](https://docs.microsoft.com/azure/azure-resource-manager/bicep/)
 [![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)](https://www.terraform.io)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com)
 [![Aspire](https://img.shields.io/badge/.NET_Aspire-512BD4?logo=dotnet&logoColor=white)](https://learn.microsoft.com/dotnet/aspire/)
@@ -27,7 +26,7 @@ A single ASP.NET Minimal API handles authentication/authorization pre-checks, mo
 - WebSocket live dashboard with real-time metrics
 - Comprehensive test suite (198+ tests including routing benchmarks)
 
-**🏗️ Tech Stack**: .NET 10, Azure Container Apps, ASP.NET Minimal APIs, .NET Aspire, React/TypeScript, Azure Managed Redis, CosmosDB, Azure API Management, Bicep/Terraform, OpenTelemetry + Azure Monitor, Microsoft Purview
+**🏗️ Tech Stack**: .NET 10, Azure Container Apps, ASP.NET Minimal APIs, .NET Aspire, React/TypeScript, Azure Managed Redis, CosmosDB, Azure API Management, Terraform, OpenTelemetry + Azure Monitor, Microsoft Purview
 
 ## Quick Start
 
@@ -43,18 +42,6 @@ dotnet run --project AIPolicyEngine.AppHost
 The Aspire dashboard opens automatically at `https://localhost:17224` and provides resource status, logs, traces, and metrics for all services.
 
 ### Azure Deployment
-
-**Option A: Bicep (all-in-one script)**
-
-```powershell
-# Deploys infrastructure, builds container, configures everything
-./scripts/setup-azure.ps1 -Location eastus2
-
-# With multi-tenant demo
-./scripts/setup-azure.ps1 -Location eastus2 -SecondaryTenantId "<other-tenant-guid>"
-```
-
-**Option B: Terraform (two-stage)**
 
 ```powershell
 # Stage 1: Deploy infrastructure (uses placeholder container image)
@@ -116,7 +103,7 @@ Each demo client can specify its own `TenantId`. If omitted, it inherits the glo
 | **No intelligent model routing** | Manual per-client model lists, no auto-optimization | ✅ Auto-router selects best deployment based on plan routing policies + Foundry discovery |
 | **Inflexible billing** | Per-token billing doesn't match all use cases | ✅ Per-request multiplier pricing (GHCP-style) with hybrid token+multiplier support |
 | **No real-time visibility** | Delayed cost reporting, surprise bills | ✅ WebSocket streaming + adaptive React dashboard that shows your billing model |
-| **Inconsistent deployment** | Manual provisioning, environment drift | ✅ Bicep/Terraform IaC + .NET Aspire for reproducible local and cloud deployments |
+| **Inconsistent deployment** | Manual provisioning, environment drift | ✅ Terraform IaC + .NET Aspire for reproducible local and cloud deployments |
 
 ## Architecture Overview
 
@@ -221,7 +208,7 @@ All decisions are cached in Redis for sub-millisecond latency; all configuration
 - Zero regressions through continuous validation
 
 ### 🏗️ Production-Ready Infrastructure
-- **Bicep & Terraform IaC** — Both paths deploy identical infrastructure
+- **Terraform IaC** — Modular infrastructure with six modules: monitoring, data, ai_services, identity, compute, and gateway
 - **Azure Managed Redis** — TLS-enabled, Entra-only auth, DDoS protection
 - **Azure CosmosDB** — Multi-region capable, point-in-time recovery, audit logging
 - **Azure Container Apps** — Managed Kubernetes, auto-scaling, managed identity
@@ -363,7 +350,7 @@ Telemetry is configured via `AIPolicyEngine.ServiceDefaults` using the [Azure Mo
 | `AIPolicyEngine.requests_processed` | Total chargeback requests handled | `tenant_id`, `client_app_id`, `model`, `deployment_id` |
 
 Distributed traces, structured logs, and metrics flow to Azure Monitor / Application Insights. The Aspire dashboard provides a local development view of all telemetry.
-The infrastructure deployment also creates an Azure Monitor workbook dashboard (`logAnalyticsWorkbook.bicep`) with 30-day token/cost trend, top clients, status distribution, and quota/rate-limit event views from Log Analytics.
+The infrastructure deployment also creates an Azure Monitor workbook dashboard (via the Terraform `monitoring` module) with 30-day token/cost trend, top clients, status distribution, and quota/rate-limit event views from Log Analytics.
 
 ## Purview Integration
 
@@ -409,15 +396,6 @@ policies/
 └── subscription-key-policy.xml        # (Legacy) subscription key policy
 
 infra/
-├── bicep/                             # Bicep IaC modules
-│   ├── main.bicep                     # Main deployment template
-│   ├── containerApp.bicep             # Azure Container App for AIPolicyEngine.Api
-│   ├── appInsights.bicep              # Application Insights + Log Analytics
-│   ├── cosmosAccount.bicep            # Azure CosmosDB account + containers
-│   ├── redisCache.bicep               # Azure Managed Redis
-│   ├── apimInstance.bicep             # Azure API Management instance
-│   ├── keyVault.bicep                 # Azure Key Vault
-│   └── logAnalyticsWorkbook.bicep     # Azure Monitor workbook dashboard
 └── terraform/                         # Terraform IaC modules (6 modules: monitoring, data, ai_services, identity, compute, gateway)
     ├── main.tf                        # Root orchestration
     ├── providers.tf                   # azurerm, azuread, azapi providers
@@ -426,10 +404,8 @@ infra/
     └── register-secondary-tenant.ps1  # Multi-tenant setup
 
 scripts/
-├── setup-azure.ps1                    # One-command deployment script (Bicep or Terraform)
 ├── deploy-container.ps1               # Build and deploy container to ACR + verify Entra config
-├── seed-data.ps1                      # Seed plans and client assignments into CosmosDB/Redis
-└── deploy-functionapp-test.ps1        # Bicep testing patterns (reference)
+└── seed-data.ps1                      # Seed plans and client assignments into CosmosDB/Redis
 
 docs/                                  # Documentation
 ├── ARCHITECTURE.md                    # Detailed system design
@@ -440,31 +416,6 @@ docs/                                  # Documentation
 ```
 
 ## Infrastructure
-
-### Bicep
-
-Infrastructure is defined in Bicep modules under `infra/bicep/`:
-
-| Module | Resource |
-|--------|----------|
-| `containerApp.bicep` | Azure Container App for AIPolicyEngine.Api |
-| `appInsights.bicep` | Application Insights + Log Analytics workspace |
-| `logAnalyticsWorkbook.bicep` | Azure Monitor workbook dashboard (Log Analytics KQL) |
-| `redisCache.bicep` | Azure Managed Redis (Balanced_B0) |
-| `apimInstance.bicep` | API Management instance (StandardV2) |
-| `keyVault.bicep` | Azure Key Vault for secrets |
-| `main.bicep` | Orchestrates all modules |
-
-```bash
-# Deploy infrastructure
-cd infra/bicep
-az deployment group create \
-  --resource-group myResourceGroup \
-  --template-file main.bicep \
-  --parameters @parameter.json
-```
-
-### Terraform
 
 Terraform modules are under `infra/terraform/` with six modules: `monitoring`, `data`, `ai_services`, `identity`, `compute`, and `gateway`.
 
@@ -545,7 +496,7 @@ When running via Aspire, connection strings and service discovery are configured
 ✅ Azure Managed Redis TTL is configurable (default 30 days). CosmosDB retains audit records for 36 months. Azure Monitor retains telemetry per your workspace retention settings.
 
 **❓ Multi-region support?**
-✅ Yes. Azure Container Apps and APIM both support multi-region deployment via the Bicep modules.
+✅ Yes. Azure Container Apps and APIM both support multi-region deployment. Parameterize the Terraform modules for additional regions.
 
 **❓ How does multi-tenant billing work?**
 ✅ A "customer" is the combination of `clientAppId` (the Entra app registration) and `tenantId` (the Entra directory). A multi-tenant app registered with `AzureADMultipleOrgs` can serve users from any Entra tenant — each tenant gets its own plan assignment, quota, rate limits, and billing. Use `-SecondaryTenantId` when deploying to pre-register a second tenant for the demo.
@@ -568,8 +519,8 @@ When running via Aspire, connection strings and service discovery are configured
 **❓ Is all configuration stored durably?**
 ✅ Yes. CosmosDB is the source of truth for all configuration: plans, clients, pricing, routing policies. Redis serves as a write-through cache for performance. On startup, configuration is automatically loaded from CosmosDB into Redis. You can safely upgrade or restart — nothing is lost.
 
-**❓ Should I use Terraform or Bicep?**
-✅ Both paths deploy the same infrastructure. Bicep is simpler with a single `setup-azure.ps1` script. Terraform offers modular state management and is better suited for teams already using Terraform across their stack. The Terraform path requires a two-stage deploy (infra first, then container).
+**❓ How do I deploy the infrastructure?**
+✅ Run `terraform apply` in `infra/terraform/`, then `./scripts/deploy-container.ps1` to build and push the container image. The two-stage approach is required because the container image depends on the ACR provisioned by Terraform.
 
 **📚 More questions**: See the [Deployment Guide](docs/DOTNET_DEPLOYMENT_GUIDE.md) for full environment variable reference and KQL queries.
 

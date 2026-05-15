@@ -24,7 +24,7 @@
 
 - **Owner:** Zack Way
 - **Project:** AI Policy Engine — APIM management UI for AI workloads implementing AAA (Authentication, Authorization, Accounting) à la RADIUS. Bill-back reporting, runover tracking, token utilization, audit.
-- **Stack:** .NET 9 (Chargeback.Api), Aspire (Chargeback.AppHost), React (chargeback-ui), Azure Managed Redis, CosmosDB, Azure API Management, Bicep
+- **Stack:** .NET 10 (AIPolicyEngine.Api), Aspire (AIPolicyEngine.AppHost), React (aipolicyengine-ui), Azure Managed Redis, CosmosDB, Azure API Management, Terraform
 - **Universe:** The Wire
 - **Created:** 2026-03-31
 

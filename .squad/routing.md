@@ -10,7 +10,7 @@ How to decide who handles what.
 | Backend API | Freamon | .NET endpoints, CosmosDB queries, Redis caching, policy engine logic |
 | Frontend UI | Kima | React components, dashboards, data visualization, forms |
 | Testing & QA | Bunk | xUnit tests, benchmarks, load tests, edge cases, quality gates |
-| Infrastructure | Sydnor | Bicep templates, APIM policies, Aspire config, Docker, CI/CD, deployment |
+| Infrastructure | Sydnor | Terraform modules, APIM policies, Aspire config, Docker, CI/CD, deployment |
 | Code review | McNulty | Review PRs, check quality, architectural alignment |
 | Test review | Bunk | Verify test coverage, validate test strategy |
 | Scope & priorities | McNulty | What to build next, trade-offs, decisions |

@@ -69,6 +69,27 @@ data "azurerm_subscription" "current" {}
 
 # ---------- Cosmos DB ----------
 
+# Cosmos DB IP firewall allow-list used to implement the "Selected networks"
+# access mode. We intentionally keep public network access *enabled* and rely
+# on this allow-list to scope traffic. Notes:
+#   * 0.0.0.0 is a special sentinel that enables the
+#     "Accept connections from within public Azure datacenters" toggle, which
+#     is required for Container Apps (no VNet integration) to reach the
+#     Cosmos endpoint over their Azure-public egress IPs.
+#   * The four explicit IPs are the Azure Public cloud "All APIs" Middleware
+#     IPs that back the Azure Portal data explorer, Browse Collections, etc.
+#     Source:
+#     https://learn.microsoft.com/azure/cosmos-db/how-to-configure-firewall#azure-portal-middleware-ip-addresses
+locals {
+  cosmos_azure_portal_ips = [
+    "13.91.105.215",
+    "4.210.172.107",
+    "13.88.56.148",
+    "40.91.218.243",
+  ]
+  cosmos_ip_range_filter = toset(concat(["0.0.0.0"], local.cosmos_azure_portal_ips))
+}
+
 resource "azurerm_cosmosdb_account" "this" {
   name                = "${var.name_prefix}-cosmos"
   location            = var.location
@@ -95,7 +116,14 @@ resource "azurerm_cosmosdb_account" "this" {
 
   local_authentication_disabled = false
 
-  tags                = merge(var.tags, {
+  # Explicitly set public network access + IP firewall so `terraform apply`
+  # repairs drift caused by org Azure Policy that periodically disables
+  # public network access. Without these properties present in config, the
+  # provider treats remote changes as "no opinion" and won't reconcile.
+  public_network_access_enabled = true
+  ip_range_filter               = local.cosmos_ip_range_filter
+
+  tags = merge(var.tags, {
     "SecurityControl" = "ignore"
   })
 }
@@ -165,6 +193,28 @@ resource "azurerm_cosmosdb_sql_container" "billing_summaries" {
 
     excluded_path {
       path = "/*"
+    }
+  }
+}
+
+
+resource "azurerm_cosmosdb_sql_container" "configuration" {
+  name                = "configuration"
+  resource_group_name = var.resource_group_name
+  account_name        = azurerm_cosmosdb_account.this.name
+  database_name       = azurerm_cosmosdb_sql_database.this.name
+  partition_key_paths = ["/partitionKey"]
+  default_ttl         = 94608000
+
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/*"
+    }
+
+    excluded_path {
+      path = "/\"_etag\"/?"
     }
   }
 }

@@ -17,11 +17,30 @@
 - `infra/` — Azure Bicep infrastructure
 - `policies/` — APIM policy definitions
 
+## Core Context
+
+**Architecture Reviews & Decisions (2026-03-31 to 2026-04-11):**
+
+Phase 0–2 Code Review (2026-04-01): CONDITIONALLY APPROVED. 3 blocking issues fixed:
+1. Request quota not enforced for multiplier billing plans → fixed in precheck
+2. Frontend billingPeriod type mismatch (object vs. string) → fixed
+3. Frontend RouteRule missing priority/enabled fields → added to UI
+
+8 should-fix items addressed: deleted dead repository code, fixed race condition in container initialization, added RoutingPolicyId to audit trail, fixed TypeScript type safety, secured outbound log JSON, made pricing cache thread-safe, improved error handling.
+
+Strong fundamentals: Repository pattern solid, RoutingEvaluator pure/stateless, multiplier math correct, authorization consistent, 200+ tests passing, APIM integration works, backward-compatible.
+
+Phase 2 Real Implementation (2026-04-11): Agent365 Observability SDK deployed. Real scope calls (InvokeAgentScope, InferenceScope) with fail-safe design. Manual OTelemetry config (AddA365Tracing unavailable in v0.1.75-beta). Namespace conflict resolved (A365Request alias). 235 tests passing, zero regressions.
+
+Phase 3 Complete (2026-04-11): APIM auto-router policies deployed. Both auth types (subscription-key, entra-jwt) support routing. Policies extract routedDeployment from precheck, rewrite backend URL, extend logging with routing metadata.
+
+**Deployment Status:**
+
+All backend features (routing, pricing, observability) complete and tested. Infrastructure ready via azd + Terraform (77 resources provisioned in 9m59s on 2026-05-14). Application running on Container App. APIM policies configured. All systems operational.
+
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
-
-### 2026-03-31 — Phase 0 Complete: CosmosDB Source of Truth + Repository Pattern
+<!-- Active learnings from ongoing work below -->
 
 **Phase 0 Status:** ✅ COMPLETE (Freamon + Bunk)
 - Storage architecture migrated: CosmosDB is now the durable source of truth; Redis is a write-through cache.
@@ -381,3 +400,45 @@ McNulty rewrote README.md and updated all associated documentation to reflect th
 - A365 SDK gives us M365 admin center visibility without replacing our existing Purview DLP blocking logic
 - Agent identity is the open question — full Entra Agentic Users vs. service principal-based observability
 - SDK is in beta but stable enough for integration (0.2.152-beta, 5 packages, 13K total downloads)
+
+---
+
+### 2026-05-14 — Cross-Agent Note: azd Terraform Provider Configuration
+
+**From:** Sydnor (Infra/DevOps)  
+**Note:** When using Terraform with Azure Developer CLI (azd), the zure.yaml file must explicitly declare an infra: provider block pointing to the terraform module. If omitted, azd defaults to Bicep and looks for infra/main.bicep, which will fail if Terraform is the actual IaC provider. Example config:
+
+\\\yaml
+infra:
+  provider: terraform
+  module: infra/terraform
+\\\
+
+This applies to any project mixing IaC tools or migrating from Bicep to Terraform.
+
+### 2026-05-14 — Cross-Agent Note: Infrastructure Changes Must Be Validated Before Commit
+
+**From:** Zack Way (User directive captured by Scribe)  
+**Note:** When fixing infrastructure/deployment errors, **always validate fixes by running the relevant `azd` command** (e.g., `azd provision --preview`, `azd up`) **BEFORE committing**. Do not write commits with unvalidated infrastructure changes. This keeps the commit tree clean of speculative/bad infrastructure history and ensures only known-working fixes enter the codebase.
+
+**Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.
+
+### 2026-05-14T16:22:25Z — Cross-Agent Learning: Large azd + Terraform Deployment Pattern
+
+**From:** Scribe (based on Sydnor's successful execution)
+
+**Pattern Validated:**
+- `azd up` with 77+ Azure resources succeeds in ~9m59s when auth alignment is correct (azd + az CLI on same tenant)
+- Longest pole is always Redis Enterprise (~6m22s for this deployment)
+- Terraform dependency graph executes efficiently; no manual intervention needed
+- APIM policies depend on Container App URL availability; azd handles ordering automatically
+- Parallel provisioning: container image builds while infrastructure resources provision
+
+**Key Learning for All Agents:**
+When architecting infrastructure changes or debugging deployment issues:
+1. **Auth alignment first:** Ensure azd and az CLI are logged into the same tenant. Cross-tenant token requests hit Conditional Access Policies.
+2. **Pre-deployment validation:** Run `azd provision --preview` before `azd up`. Catches errors without full deployment.
+3. **Resource time budgets:** Redis 6-7m, APIM 3-5m, Cosmos 2-3m, Container App 2-3m. Plan SLAs accordingly.
+4. **Terraform state:** azd manages remote state automatically. No explicit backend config needed.
+
+**Captured in Skill:** `.squad/skills/azd-terraform-large-deployment/SKILL.md` — Full guide for auth alignment, provider configuration, timing, troubleshooting, validation patterns.

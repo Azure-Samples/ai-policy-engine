@@ -1,0 +1,53 @@
+name: ai-policy-engine
+metadata:
+  template: azd-init
+
+infra:
+  provider: terraform
+  path: infra/terraform
+  module: main
+
+services:
+  api:
+    project: ./src/AIPolicyEngine.Api
+    host: containerapp
+    language: csharp
+
+hooks:
+  preprovision:
+    windows:
+      shell: pwsh
+      run: |
+        pwsh -ExecutionPolicy Bypass -File ./scripts/check-terraform-version.ps1
+        pwsh -ExecutionPolicy Bypass -File ./scripts/preprovision.ps1
+    posix:
+      shell: sh
+      run: ./scripts/preprovision.sh
+  postprovision:
+    windows:
+      shell: pwsh
+      run: |
+        pwsh -ExecutionPolicy Bypass -File ./scripts/set-environment-variables.ps1
+        pwsh -ExecutionPolicy Bypass -File ./scripts/postprovision.ps1
+      secrets:
+        entra_app_client_secret: entra_app_client_secret_kv_ref
+    posix:
+      shell: sh
+      run: |
+        ./scripts/set-environment-variables.sh
+        ./scripts/postprovision.sh
+  postdown:
+    windows:
+      shell: pwsh
+      run: |
+        if (Test-Path ".vscode/settings.json") {
+          Remove-Item ".vscode/settings.json" -Force
+          Write-Host "✅ Removed .vscode/settings.json" -ForegroundColor Green
+        }
+    posix:
+      shell: sh
+      run: |
+        if [ -f ".vscode/settings.json" ]; then
+          rm ".vscode/settings.json"
+          echo "✅ Removed .vscode/settings.json"
+        fi

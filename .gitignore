@@ -103,3 +103,4 @@ src/AIPolicyEngine.LoadTest/reports/
 
 # Squad AI team state (local tooling, not part of the product)
 .squad/
+.squad-workstream

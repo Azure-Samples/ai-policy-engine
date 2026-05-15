@@ -17,6 +17,11 @@ output "apim_gateway_url" {
   value       = module.gateway.apim_gateway_url
 }
 
+output "key_vault_name" {
+  description = "Name of the Key Vault instance."
+  value       = module.compute.key_vault_name
+}
+
 output "api_app_id" {
   description = "Application (client) ID of the AI Policy API app registration."
   value       = module.identity.api_app_id
@@ -73,6 +78,11 @@ output "app_insights_connection_string" {
   description = "Application Insights connection string."
   value       = module.monitoring.app_insights_connection_string
   sensitive   = true
+}
+
+output "AZURE_CONTAINER_REGISTRY_ENDPOINT" {
+  description = "Login server of the Container Registry (used by azd for Docker image publishing)."
+  value       = module.compute.acr_login_server
 }
 
 output "demo_env_file_path" {

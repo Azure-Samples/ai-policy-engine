@@ -37,7 +37,7 @@ Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 - [Node.js 20+](https://nodejs.org/) (for the React dashboard)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Azure CLI
-- Bicep CLI
+- Terraform >= 1.9 (for infrastructure deployment)
 - VS Code with C# Dev Kit extension (recommended)
 
 ### Local Development
