@@ -5,6 +5,7 @@ using Azure.ResourceManager;
 using AIPolicyEngine.Api.Endpoints;
 using AIPolicyEngine.Api.Models;
 using AIPolicyEngine.Api.Services;
+using AIPolicyEngine.Api.Services.AccessProfiles;
 using AIPolicyEngine.Api.Services.ApimManagement;
 using Microsoft.Identity.Web;
 using StackExchange.Redis;
@@ -70,6 +71,8 @@ builder.Services.AddSingleton<CosmosPricingRepository>();
 builder.Services.AddSingleton<CosmosUsagePolicyRepository>();
 builder.Services.AddSingleton<CosmosRoutingPolicyRepository>();
 builder.Services.AddSingleton<CosmosPolicyAssignmentRepository>();
+builder.Services.AddSingleton<IAccessProfileRepository, CosmosAccessProfileRepository>();
+builder.Services.AddSingleton<IAccessProfileResolver, AccessProfileResolver>();
 
 builder.Services.AddSingleton<IRepository<PlanData>>(sp =>
     new CachedRepository<PlanData>(
@@ -194,6 +197,7 @@ app.MapPricingEndpoints();
 app.MapUsagePolicyEndpoints();
 app.MapDeploymentEndpoints();
 app.MapRoutingPolicyEndpoints();
+app.MapAccessProfileEndpoints();
 app.MapRequestBillingEndpoints();
 app.MapApimManagementEndpoints();
 

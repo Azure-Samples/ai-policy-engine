@@ -79,6 +79,18 @@ public sealed class AuditLogDocument
     [JsonPropertyName("tierName")]
     public string? TierName { get; set; }
 
+    [JsonPropertyName("accessProfileId")]
+    public string? AccessProfileId { get; set; }
+
+    [JsonPropertyName("planId")]
+    public string? PlanId { get; set; }
+
+    [JsonPropertyName("apiId")]
+    public string? ApiId { get; set; }
+
+    [JsonPropertyName("operationId")]
+    public string? OperationId { get; set; }
+
     /// <summary>
     /// Billing period in YYYY-MM format for efficient querying.
     /// </summary>

@@ -110,11 +110,14 @@ public static class LogIngestEndpoints
                 }
 
                 // --- 2. Plan Lookup ---
-                var plan = await planRepo.GetAsync(clientAssignment.PlanId);
+                var resolvedPlanId = string.IsNullOrWhiteSpace(ingestRequest.PlanId)
+                    ? clientAssignment.PlanId
+                    : ingestRequest.PlanId.Trim();
+                var plan = await planRepo.GetAsync(resolvedPlanId);
                 if (plan is null)
                 {
-                    logger.LogError("Plan not found: {PlanId} for client {ClientAppId}", clientAssignment.PlanId, ingestRequest.ClientAppId);
-                    return Results.Json(new { error = "Plan configuration not found" }, statusCode: StatusCodes.Status500InternalServerError);
+                    logger.LogError("Plan not found: {PlanId} for client {ClientAppId}", resolvedPlanId, ingestRequest.ClientAppId);
+                    return Results.Json(new { error = "Plan configuration not found", planId = resolvedPlanId }, statusCode: StatusCodes.Status500InternalServerError);
                 }
 
                 // --- 3. Update rate limit meters (outbound — record actual token usage) ---
@@ -307,7 +310,11 @@ public static class LogIngestEndpoints
                 EffectiveRequestCost = effectiveRequestCost,
                 TierName = tierName,
                 MultiplierOverageCost = multiplierOverageCost,
-                CorrelationId = ingestRequest.CorrelationId
+                CorrelationId = ingestRequest.CorrelationId,
+                AccessProfileId = ingestRequest.AccessProfileId,
+                PlanId = string.IsNullOrWhiteSpace(ingestRequest.PlanId) ? clientAssignment?.PlanId : ingestRequest.PlanId?.Trim(),
+                ApiId = ingestRequest.ApiId,
+                OperationId = ingestRequest.OperationId
             });
 
             return Results.Ok("Log data processed and stored successfully");

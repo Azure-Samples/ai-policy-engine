@@ -31,4 +31,8 @@ public sealed class AuditLogItem
 
     /// <summary>APIM request ID for deduplication in deterministic hashing.</summary>
     public string? CorrelationId { get; set; }
+    public string? AccessProfileId { get; set; }
+    public string? PlanId { get; set; }
+    public string? ApiId { get; set; }
+    public string? OperationId { get; set; }
 }
