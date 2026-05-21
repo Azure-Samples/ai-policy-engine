@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-policy-engine
+  namespace: apim
+  labels:
+    app: ai-policy-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-policy-engine
+  template:
+    metadata:
+      labels:
+        app: ai-policy-engine
+    spec:
+      # Optional: pin to specific nodes if needed
+      # nodeSelector:
+      #   kubernetes.io/os: linux
+
+      containers:
+        - name: ai-policy-engine
+          image: your-registry/ai-policy-engine:latest   # <-- replace with your registry
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+          # Load non-sensitive config from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: aipolicyengine-config
+            - secretRef:
+                name: aipolicyengine-secrets
+
+          # Health probes — Aspire ServiceDefaults exposes /health and /alive
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+      # If your registry requires pull credentials:
+      # imagePullSecrets:
+      #   - name: registry-credentials

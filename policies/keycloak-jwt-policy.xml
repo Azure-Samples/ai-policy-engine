@@ -1,0 +1,274 @@
+<!--
+    Keycloak OIDC JWT validation policy for AI Policy Engine.
+    
+    This policy validates JWT tokens issued by Keycloak instead of Azure AD.
+    APIM authenticates to the AI Policy Engine backend using a Keycloak
+    client_credentials token (service account) instead of managed identity.
+
+    Required APIM Named Values:
+    - AIPolicyEngineApiBaseUrl: Base URL of the AI Policy Engine API
+    - AIPolicyEngineApimClientId: Keycloak client ID for APIM service account
+    - AIPolicyEngineApimClientSecret: Keycloak client secret for APIM service account
+    - KeycloakTokenEndpoint: Keycloak token endpoint (e.g., https://<host>/realms/<realm>/protocol/openid-connect/token)
+    - KeycloakOpenIdConfigUrl: Keycloak OIDC discovery URL (e.g., https://<host>/realms/<realm>/.well-known/openid-configuration)
+    - ExpectedAudience: The expected audience claim in the JWT token
+-->
+<policies>
+	<inbound>
+		<base />
+		<!-- Validate Keycloak JWT token using OIDC discovery -->
+		<validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized. Access token is missing or invalid.">
+			<openid-config url="{{KeycloakOpenIdConfigUrl}}" />
+			<required-claims>
+				<claim name="aud" match="all">
+					<value>{{ExpectedAudience}}</value>
+				</claim>
+			</required-claims>
+		</validate-jwt>
+		<!-- Extract JWT claims into variables (Keycloak claim names) -->
+		<set-variable name="tenantId" value="@{
+			var jwt = context.Request.Headers.GetValueOrDefault("Authorization","").Split(' ').Last().AsJwt();
+			// Keycloak doesn't have a 'tid' claim by default; use a custom claim or the issuer realm
+			var tid = jwt?.Claims.GetValueOrDefault("tenant_id","");
+			if (string.IsNullOrEmpty(tid)) {
+				// Extract realm from issuer (e.g., https://keycloak.example.com/realms/myrealm)
+				var iss = jwt?.Claims.GetValueOrDefault("iss","");
+				if (!string.IsNullOrEmpty(iss)) {
+					var parts = iss.Split('/');
+					tid = parts.Length > 0 ? parts[parts.Length - 1] : "";
+				}
+			}
+			return tid;
+		}" />
+		<set-variable name="clientAppId" value="@{
+			var jwt = context.Request.Headers.GetValueOrDefault("Authorization","").Split(' ').Last().AsJwt();
+			// azp is the authorized party (client that requested the token)
+			var azp = jwt?.Claims.GetValueOrDefault("azp","");
+			if (!string.IsNullOrEmpty(azp)) return azp;
+			// Fallback to client_id claim for client_credentials grants
+			return jwt?.Claims.GetValueOrDefault("client_id","");
+		}" />
+		<set-variable name="audience" value="@(context.Request.Headers.GetValueOrDefault("Authorization","").Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault("aud",""))" />
+		<!-- Set variables for later use -->
+		<set-variable name="requestBody" value="@(context.Request.Body.As<string>(preserveContent: true))" />
+		<!-- Extract deploymentId from URL path (/deployments/{id}/...) or fall back to
+		     the "model" field in the JSON request body for routes like /responses, /models -->
+		<set-variable name="deploymentId" value="@{
+			var path = context.Request.Url.Path;
+			var marker = "/deployments/";
+			var idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+			if (idx >= 0) {
+				var rest = path.Substring(idx + marker.Length);
+				var slash = rest.IndexOf('/');
+				if (slash >= 0) { return rest.Substring(0, slash); }
+				return rest;
+			}
+			try {
+				var body = context.Variables.GetValueOrDefault<string>("requestBody");
+				if (!string.IsNullOrEmpty(body)) {
+					var json = Newtonsoft.Json.Linq.JObject.Parse(body);
+					var model = json["model"]?.ToString();
+					if (!string.IsNullOrEmpty(model)) { return model; }
+				}
+			} catch { }
+			var segments = path.Split('/');
+			if (segments.Length > 1) { return segments[segments.Length - 1]; }
+			return "unknown";
+		}" />
+		<!-- Acquire a token from Keycloak using client_credentials for the AI Policy Engine backend -->
+		<send-request mode="new" response-variable-name="keycloakTokenResponse" timeout="10" ignore-error="false">
+			<set-url>{{KeycloakTokenEndpoint}}</set-url>
+			<set-method>POST</set-method>
+			<set-header name="Content-Type" exists-action="override">
+				<value>application/x-www-form-urlencoded</value>
+			</set-header>
+			<set-body>@{
+				return "grant_type=client_credentials&client_id={{AIPolicyEngineApimClientId}}&client_secret={{AIPolicyEngineApimClientSecret}}&audience={{ExpectedAudience}}";
+			}</set-body>
+		</send-request>
+		<set-variable name="backend-access-token" value="@{
+			var response = ((IResponse)context.Variables["keycloakTokenResponse"]).Body.As<JObject>();
+			return (string)response["access_token"];
+		}" />
+		<!-- Pre-check: verify client has a valid plan and is within quota BEFORE calling OpenAI -->
+		<set-variable name="containerAppBaseUrl" value="{{AIPolicyEngineApiBaseUrl}}" />
+		<send-request mode="new" response-variable-name="precheckResponse" timeout="10" ignore-error="true">
+			<set-url>@((string)context.Variables["containerAppBaseUrl"] + "/api/precheck/" + (string)context.Variables["clientAppId"] + "/" + (string)context.Variables["tenantId"] + "?deploymentId=" + (string)context.Variables["deploymentId"])</set-url>
+			<set-method>GET</set-method>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["backend-access-token"])</value>
+			</set-header>
+		</send-request>
+		<choose>
+			<when condition="@(context.Variables["precheckResponse"] == null || ((IResponse)context.Variables["precheckResponse"]).StatusCode == 401)">
+				<return-response>
+					<set-status code="401" reason="Unauthorized" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@{
+						var resp = context.Variables["precheckResponse"] as IResponse;
+						return resp != null ? resp.Body.As<string>() : "{\"error\":\"Pre-check failed — could not reach authorization service\"}";
+					}</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 403)">
+				<return-response>
+					<set-status code="403" reason="Forbidden" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 429)">
+				<return-response>
+					<set-status code="429" reason="Too Many Requests" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode != 200)">
+				<return-response>
+					<set-status code="500" reason="Internal Server Error" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>{"error":"Pre-authorization check failed"}</set-body>
+				</return-response>
+			</when>
+		</choose>
+		<!-- ══════════════════════════════════════════════════════════════════════════
+		     AUTO-ROUTER — Deployment routing based on precheck response.
+		     ══════════════════════════════════════════════════════════════════════════ -->
+		<set-variable name="routedDeployment"
+			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routedDeployment"]?.ToString())" />
+		<set-variable name="routingPolicyId"
+			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routingPolicyId"]?.ToString())" />
+		<choose>
+			<when condition="@(!string.IsNullOrEmpty((string)context.Variables["routedDeployment"]) &amp;&amp; (string)context.Variables["routedDeployment"] != (string)context.Variables["deploymentId"])">
+				<set-variable name="originalDeploymentId" value="@((string)context.Variables["deploymentId"])" />
+				<set-variable name="deploymentId" value="@((string)context.Variables["routedDeployment"])" />
+				<rewrite-uri template="@{
+					var path = context.Request.Url.Path;
+					var original = (string)context.Variables["originalDeploymentId"];
+					var routed = (string)context.Variables["routedDeployment"];
+					return path.Replace($"/deployments/{original}/", $"/deployments/{routed}/");
+				}" />
+			</when>
+		</choose>
+		<!-- Set the backend service to the Azure OpenAI endpoint -->
+		<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+		<!-- Use managed identity to authenticate against the Azure Cognitive Services -->
+		<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
+		<!-- Capture the request body as text and add the 'stream_options' property if 'stream' is set to true -->
+		<set-body>@{
+            var rawBody = context.Variables.GetValueOrDefault<string>("requestBody");
+            var requestBody = Newtonsoft.Json.Linq.JObject.Parse(rawBody);
+            if (requestBody["stream"] != null && (bool)requestBody["stream"] == true) {
+                requestBody["stream_options"] = Newtonsoft.Json.Linq.JObject.Parse(@"{""include_usage"":true}");
+            }
+            return requestBody.ToString();
+        }</set-body>
+	</inbound>
+	<backend>
+		<base />
+	</backend>
+	<outbound>
+		<base />
+		<!-- Capture the raw response as text -->
+		<set-variable name="responseBodyText" value="@{
+            return context.Response.Body.As<string>(preserveContent: true);
+        }" />
+		<!-- Parse the response: if streaming, extract the last chunk with usage; otherwise parse as JSON -->
+		<set-variable name="parsedResponse" value="@{
+            string txt = (string)context.Variables["responseBodyText"];
+            if (txt.TrimStart().StartsWith("data:")) {
+                var lines = txt.Split(new[] {'\n', '\r'}, StringSplitOptions.RemoveEmptyEntries);
+                var chunkLine = lines
+                    .Where(l => l.Trim().StartsWith("data:") && l.Contains("\"usage\"") && !l.Contains("[DONE]"))
+                    .LastOrDefault();
+                if (chunkLine != null) {
+                    int index = chunkLine.IndexOf('{');
+                    string jsonPart = chunkLine.Substring(index);
+                    return Newtonsoft.Json.Linq.JObject.Parse(jsonPart);
+                }
+                return null;
+            } else {
+                return Newtonsoft.Json.Linq.JObject.Parse(txt);
+            }
+        }" />
+		<set-variable name="parsedResponseString" value="@{
+            var parsedResponse = context.Variables.GetValueOrDefault<Newtonsoft.Json.Linq.JObject>("parsedResponse");
+            return parsedResponse != null ? parsedResponse.ToString() : string.Empty;
+        }" />
+		<!-- Fire-and-forget: send usage data to AI Policy API -->
+		<send-one-way-request mode="new">
+			<set-url>{{AIPolicyEngineApiBaseUrl}}/api/log</set-url>
+			<set-method>POST</set-method>
+			<set-header name="Content-Type" exists-action="override">
+				<value>application/json</value>
+			</set-header>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["backend-access-token"])</value>
+			</set-header>
+			<set-body>@{
+				var requestBodyRaw = context.Variables.GetValueOrDefault<string>("requestBody");
+				var parsedResponseString = context.Variables.GetValueOrDefault<string>("parsedResponseString");
+				var deploymentId = context.Variables.GetValueOrDefault<string>("deploymentId");
+				var requestedDeploymentId = context.Variables.ContainsKey("originalDeploymentId")
+					? context.Variables.GetValueOrDefault<string>("originalDeploymentId")
+					: deploymentId;
+				object requestBodyValue = null;
+				if (!string.IsNullOrEmpty(requestBodyRaw)) {
+					try {
+						requestBodyValue = Newtonsoft.Json.Linq.JToken.Parse(requestBodyRaw);
+					} catch {
+						requestBodyValue = requestBodyRaw;
+					}
+				}
+				object responseBodyValue = null;
+				if (!string.IsNullOrEmpty(parsedResponseString)) {
+					try {
+						responseBodyValue = Newtonsoft.Json.Linq.JToken.Parse(parsedResponseString);
+					} catch {
+						responseBodyValue = parsedResponseString;
+					}
+				}
+				var payload = new Newtonsoft.Json.Linq.JObject();
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("tenantId", (string)context.Variables.GetValueOrDefault("tenantId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("clientAppId", (string)context.Variables.GetValueOrDefault("clientAppId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("audience", (string)context.Variables.GetValueOrDefault("audience", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("requestBody", requestBodyValue));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("responseBody", responseBodyValue));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("deploymentId", deploymentId ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("requestedDeploymentId", requestedDeploymentId ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("routedDeployment", context.Variables.GetValueOrDefault<string>("routedDeployment") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("routingPolicyId", context.Variables.GetValueOrDefault<string>("routingPolicyId") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("correlationId", context.RequestId.ToString()));
+				return payload.ToString();
+			}</set-body>
+		</send-one-way-request>
+	</outbound>
+	<on-error>
+		<base />
+		<set-header name="ErrorSource" exists-action="override">
+			<value>@(context.LastError.Source)</value>
+		</set-header>
+		<set-header name="ErrorReason" exists-action="override">
+			<value>@(context.LastError.Reason)</value>
+		</set-header>
+		<set-header name="ErrorMessage" exists-action="override">
+			<value>@(context.LastError.Message)</value>
+		</set-header>
+		<set-header name="ErrorScope" exists-action="override">
+			<value>@(context.LastError.Scope)</value>
+		</set-header>
+		<set-header name="ErrorSection" exists-action="override">
+			<value>@(context.LastError.Section)</value>
+		</set-header>
+		<set-header name="ErrorPath" exists-action="override">
+			<value>@(context.LastError.Path)</value>
+		</set-header>
+		<set-header name="ErrorPolicyId" exists-action="override">
+			<value>@(context.LastError.PolicyId)</value>
+		</set-header>
+		<set-header name="ErrorStatusCode" exists-action="override">
+			<value>@(context.Response.StatusCode.ToString())</value>
+		</set-header>
+	</on-error>
+</policies>

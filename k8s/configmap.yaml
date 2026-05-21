@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aipolicyengine-config
+  namespace: apim
+data:
+
+  # ASPNET Core settings
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  AllowedHosts: "*"
+
+  # Entra ID JWT authentication
+  AzureAd__Instance: "https://login.microsoftonline.com/"
+  AzureAd__TenantId: "<your-tenant-id>"
+  AzureAd__ClientId: "<your-app-registration-client-id>"
+  AzureAd__Audience: "<your-audience>"
+
+  # Authentication provider toggle: "AzureAd" or "Keycloak"
+  AuthProvider: "AzureAd"
+
+  # Keycloak OIDC authentication (used when AuthProvider=Keycloak)
+  Keycloak__Authority: ""
+  Keycloak__Audience: ""
+  Keycloak__ClientId: ""
+  Keycloak__RequireHttpsMetadata: "true"
+  Keycloak__FrontendUrl: ""
+  Keycloak__Realm: ""
+  Keycloak__FrontendClientId: ""
+
+  # Usage policy defaults
+  UsagePolicy__BillingCycleStartDay: "1"
+  UsagePolicy__AggregatedLogRetentionDays: "30"
+  UsagePolicy__TraceRetentionDays: "30"
+
+  # Purview (DLP) — non-sensitive settings
+  PURVIEW_TENANT_ID: "<your-tenant-id>"
+  PURVIEW_APP_NAME: "AI Policy Engine API"
+  PURVIEW_APP_LOCATION: ""        # optional URI
+  PURVIEW_IGNORE_EXCEPTIONS: "false"
+  PURVIEW_BACKGROUND_JOB_LIMIT: "100"
+  PURVIEW_MAX_CONCURRENT_CONSUMERS: "10"
+  PURVIEW_BLOCK_ENABLED: "false"  # set true to enforce DLP blocking
+
+  # OpenTelemetry (optional — omit if not using a collector)
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"

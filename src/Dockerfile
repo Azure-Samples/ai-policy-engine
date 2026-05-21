@@ -3,7 +3,7 @@ WORKDIR /ui
 COPY aipolicyengine-ui/package*.json ./
 RUN npm ci
 COPY aipolicyengine-ui/ ./
-RUN npm run build
+RUN npm run build -- --outDir /ui/dist --emptyOutDir
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
@@ -26,4 +26,5 @@ WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=build /app/publish .
+USER $APP_UID
 ENTRYPOINT ["dotnet", "AIPolicyEngine.Api.dll"]

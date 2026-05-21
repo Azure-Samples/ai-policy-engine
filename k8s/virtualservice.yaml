@@ -1,0 +1,112 @@
+# Istio Gateway + VirtualService for the Chargeback API.
+# Replaces ingress.yaml when using the Istio ingress gateway.
+#
+# Prerequisites:
+#   - Istio installed in the cluster
+#   - An Istio IngressGateway running (default: istio-system namespace)
+#   - A DNS record pointing your hostname at the IngressGateway LoadBalancer IP
+#
+# Apply with:
+#   kubectl apply -f k8s/virtualservice.yaml
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: aipolicyengine-gateway
+  namespace: apim
+spec:
+  selector:
+    # Targets the default Istio ingress gateway pod.
+    # Change if you use a dedicated ingress gateway (e.g. istio: ingressgateway-internal).
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - ai-policy-engine.internal.example.com
+      # Optional: redirect all HTTP to HTTPS by uncommenting below
+      # tls:
+      #   httpsRedirect: true
+
+    # Uncomment for TLS termination at the ingress gateway.
+    # Requires a TLS credential (kubectl create secret tls chargeback-tls -n istio-system ...).
+    # - port:
+    #     number: 443
+    #     name: https
+    #     protocol: HTTPS
+    #   hosts:
+    #     - ai-policy-engine.internal.example.com
+    #   tls:
+    #     mode: SIMPLE
+    #     credentialName: ai-policy-engine-tls   # Secret must be in istio-system namespace
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: aipolicyengine-api
+  namespace: apim
+spec:
+  hosts:
+    - ai-policy-engine.internal.example.com
+  gateways:
+    - aipolicyengine-gateway
+    # Also allow mesh-internal traffic (e.g. from APIM running inside the cluster)
+    - mesh
+  http:
+    # Health probe paths — bypass any auth/retry so k8s probes always succeed
+    - match:
+        - uri:
+            prefix: /health
+        - uri:
+            prefix: /alive
+      route:
+        - destination:
+            host: aipolicyengine-api
+            port:
+              number: 80
+      retries:
+        attempts: 0
+
+    # API routes
+    - match:
+        - uri:
+            prefix: /api
+        - uri:
+            prefix: /chargeback
+        - uri:
+            prefix: /openapi
+        - uri:
+            exact: /config
+      route:
+        - destination:
+            host: aipolicyengine-api
+            port:
+              number: 80
+    - match:
+      - uri:
+          prefix: /ws
+      headers:
+        upgrade:
+          exact: websocket
+      timeout: 30s
+      retries:
+        attempts: 2
+        perTryTimeout: 10s
+        retryOn: gateway-error,connect-failure,retriable-4xx
+      route:
+        - destination:
+            host: aipolicyengine-api
+            port:
+              number: 80
+
+    # React SPA + static assets (catch-all)
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: aipolicyengine-api
+            port:
+              number: 80

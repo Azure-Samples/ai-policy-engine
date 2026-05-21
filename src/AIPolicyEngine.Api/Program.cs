@@ -1,10 +1,13 @@
 using System.Text.Json.Serialization;
+using System.Security.Claims;
 using System.Threading.Channels;
 using Azure.Identity;
 using AIPolicyEngine.Api.Endpoints;
 using AIPolicyEngine.Api.Models;
 using AIPolicyEngine.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -123,9 +126,90 @@ builder.Services.AddOpenApi();
 // Purview integration for DLP policy validation and audit emission (Agent 365)
 builder.Services.AddPurviewServices(builder.Configuration);
 
-// Entra ID JWT Bearer authentication
-builder.Services.AddAuthentication()
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+// Authentication: supports AzureAd or Keycloak based on AuthProvider config
+var authProvider = builder.Configuration.GetValue<string>("AuthProvider") ?? "AzureAd";
+
+if (authProvider.Equals("Keycloak", StringComparison.OrdinalIgnoreCase))
+{
+    var keycloakSection = builder.Configuration.GetSection("Keycloak");
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.Authority = keycloakSection["Authority"];
+            options.Audience = keycloakSection["Audience"];
+            options.RequireHttpsMetadata = keycloakSection.GetValue<bool>("RequireHttpsMetadata", true);
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                // Keycloak uses "preferred_username" instead of "name"
+                NameClaimType = "preferred_username",
+                RoleClaimType = "roles"
+            };
+            // Extract roles from Keycloak's nested realm_access/resource_access claims
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    if (context.Principal?.Identity is ClaimsIdentity identity)
+                    {
+                        // Extract realm roles from realm_access.roles
+                        var realmAccess = context.Principal.FindFirst("realm_access");
+                        if (realmAccess != null)
+                        {
+                            try
+                            {
+                                var parsed = System.Text.Json.JsonDocument.Parse(realmAccess.Value);
+                                if (parsed.RootElement.TryGetProperty("roles", out var roles))
+                                {
+                                    foreach (var role in roles.EnumerateArray())
+                                    {
+                                        var roleValue = role.GetString();
+                                        if (!string.IsNullOrEmpty(roleValue))
+                                            identity.AddClaim(new Claim("roles", roleValue));
+                                    }
+                                }
+                            }
+                            catch { /* ignore malformed claim */ }
+                        }
+
+                        // Extract client roles from resource_access.<clientId>.roles
+                        var resourceAccess = context.Principal.FindFirst("resource_access");
+                        if (resourceAccess != null)
+                        {
+                            try
+                            {
+                                var parsed = System.Text.Json.JsonDocument.Parse(resourceAccess.Value);
+                                foreach (var client in parsed.RootElement.EnumerateObject())
+                                {
+                                    if (client.Value.TryGetProperty("roles", out var roles))
+                                    {
+                                        foreach (var role in roles.EnumerateArray())
+                                        {
+                                            var roleValue = role.GetString();
+                                            if (!string.IsNullOrEmpty(roleValue))
+                                                identity.AddClaim(new Claim("roles", roleValue));
+                                        }
+                                    }
+                                }
+                            }
+                            catch { /* ignore malformed claim */ }
+                        }
+                    }
+                    return Task.CompletedTask;
+                }
+            };
+        });
+}
+else
+{
+    // Entra ID JWT Bearer authentication (default)
+    builder.Services.AddAuthentication()
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+}
+
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("ExportPolicy", policy =>
         policy.RequireRole("AIPolicy.Export"))
@@ -169,6 +253,7 @@ app.UseAuthorization();
 app.UseWebSockets();
 
 // Map all endpoints
+app.MapAuthConfigEndpoints();
 app.MapLogIngestEndpoints();
 app.MapDashboardEndpoints();
 app.MapPlanEndpoints();

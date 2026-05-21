@@ -41,10 +41,16 @@ resource "azurerm_storage_account" "this" {
   min_tls_version                 = "TLS1_2"
   shared_access_key_enabled       = false
   default_to_oauth_authentication = true
+  public_network_access_enabled   = false
   tags                            = var.tags
 
   identity {
     type = "SystemAssigned"
+  }
+
+  network_rules {
+    default_action = "Deny"
+    bypass         = ["AzureServices"]
   }
 }
 

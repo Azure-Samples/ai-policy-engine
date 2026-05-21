@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-policy-engine
+  namespace: apim
+  labels:
+    app: ai-policy-engine
+spec:
+  selector:
+    app: ai-policy-engine
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+  # ClusterIP makes the service reachable only within the cluster.
+  # Your existing APIM should reach this via the cluster's internal DNS:
+  #   http://ai-policy-engine.apim.svc.cluster.local
+  # or via an Ingress / NodePort if APIM is external to the cluster.
+  type: ClusterIP
