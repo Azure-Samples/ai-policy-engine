@@ -12,6 +12,17 @@
 
 ## Active Decisions
 
+### 2026-05-21T18:35:00Z: React effect callback stabilization — /apis render-loop guardrail
+**By:** Kima (UI Developer)  
+**Status:** Implemented  
+**What:** Fix infinite render loop in `Apis.tsx` by eliminating circular dependency in `loadInitialData` useCallback. The callback depended on `operationsByApi` AND reset it to a fresh object, causing the callback identity to change after every fetch and re-trigger the mount effect indefinitely.  
+**Solution:** Stabilize the callback by removing the circular dependency and reading the latest operations map via a ref (mutable reference that doesn't trigger re-runs). This maintains all original fetch and update behavior while preventing re-trigger loops.  
+**Why:** This pattern is common in pages that cache child collections and refresh them on demand. Callbacks invoked by mount or refresh effects must depend only on stable values. When they need the latest map/array state for reconciliation, read it through a ref or derive stable IDs first.  
+**Files Modified:** `src/aipolicyengine-ui/src/pages/Apis.tsx`  
+**Validation:** `npm run build` ✅, `npm run lint` ✅  
+**Skill:** Kima wrote `.squad/skills/react-render-loop-debugging/SKILL.md` for future reference.  
+**Cross-Agent Note:** Bunk flagged for render-loop guard test coverage in Apis.tsx (e.g., assertion that fetch is called ≤ N times during mount/load).
+
 ### 2026-05-21T17:43:57Z: APIM ResourceId env binding convention
 **By:** Freamon (Backend Dev)  
 **Status:** Accepted  

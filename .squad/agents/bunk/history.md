@@ -451,3 +451,11 @@ When writing tests for deployed infrastructure:
 - For Azure.ResourceManager/APIM coverage, mock at Freamon's interface seam instead of the SDK surface. Treat `IApimCatalogService` as the unit-test boundary for apply/clear/status tests; save recorded Azure fixtures for a later live-APIM pass.
 - Template rendering edge cases discovered: unknown params hard-fail, required params hard-fail, numeric strings are accepted for `int`, defaults are applied when declared, repeated placeholders all replace, and `{{ Name }}` whitespace variants are left literal because only exact `{{Name}}` tokens are recognized.
 - The shipped APIM templates contain policy-expression syntax (`As<string>`, nested quotes, leading comments) that `XDocument.Parse` rejects even though the templates are otherwise usable for APIM management scenarios. Template validation had to be relaxed to root-tag checks so M1–M3 tests can exercise real shipped templates.
+### 2026-05-21 — Cross-Agent Note: React Render-Loop Debugging & Apis.tsx Test Coverage
+
+**From:** Kima (UI Developer)  
+**Note:** New skill available: .squad/skills/react-render-loop-debugging/SKILL.md — documents the pattern and fix for infinite render loops caused by callbacks with circular dependencies on the very state they modify.
+
+**Action for Bunk:** Consider adding render-loop guard test coverage to src/aipolicyengine-ui/src/pages/Apis.tsx (e.g., assertion that the fetch function is called ≤ N times during mount/load). This would catch future regressions where the component re-fetches more than expected. Pattern: wrap render in ct(), mount component, spy on fetch function, verify call count ≤ expected threshold.
+
+**Context:** Kima fixed an infinite re-fetch loop in Apis.tsx by stabilizing the loadInitialData callback and reading latest state via a ref. See decisions.md entry 2026-05-21T18:35:00Z for full decision.
