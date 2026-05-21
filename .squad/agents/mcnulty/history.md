@@ -82,3 +82,34 @@ For detailed work items, see:
 - .squad/decisions.md — architectural decisions
 - .squad/orchestration-log/ — agent completion logs
 - git log --oneline — implementation history
+## 2026-05-21T22:07:10Z — AAA M1-M5 Layer Complete, Ready for Review
+
+**Status:** M1-M5 ✅ Complete (Freamon/Sydnor/Kima), Ready for PR + Merge
+
+**Designed Architecture (Approved 2026-05-21T21:28:06Z):**
+- **Three-layer model:** Transport (APIM templates) → Authorization (Access Profiles) → Enforcement (Precheck + rate limiting)
+- **Client identity:** Dual pattern (Entra JWT + subscription-key) v1; unify v2 if needed
+- **Cascade resolution:** Most-specific-wins (operation > API > client > plan fallback)
+- **Backward-compatible:** Existing deployments work unchanged; apiId/operationId optional
+
+**M1-M5 Delivered:**
+- **M1 (Freamon):** AccessProfile model + Cosmos repo + IAccessProfileResolver cascade
+- **M2 (Freamon):** Admin CRUD endpoints + bulk assign
+- **M3 (Freamon):** Precheck integration + log-ingest propagation
+- **M4 (Sydnor):** APIM templates v1.0→1.1, apiId/operationId capture, metadata propagation
+- **M5 (Kima):** /access admin page, client-first workflow, cascade visualization
+
+**Test Coverage:** 320 total / 316 passed / 0 failed / 4 skipped (Purview seams)
+- All 21 AAA tests active and passing
+- Integration flows end-to-end validated
+- Cascade precedence enforced at all layers
+
+**Deployment Status:**
+- Backend fully functional and consumed by UI
+- APIM templates validated
+- Admin workflows functional
+- M6 (Redis caching) deferred as optional optimization
+
+**Commits:** Freamon 3d409d24, Sydnor 24de42b5, Kima c54c29c
+
+**Next:** PR review + merge to main; documentation finalization

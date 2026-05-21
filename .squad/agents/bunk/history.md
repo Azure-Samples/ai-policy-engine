@@ -512,3 +512,41 @@ When writing tests for deployed infrastructure:
 - Freamon M1-M3 contract firm → all resolver/precheck/log shapes now testable
 - Template diffs now visible → Sydnor can proceed with M4 APIM updates
 - All assertions passing → M4 and M5 in-flight now unblocked
+
+## 2026-05-21T22:07:10Z — AAA M1-M5 Complete, All 21 Tests Active
+
+**Status:** M1-M3 ✅ Complete (Freamon), M4-M5 ✅ Complete (Sydnor/Kima), All Tests Active
+
+**M4 Completion (Sydnor):**
+- All 5 APIM templates updated (v1.0→1.1)
+- Commit 24de42b5
+- 4 pending M4 template assertions activated and passing
+- Template extraction, precheck URL diffs, log payload diffs, version bump all asserted
+
+**M5 Completion (Kima):**
+- /access admin page shipped
+- Client-first workflow, cascade visualization, shared hooks refactored
+- Commit c54c29c
+
+**Test Matrix Final Results:**
+- **Total:** 320
+- **Passed:** 316 (↑ +4 from M3, template-pending tests now active)
+- **Skipped:** 4 (pre-existing Purview seam tests, not M4/M5 related)
+- **Failed:** 0
+
+**All 21 AAA Tests Now Active:**
+- ✅ M1-M3 integration tests (13): resolver cascade, backward compat, endpoint contracts
+- ✅ M4 template assertions (4): Template render, precheck URL diffs, log payload diffs, version bump
+- ✅ Additional passing (4): Log integration, end-to-end cascade flow, endpoint contract validation
+
+**Cross-Team Coordination:**
+- Freamon M1-M3: Backend fully consumed by UI + templates
+- Sydnor M4: APIM templates shipped with metadata propagation
+- Kima M5: UI integration complete, shared hooks now reusable
+
+**Deployment Ready:**
+- Full AAA layer validated
+- All integration paths tested
+- Admin workflows functional end-to-end
+
+**Next:** PR review + merge; M6 (Redis caching) deferred as optional optimization

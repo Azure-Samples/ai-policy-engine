@@ -135,3 +135,55 @@ Build the `/access` admin page for Access Profile management (new per-client, pe
 - Implement data fetch + caching patterns (parallel to API updates)
 - Polish flex+truncate styling for API/operation rows
 - Mock data for component testing before API integration
+
+## 2026-05-21T22:07:10Z — AAA M5 Admin UI Complete
+
+**Status:** ✅ COMPLETE
+
+**Commits:**
+- Kima M5: `ec54c29c`
+
+**Delivered:**
+- New `/access` admin page for Access Profile management
+  - **Client selector** (top): Searchable client dropdown using existing `/api/clients`
+  - **API grid** (main): Rows for each API, columns for Plan (read-only), Routing Policy (select), Deployments Allowed (multi-select), Enable toggle
+  - **Drill-down:** Click API row to expand operations table with per-operation override fields
+  - **Add/Edit form:** Modal with Plan selector, optional Routing Policy, optional deployment restrictions
+  - **Bulk action:** Select multiple APIs, apply same profile to all via `/api/access-profiles/bulk`
+- Extracted shared `useApimCatalog` hook: lifted from `/apis` page, now used by both `/access` and `/apis` for APIM catalog loading
+  - Render-loop-safe ref/callback pattern preserved
+  - Eliminates duplicate API/operation loading logic
+  - Backward-compatible with existing `/apis` page
+- UI behavior:
+  - Empty cells show effective cascade result (not blank)
+  - Direct overrides visually distinct from inherited values (CascadeBadge component)
+  - Disabled profiles stay visible, treated as non-winning per backend cascade
+  - API cards lazy-load operations when expanded
+  - Editor supports both single-scope and bulk creation
+
+**Validation:**
+- ✅ `cd src\aipolicyengine-ui && npm run lint` — passed
+- ✅ `cd src\aipolicyengine-ui && npm run build` — passed
+- ✅ Shared hook refactored without breaking `/apis` page
+
+**Files Created/Modified:**
+- `src/aipolicyengine-ui/src/App.tsx` — Route wiring for `/access`
+- `src/aipolicyengine-ui/src/components/Layout.tsx` — Navigation item
+- `src/aipolicyengine-ui/src/components/ui/dialog.tsx` — Drawer-style support via `contentClassName`
+- `src/aipolicyengine-ui/src/hooks/useApimCatalog.ts` — Shared catalog loading hook
+- `src/aipolicyengine-ui/src/api/accessProfiles.ts` — API client (NEW)
+- `src/aipolicyengine-ui/src/types/accessProfiles.ts` — Type definitions (NEW)
+- `src/aipolicyengine-ui/src/pages/AccessProfiles.tsx` — Main page (NEW)
+- `src/aipolicyengine-ui/src/pages/Apis.tsx` — Refactored to use shared hook
+- `src/aipolicyengine-ui/src/components/accessProfiles/CascadeBadge.tsx` — Cascade indicator (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ClientList.tsx` — Client selector (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileEditor.tsx` — Edit form (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileGrid.tsx` — Matrix view (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/types.ts` — UI types (NEW)
+
+**Learning:** Shared hooks extracted from page-specific implementations reduce code duplication and improve maintainability. The render-loop debugging pattern (ref + stable callback identity) is now reusable across all APIM integration pages.
+
+**Cross-Team Notes:**
+- Freamon M1-M3 backend contracts validated; all CRUD + bulk endpoints consumed
+- Sydnor M4 templates shipped with metadata propagation; `/access` page now shows all cascade levels
+- Bunk all 21 AAA tests active and passing; UI integration complete

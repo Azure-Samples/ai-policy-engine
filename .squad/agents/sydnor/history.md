@@ -344,4 +344,45 @@ Update all 5 APIM policy templates (version 1.0 → 1.1):
 - Coordinate with APIM deployment/staging validation
 - Parallel to Kima's M5 UI work
 
+## 2026-05-21T22:07:10Z — AAA M4 Template Updates Complete
+
+**Status:** ✅ COMPLETE
+
+**Commits:**
+- Sydnor M4: `24de42b5`
+
+**Delivered:**
+- All 5 APIM templates updated (version 1.0 → 1.1):
+  - `entra-jwt-ai`, `entra-jwt-ai-dlp`: AI auth + DLP variants
+  - `subscription-key-ai`, `subscription-key-ai-dlp`: Subscription-key auth + DLP variants
+  - `entra-jwt-rest`: REST endpoint routing (active log payload + commented precheck-rest alternative)
+- Each template now captures `apiIdValue` and `operationIdValue` from `context.Api.Id` and `context.Operation.Id`
+- Precheck URL extended with query params: `&apiId={apiIdValue}&operationId={operationIdValue}`
+- Response extraction: `planId`, `accessProfileId`, `allowedDeployments` from precheck response into context variables
+- Outbound log payload enriched: Added `accessProfileId`, `planId`, `apiId`, `operationId` using lower-camel JSON naming
+- Template manifests updated with version increment
+
+**Test Activation:**
+- Unblocked 4 pending M4 assertions in `AccessProfilePrecheckTests` (Bunk coordination)
+- All assertions replaced placeholders with concrete template file validations
+- Template-variable extraction + payload diffs now passing
+
+**Validation:**
+- ✅ `dotnet test` → 320 total / **316 passed** / 0 failed / 4 skipped
+- ✅ 4 remaining skips are pre-existing Purview seam tests (not M4 related)
+- ✅ All 21 AAA tests now active (no pending M4 blockers)
+
+**Files Modified:**
+- `policies/templates/entra-jwt-ai/{policy.xml, template.json}`
+- `policies/templates/entra-jwt-ai-dlp/{policy.xml, template.json}`
+- `policies/templates/subscription-key-ai/{policy.xml, template.json}`
+- `policies/templates/subscription-key-ai-dlp/{policy.xml, template.json}`
+- `policies/templates/entra-jwt-rest/{policy.xml, template.json}`
+- `src/AIPolicyEngine.Tests/Integration/AccessProfilePrecheckTests.cs`
+
+**Cross-Team Notes:**
+- Freamon M1-M3 precheck contracts validated; template integration complete
+- Bunk all 21 AAA tests active and passing
+- Kima M5 UI now consuming finalized template metadata; `/access` page shipped in parallel
+
 

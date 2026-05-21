@@ -106,3 +106,39 @@ For detailed work items, see:
 
 **Blocked Issue Resolved (Bunk coordination):**
 - Test matrix depended on M1-M3 endpoint contracts and audit trail shapes; now ready for Bunk's 21-test assertions and Sydnor's M4 template updates
+
+## 2026-05-21T22:07:10Z — AAA M1-M5 Full Layer Complete (Cross-Team Status)
+
+**Status:** M1-M3 ✅ Complete (Freamon), M4-M5 ✅ Complete (Sydnor/Kima)
+
+**M1-M3 Completion Summary (Freamon):**
+- AccessProfile model, Cosmos repo, cascade resolver
+- Admin CRUD + bulk endpoints
+- Precheck integration with apiId/operationId support
+- Log-ingest propagation of AccessProfileId, PlanId, ApiId, OperationId
+- Commit 3d409d24
+
+**M4-M5 Completion Summary (Sydnor/Kima):**
+- **Sydnor M4 (Templates):** All 5 APIM templates v1.0→1.1, apiId/operationId capture, precheck URL extended, log payload enriched, 4 pending test assertions activated, commit 24de42b5
+- **Kima M5 (Admin UI):** /access page shipped, client-first workflow, cascade visualization, shared useApimCatalog hook refactor, commit ec54c29c
+
+**Full AAA Layer Status:**
+- ✅ M1: AccessProfile model + Cosmos repo + IAccessProfileResolver cascade
+- ✅ M2: Admin CRUD endpoints + bulk assign
+- ✅ M3: Precheck integration + log-ingest propagation
+- ✅ M4: APIM template updates + metadata propagation
+- ✅ M5: Admin UI for Access Profile management + shared hooks
+
+**Test Results:**
+- 320 total / 316 passed / 0 failed / 4 skipped (Purview seams)
+- All 21 AAA tests active and passing
+
+**Deployment Ready:**
+- Backend fully consumed by UI
+- APIM templates validated
+- Admin workflows end-to-end tested
+- Cascade precedence enforced at all layers
+
+**M6 (Redis caching):** Deferred as optional optimization
+
+**Next:** PR review + merge to main; documentation finalization

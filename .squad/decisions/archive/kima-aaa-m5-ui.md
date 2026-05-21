@@ -27,7 +27,7 @@
 - The APIM `/apis` page now uses the same shared catalog hook, avoiding duplicate API/operation loading logic and preserving the render-loop-safe ref/callback pattern.
 
 ## Contract and architecture alignment
-- The UI follows McNulty’s client-first `/access` recommendation from `mcnulty-aaa-per-client-arch.md`.
+- The UI follows McNulty's client-first `/access` recommendation from `mcnulty-aaa-per-client-arch.md`.
 - Access Profile IDs and scope modeling assume the shipped backend contract:
   - `ap:{clientAppId}:{tenantId}:{apiId}:{operationId|_all}`
   - `_global` for client-global defaults

@@ -12,6 +12,32 @@
 
 ## Active Decisions
 
+### 2026-05-21T22:07:10Z: Implementation status — AAA M1-M5 layer complete, ready for production
+**By:** Scribe (logged from orchestration)  
+**Status:** Complete  
+**What:** 
+- **M1-M5 COMPLETE:** Full AAA per-client authorization layer shipped
+  - **M1 (Freamon):** AccessProfile model + Cosmos repo
+  - **M2 (Freamon):** Admin CRUD + bulk endpoints
+  - **M3 (Freamon):** Precheck integration with apiId/operationId
+  - **M4 (Sydnor):** APIM templates v1.0→1.1 (5 templates updated, commit `24de42b5`)
+  - **M5 (Kima):** `/access` admin page + shared hooks (commit `ec54c29c`)
+- **All 21 AAA tests active:** 316 pass / 4 skip (pre-existing Purview seams) / 0 fail
+- **M6 (Redis caching):** Deferred as optional optimization
+- **UI/Backend Integration:** Full end-to-end workflows validated
+  - Cascade precedence enforced at all layers
+  - Effective state visible to users
+  - Bulk operations functional
+
+**Validation:**
+- ✅ Sydnor: All 5 templates updated, 4 pending M4 tests unskipped + passing
+- ✅ Kima: `/access` page + UI lint/build green, shared hook refactored with backward compat
+- ✅ Integration: Backend fully consumed by UI, admin workflows tested
+
+**Why:** Mark full layer completion. AAA authorization layer production-ready for PR review + merge.
+
+**Next:** PR to main, optional M6 if performance tuning needed, documentation finalization.
+
 ### 2026-05-21T21:48:19Z: Implementation status — AAA M1-M3 backend complete, M4-M5 parallel in-flight
 **By:** Scribe (logged from orchestration)  
 **Status:** In-Flight  
