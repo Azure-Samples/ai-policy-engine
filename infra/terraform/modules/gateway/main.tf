@@ -174,7 +174,7 @@ resource "azurerm_api_management_api" "openai_key_based" {
 
   subscription_key_parameter_names {
     header = "api-key"
-    query = "api-key"
+    query  = "api-key"
   }
 
   dynamic "import" {
@@ -224,6 +224,37 @@ resource "azapi_resource" "openai_key_based_policy" {
 # =============================================================================
 # Role Assignments
 # =============================================================================
+
+resource "azurerm_role_definition" "container_app_apim_manager" {
+  name        = "AI Policy Engine APIM Manager"
+  scope       = azurerm_api_management.this.id
+  description = "Least-privilege APIM policy management role for the AI Policy Engine Container App managed identity."
+
+  permissions {
+    actions = [
+      "Microsoft.ApiManagement/service/apis/read",
+      "Microsoft.ApiManagement/service/apis/operations/read",
+      "Microsoft.ApiManagement/service/apis/policies/read",
+      "Microsoft.ApiManagement/service/apis/policies/write",
+      "Microsoft.ApiManagement/service/apis/policies/delete",
+      "Microsoft.ApiManagement/service/apis/operations/policies/read",
+      "Microsoft.ApiManagement/service/apis/operations/policies/write",
+      "Microsoft.ApiManagement/service/apis/operations/policies/delete",
+    ]
+  }
+
+  assignable_scopes = [
+    azurerm_api_management.this.id,
+  ]
+}
+
+resource "azurerm_role_assignment" "container_app_apim_manager" {
+  count = var.container_app_principal_id != "" ? 1 : 0
+
+  scope              = azurerm_api_management.this.id
+  role_definition_id = azurerm_role_definition.container_app_apim_manager.role_definition_resource_id
+  principal_id       = var.container_app_principal_id
+}
 
 # APIM identity → Cognitive Services User on AI Services
 resource "azurerm_role_assignment" "apim_cognitive_services_user" {

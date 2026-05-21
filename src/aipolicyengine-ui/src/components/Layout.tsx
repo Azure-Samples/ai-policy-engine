@@ -24,6 +24,7 @@ export function Layout({ children, activeTab, onTabChange, billingMode = 'token'
     { id: "plans", label: "Plans" },
     { id: "pricing", label: "Pricing" },
     { id: "routing", label: "Routing" },
+    { id: "apis", label: "APIs" },
     // Adaptive: show Request Billing only when at least one plan uses multiplier billing
     ...(billingMode !== 'token' ? [{ id: "requests", label: "Request Billing" }] : []),
     { id: "export", label: "Export" },

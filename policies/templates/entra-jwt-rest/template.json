@@ -1,0 +1,53 @@
+{
+  "id": "entra-jwt-rest",
+  "displayName": "Entra JWT — Non-AI REST (Rate Limit + Quota)",
+  "version": "1.0",
+  "scope": "api",
+  "parameters": [
+    {
+      "name": "EntraTenantId",
+      "type": "string",
+      "required": false,
+      "default": "common",
+      "description": "Reserved Entra tenant named value reference kept in the template comments for parity with the policy family."
+    },
+    {
+      "name": "ExpectedAudience",
+      "type": "string",
+      "required": true,
+      "description": "Expected aud claim in incoming Entra access tokens."
+    },
+    {
+      "name": "NonAiRequestsPerMinute",
+      "type": "int",
+      "required": true,
+      "default": 60,
+      "description": "Native APIM rate-limit-by-key calls-per-minute value."
+    },
+    {
+      "name": "NonAiMonthlyRequestQuota",
+      "type": "int",
+      "required": true,
+      "default": 10000,
+      "description": "Native APIM quota-by-key monthly request cap."
+    },
+    {
+      "name": "NonAiBackendUrl",
+      "type": "string",
+      "required": true,
+      "description": "Target REST backend host/FQDN routed through APIM."
+    },
+    {
+      "name": "ContainerAppUrl",
+      "type": "string",
+      "required": true,
+      "description": "Base URL for the AI Policy Engine used by log callbacks and the commented precheck-rest alternative."
+    },
+    {
+      "name": "ContainerAppAudience",
+      "type": "string",
+      "required": true,
+      "description": "Audience/resource APIM uses when acquiring a managed identity token for the AI Policy Engine."
+    }
+  ]
+}

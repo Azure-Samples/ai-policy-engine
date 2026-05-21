@@ -38,6 +38,13 @@ RoutingPolicyEndpoints.ValidateDeployments skips validation when Foundry is empt
 
 <!-- Active learnings from ongoing work below -->
 
+### 2026-05-21 — Non-AI API Limits Test Plan Draft
+
+- Non-AI API limits should extend the existing endpoint-pattern tests in `src/AIPolicyEngine.Tests/EndpointTests.cs`, especially the current `CreatePlan_*`, `UpdatePlan_*`, `Precheck_*`, and `Precheck_RpmLimitExceeded_Returns429OnSecondRequest` cases.
+- Cache/persistence and regression coverage should mirror `src/AIPolicyEngine.Tests/Integration/CosmosPersistenceResilienceTests.cs` and `src/AIPolicyEngine.Tests/Integration/PrecheckRoutingIntegrationTests.cs`; a dedicated `PrecheckRest` integration class will likely be cleaner than overloading the current AI routing tests.
+- Reuse `src/AIPolicyEngine.Tests/ChargebackApiFactory.cs` and `src/AIPolicyEngine.Tests/FakeRedis.cs`, but add helpers for non-AI RPM key seeding, `NonAiCurrentPeriodRequests` state, and preferably a controllable clock seam for minute and billing-period rollover tests.
+- Key open questions raised while drafting: final endpoint contract (`/api/precheck-rest` + `/api/log-rest` in McNulty's proposal), whether `0` means unlimited, whether monthly rejection is `429` or `403`, how rejected requests mutate counters, and what fallback behavior applies when plan reads fail.
+
 **What:** Wrote 36 unit tests across 3 test files for the Phase 0 storage migration architecture:
 - `src/Chargeback.Tests/Repositories/CachedRepositoryTests.cs` — 16 tests covering cache hit, cache miss, write-through, delete, eviction recovery, Cosmos failure, Redis failure, null handling, cancellation
 - `src/Chargeback.Tests/Repositories/CacheWarmingServiceTests.cs` — 10 tests covering happy path, Redis unavailable (logs warning, doesn't fail), Cosmos unavailable (fails startup), empty state, cancellation
@@ -436,3 +443,11 @@ When writing tests for deployed infrastructure:
 4. Use fail-open patterns for transient service-to-service auth issues (role assignments may be pending).
 
 **Captured in Skill:** `.squad/skills/azd-terraform-large-deployment/SKILL.md` — Full guide for auth alignment, provider configuration, timing, troubleshooting, validation patterns.
+
+### 2026-05-21 — APIM Management Backend Test Coverage (M1–M3)
+
+- APIM backend tests live cleanly under `src/AIPolicyEngine.Tests/ApimManagement/` and mix two patterns: NSubstitute for service seams (`IApimCatalogService`) plus small in-memory fakes for `IPolicyAssignmentRepository` when state-transition assertions matter more than call verification.
+- For endpoint integration, keep the real `ApimPolicyApplyService` + real `TemplateLibraryService`, but override `IApimCatalogService`, `IPolicyAssignmentRepository`, and the `Channel<ApimPolicyApplyWorkItem>` in `ChargebackApiFactory.WithWebHostBuilder(...)`; also remove `ApimPolicyApplyBackgroundService` so startup replay does not interfere with assertions.
+- For Azure.ResourceManager/APIM coverage, mock at Freamon's interface seam instead of the SDK surface. Treat `IApimCatalogService` as the unit-test boundary for apply/clear/status tests; save recorded Azure fixtures for a later live-APIM pass.
+- Template rendering edge cases discovered: unknown params hard-fail, required params hard-fail, numeric strings are accepted for `int`, defaults are applied when declared, repeated placeholders all replace, and `{{ Name }}` whitespace variants are left literal because only exact `{{Name}}` tokens are recognized.
+- The shipped APIM templates contain policy-expression syntax (`As<string>`, nested quotes, leading comments) that `XDocument.Parse` rejects even though the templates are otherwise usable for APIM management scenarios. Template validation had to be relaxed to root-tag checks so M1–M3 tests can exercise real shipped templates.

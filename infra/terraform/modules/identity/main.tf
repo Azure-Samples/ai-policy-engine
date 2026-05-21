@@ -173,9 +173,9 @@ resource "azuread_service_principal" "client1" {
 }
 
 resource "azuread_application_password" "client1" {
-  application_id    = azuread_application.client1.id
-  display_name      = "terraform"
-  end_date          = timeadd(timestamp(), "8760h")
+  application_id = azuread_application.client1.id
+  display_name   = "terraform"
+  end_date       = timeadd(timestamp(), "8760h")
 
   lifecycle {
     ignore_changes = [end_date]
@@ -224,9 +224,9 @@ resource "azuread_service_principal" "client2" {
 }
 
 resource "azuread_application_password" "client2" {
-  application_id    = azuread_application.client2.id
-  display_name      = "terraform"
-  end_date          = timeadd(timestamp(), "8760h")
+  application_id = azuread_application.client2.id
+  display_name   = "terraform"
+  end_date       = timeadd(timestamp(), "8760h")
 
   lifecycle {
     ignore_changes = [end_date]

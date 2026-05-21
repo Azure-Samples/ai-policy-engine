@@ -108,8 +108,8 @@ export function Export() {
     setDownloadError(null)
     try {
       await downloadBillingSummary(selectedSummaryPeriod.year, selectedSummaryPeriod.month)
-    } catch (err: any) {
-      setDownloadError(err?.message ?? "Download failed")
+    } catch (err: unknown) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed")
     } finally {
       setDownloading(false)
     }
@@ -123,8 +123,8 @@ export function Export() {
     setDownloadError(null)
     try {
       await downloadClientAudit(clientAppId, tenantId, selectedAuditPeriod.year, selectedAuditPeriod.month)
-    } catch (err: any) {
-      setDownloadError(err?.message ?? "Download failed")
+    } catch (err: unknown) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed")
     } finally {
       setDownloading(false)
     }

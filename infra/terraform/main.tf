@@ -7,8 +7,9 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  workload_token = lower(replace(var.workload_name, "/[^a-z0-9]/", ""))
-  name_prefix    = var.workload_name
+  workload_token   = lower(replace(var.workload_name, "/[^a-z0-9]/", ""))
+  name_prefix      = var.workload_name
+  apim_resource_id = "/subscriptions/${var.subscription_id}/resourceGroups/${azurerm_resource_group.this.name}/providers/Microsoft.ApiManagement/service/${local.name_prefix}-apim"
   tags = {
     workload   = var.workload_name
     managed_by = "terraform"
@@ -96,23 +97,24 @@ module "identity" {
 module "compute" {
   source = "./modules/compute"
 
-  name_prefix                        = local.name_prefix
-  location                           = azurerm_resource_group.this.location
-  resource_group_name                = azurerm_resource_group.this.name
-  subscription_id                    = var.subscription_id
-  log_analytics_workspace_id         = module.monitoring.log_analytics_workspace_id
+  name_prefix                         = local.name_prefix
+  location                            = azurerm_resource_group.this.location
+  resource_group_name                 = azurerm_resource_group.this.name
+  subscription_id                     = var.subscription_id
+  log_analytics_workspace_id          = module.monitoring.log_analytics_workspace_id
   log_analytics_workspace_customer_id = module.monitoring.log_analytics_workspace_customer_id
-  log_analytics_workspace_shared_key = module.monitoring.log_analytics_workspace_shared_key
-  redis_hostname                     = module.data.redis_hostname
-  redis_port                         = module.data.redis_port
-  cosmos_endpoint                    = module.data.cosmos_endpoint
-  ai_service_endpoint                = module.ai_services.endpoint
-  app_insights_connection_string     = module.monitoring.app_insights_connection_string
-  purview_client_app_id              = var.purview_client_app_id
-  entra_tenant_id                    = module.identity.tenant_id
-  api_app_id                         = module.identity.api_app_id
-  container_image                    = var.container_image
-  tags                               = local.tags
+  log_analytics_workspace_shared_key  = module.monitoring.log_analytics_workspace_shared_key
+  redis_hostname                      = module.data.redis_hostname
+  redis_port                          = module.data.redis_port
+  cosmos_endpoint                     = module.data.cosmos_endpoint
+  ai_service_endpoint                 = module.ai_services.endpoint
+  apim_resource_id                    = local.apim_resource_id
+  app_insights_connection_string      = module.monitoring.app_insights_connection_string
+  purview_client_app_id               = var.purview_client_app_id
+  entra_tenant_id                     = module.identity.tenant_id
+  api_app_id                          = module.identity.api_app_id
+  container_image                     = var.container_image
+  tags                                = local.tags
 }
 
 # ---------------------------------------------------------------------------
@@ -122,26 +124,27 @@ module "compute" {
 module "gateway" {
   source = "./modules/gateway"
 
-  name_prefix         = local.name_prefix
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = var.apim_sku
-  publisher_email     = var.apim_publisher_email
-  publisher_name      = var.apim_publisher_name
-  api_spec_url        = var.openai_api_spec_url
-  ai_service_endpoint = module.ai_services.endpoint
-  ai_service_id       = module.ai_services.id
-  container_app_fqdn  = module.compute.container_app_fqdn
-  container_app_id    = module.compute.container_app_id
-  api_app_id          = module.identity.api_app_id
-  gateway_app_id      = module.identity.gateway_app_id
-  tenant_id           = module.identity.tenant_id
-  key_vault_id        = module.compute.key_vault_id
-  enable_jwt          = var.enable_jwt
-  enable_keys         = var.enable_keys
+  name_prefix                      = local.name_prefix
+  location                         = azurerm_resource_group.this.location
+  resource_group_name              = azurerm_resource_group.this.name
+  sku                              = var.apim_sku
+  publisher_email                  = var.apim_publisher_email
+  publisher_name                   = var.apim_publisher_name
+  api_spec_url                     = var.openai_api_spec_url
+  ai_service_endpoint              = module.ai_services.endpoint
+  ai_service_id                    = module.ai_services.id
+  container_app_fqdn               = module.compute.container_app_fqdn
+  container_app_id                 = module.compute.container_app_id
+  container_app_principal_id       = module.compute.container_app_principal_id
+  api_app_id                       = module.identity.api_app_id
+  gateway_app_id                   = module.identity.gateway_app_id
+  tenant_id                        = module.identity.tenant_id
+  key_vault_id                     = module.compute.key_vault_id
+  enable_jwt                       = var.enable_jwt
+  enable_keys                      = var.enable_keys
   jwt_policy_xml_path              = "${path.module}/../../policies/entra-jwt-policy.xml"
   subscription_key_policy_xml_path = "${path.module}/../../policies/subscription-key-policy.xml"
-  tags                = local.tags
+  tags                             = local.tags
 }
 
 # =============================================================================

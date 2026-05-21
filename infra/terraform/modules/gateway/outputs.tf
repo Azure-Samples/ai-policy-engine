@@ -8,6 +8,11 @@ output "apim_gateway_url" {
   value       = azurerm_api_management.this.gateway_url
 }
 
+output "apim_resource_id" {
+  description = "Resource ID of the API Management instance."
+  value       = azurerm_api_management.this.id
+}
+
 output "apim_principal_id" {
   description = "Principal ID of the API Management managed identity."
   value       = azurerm_api_management.this.identity[0].principal_id

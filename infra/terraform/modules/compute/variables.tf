@@ -54,6 +54,11 @@ variable "ai_service_endpoint" {
   type        = string
 }
 
+variable "apim_resource_id" {
+  description = "Resource ID of the API Management service managed by the engine."
+  type        = string
+}
+
 variable "app_insights_connection_string" {
   description = "Application Insights connection string."
   type        = string
