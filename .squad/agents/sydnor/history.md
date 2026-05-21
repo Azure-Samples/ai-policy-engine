@@ -273,3 +273,23 @@ This session resolves AADSTS500113 (no reply address) and timeout/stale URL issu
 - Native APIM status codes differ by policy: `rate-limit-by-key` returns 429, while `quota-by-key` returns 403 when the quota is exhausted.
 
 **Coordination Note:** McNulty's current inbox proposal prefers `/api/precheck-rest` as the primary enforcement model. The draft policy still shipped with the requested native-APIM default and a switchable commented alternative so the coordinator can align the final direction later.
+
+### 2026-05-21 — ASP.NET Core Nested Configuration Convention: Double-Underscore Env Vars
+
+**Informational Context for APIM Terraform Wiring (Sydnor's Original Work)**
+
+Freamon discovered and fixed a config-binding bug in the APIM_RESOURCE_ID wiring: the Container App Terraform was emitting `APIM_RESOURCE_ID`, but ASP.NET Core's `EnvironmentVariablesConfigurationProvider` does not translate single underscores into nested config keys. The standard convention for nested keys in ASP.NET Core is **double underscore**: `Apim__ResourceId`.
+
+**The Pattern:**
+- C# class: `ApimManagementOptions` bound to config section `"Apim"`
+- Config key: `Apim:ResourceId` (colon in code, underscore in env)
+- Environment variable: `Apim__ResourceId` (double underscore)
+- **NOT** `APIM_RESOURCE_ID` (single underscore, all caps — this will not bind)
+
+**Key Lesson for Infrastructure Writers:**
+- When you wire env vars in Terraform for a .NET app, always use the **double-underscore convention** for nested config keys: `Apim__ResourceId`, not `Apim_ResourceId` or `APIM_RESOURCE_ID`
+- The pattern applies to all nested config: `Foo__Bar__Baz` for config section `Foo:Bar:Baz`
+- Single underscores and all-caps patterns are common in shell scripts and Terraform, but ASP.NET Core expects double underscores specifically
+
+**Decision Merged into `.squad/decisions.md`:** All future APIM Terraform wiring must use `Apim__ResourceId` when populating the nested config key. Freamon audited 200+ env vars and found no other mismatches.
+

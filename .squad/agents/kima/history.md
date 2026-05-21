@@ -35,3 +35,21 @@ For detailed work items, see:
 - APIM status polling is UI-driven: after a 202 apply response, set optimistic `applying` state and poll `GET .../policy` every 2 seconds until status leaves `pending`/`applying`.
 - Template parameter defaults should prefer the current assignment, then template defaults, and only shared plan-level values; there is no contract yet to map a specific plan to an API assignment, so avoid guessing per-plan defaults.
 - The SPA now maps top-level tabs to pathname routes in `App.tsx` (including `/apis`) without adding a router dependency; keep using this lightweight history API pattern unless the app adopts React Router later.
+
+## 2026-05-21 — ASP.NET Core Nested Configuration Convention (FYI)
+
+**Informational Context for Future Backend Config**
+
+Freamon fixed a config-binding bug in the APIM infrastructure: the env var `APIM_RESOURCE_ID` does not bind to nested config keys in ASP.NET Core. The standard convention is **double underscore**: `Apim__ResourceId`.
+
+**Pattern for Reference:**
+- C# class `ApimManagementOptions` bound to section `"Apim"`
+- Config key in code: `Apim:ResourceId` (colon)
+- Environment variable: `Apim__ResourceId` (double underscore)
+
+**If Frontend Consumes Similar Config Later:**
+- Backend will emit env vars using this convention (e.g., `Foo__Bar__Baz` for nested settings)
+- When frontend reads backend config, expect the same pattern
+- This is idiomatic ASP.NET Core, not a special case
+
+**Full decision merged into `.squad/decisions.md`.**

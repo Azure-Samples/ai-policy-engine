@@ -12,6 +12,17 @@
 
 ## Active Decisions
 
+### 2026-05-21T17:43:57Z: APIM ResourceId env binding convention
+**By:** Freamon (Backend Dev)  
+**Status:** Accepted  
+**What:** Use the standard ASP.NET Core environment-variable convention for nested configuration keys: `Apim__ResourceId` (double underscore) instead of `APIM_RESOURCE_ID`. `ApimManagementOptions` binds from the `Apim` configuration section, expecting the APIM resource ID at config key `Apim:ResourceId`.  
+**Why:** 
+- Matches the default `EnvironmentVariablesConfigurationProvider` behavior (no custom alias handling needed).
+- Keeps the application code strict and idiomatic.
+- Prevents silent runtime misbinding when infrastructure sets nested config values.
+**Impact:** All future Terraform and deployment wiring for APIM management must use `Apim__ResourceId` when populating `Apim:ResourceId`.  
+**Audit Result:** Scanned all 200+ env vars in application configuration; no other single-underscore ASP.NET Core nested-config mismatches found.
+
 ### 2026-04-17T15:52:16Z: User directive — Agent365 SDK integration
 **By:** Zack Way (via Copilot)  
 **Status:** Accepted  
