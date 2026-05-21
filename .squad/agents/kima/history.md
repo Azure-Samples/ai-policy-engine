@@ -55,3 +55,16 @@ Freamon fixed a config-binding bug in the APIM infrastructure: the env var `APIM
 - This is idiomatic ASP.NET Core, not a special case
 
 **Full decision merged into `.squad/decisions.md`.**
+
+## 2026-05-22 — Flex+Truncate Pattern for Badge/Title Rows
+
+**Layout Bug Fix Session:**
+- Fixed text overflow in API tree rows and modal parameter cards
+- Pattern: when a title and badge(s) share a flex row, the title needs `min-w-0 flex-1 truncate` and badges need `flex-shrink-0`
+- Without `min-w-0`, flex items won't shrink below intrinsic content width, causing overflow
+- Removed redundant `serviceUrl` from API tree (path is sufficient, URL cluttered the row)
+- Simplified operation rows: show method badge + urlTemplate instead of duplicated `displayName` + verb + badge
+- Modal horizontal scroll fixed with `overflow-x-hidden` on dialog container
+- Parameter card grid changed from `md:grid-cols-2` to `sm:grid-cols-2` for narrower modal viewport fit
+
+**Rule:** For any flex row with text + badges: `<span class="min-w-0 flex-1 truncate">Text</span><Badge class="flex-shrink-0">Label</Badge>`

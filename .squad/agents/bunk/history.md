@@ -459,3 +459,12 @@ When writing tests for deployed infrastructure:
 **Action for Bunk:** Consider adding render-loop guard test coverage to src/aipolicyengine-ui/src/pages/Apis.tsx (e.g., assertion that the fetch function is called ≤ N times during mount/load). This would catch future regressions where the component re-fetches more than expected. Pattern: wrap render in ct(), mount component, spy on fetch function, verify call count ≤ expected threshold.
 
 **Context:** Kima fixed an infinite re-fetch loop in Apis.tsx by stabilizing the loadInitialData callback and reading latest state via a ref. See decisions.md entry 2026-05-21T18:35:00Z for full decision.
+
+### 2026-05-21 — Cross-Agent Note: Tailwind Flex/Truncate Pattern for UI Components
+
+**From:** Kima (UI Developer)  
+**Note:** New skill available: `.squad/skills/tailwind-flex-truncate-pattern/SKILL.md` — documents layout pattern combining `min-w-0`, `flex-shrink-0`, `flex-1`, and `truncate` for preventing row/card overflow in flex containers and handling badge positioning.
+
+**Action for Bunk:** Consider applying this pattern to UI component test coverage (ApiTree.tsx, AssignTemplateForm.tsx) to verify no text overflow regressions when grid resizes or content grows. Pattern examples: responsive badge placement with fixed widths, label truncation with dynamic form fields.
+
+**Context:** Kima fixed `/apis` page layout bugs (ApiTree row overflow, AssignTemplateForm param card overlap, modal horizontal scroll) by applying this Tailwind pattern systematically. Commit `3aeea053` on `seiggy/feature/apim-policy-management`.
