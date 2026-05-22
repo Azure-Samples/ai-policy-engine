@@ -12,6 +12,7 @@ export interface ProfileEditorValues {
   planId: string
   routingPolicyId: string | null
   allowedDeployments: string[]
+  blocked: boolean
   enabled: boolean
 }
 
@@ -55,6 +56,7 @@ export function ProfileEditor({
   const [planId, setPlanId] = useState(initialValues.planId)
   const [routingPolicyId, setRoutingPolicyId] = useState(initialValues.routingPolicyId ?? "")
   const [allowedDeployments, setAllowedDeployments] = useState<string[]>(initialValues.allowedDeployments)
+  const [blocked, setBlocked] = useState(initialValues.blocked)
   const [enabled, setEnabled] = useState(initialValues.enabled)
   const [deploymentQuery, setDeploymentQuery] = useState("")
   const [formError, setFormError] = useState<string | null>(null)
@@ -78,7 +80,7 @@ export function ProfileEditor({
   }
 
   const handleSave = async () => {
-    if (!planId) {
+    if (!blocked && !planId) {
       setFormError("Select a plan before saving.")
       return
     }
@@ -88,6 +90,7 @@ export function ProfileEditor({
       planId,
       routingPolicyId: routingPolicyId || null,
       allowedDeployments,
+      blocked,
       enabled,
     })
   }
@@ -132,7 +135,7 @@ export function ProfileEditor({
             </div>
           </section>
 
-          <section className="rounded-2xl border p-4">
+          <section className={cn("rounded-2xl border p-4", blocked && "opacity-50 pointer-events-none")}>
             <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Plan + routing</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -167,7 +170,7 @@ export function ProfileEditor({
             </div>
           </section>
 
-          <section className="rounded-2xl border p-4">
+          <section className={cn("rounded-2xl border p-4", blocked && "opacity-50 pointer-events-none")}>
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Allowed deployments</h3>
@@ -230,6 +233,20 @@ export function ProfileEditor({
         <aside className="space-y-5">
           <section className="rounded-2xl border border-slate-300/70 bg-gradient-to-br from-slate-100 to-white p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-950">
             <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Override status</h3>
+
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-gray-300 accent-red-600"
+                checked={blocked}
+                onChange={(event) => setBlocked(event.target.checked)}
+              />
+              <span>
+                <span className="block font-medium text-destructive">Block access</span>
+                <span className="block text-sm text-muted-foreground">Blocked profiles deny all requests at this scope with 403 Forbidden. Plan and routing settings are ignored.</span>
+              </span>
+            </label>
+
             <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3">
               <input
                 type="checkbox"

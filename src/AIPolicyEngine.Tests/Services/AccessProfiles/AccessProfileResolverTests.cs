@@ -101,6 +101,39 @@ public sealed class AccessProfileResolverTests
         Assert.Equal($"ap:{ClientAppId}:{TenantId}:openai-api:_all", resolved.SourceProfileId);
     }
 
+    [Fact]
+    public async Task ResolveAsync_BlockedProfile_ResolvesWithBlockedFlag()
+    {
+        using var harness = CreateResolverHarness(
+        [
+            CreateAccessProfile(ClientAppId, TenantId, "openai-api", "chat", "blocked-plan", blocked: true)
+        ],
+        legacyAssignment: CreateLegacyAssignment(planId: "legacy-plan"));
+
+        var resolved = await harness.ResolveAsync(ClientAppId, TenantId, "openai-api", "chat");
+
+        Assert.NotNull(resolved);
+        Assert.True(resolved!.Blocked);
+        Assert.Equal($"ap:{ClientAppId}:{TenantId}:openai-api:chat", resolved.SourceProfileId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DisabledBlockedProfile_IsSkipped()
+    {
+        using var harness = CreateResolverHarness(
+        [
+            CreateAccessProfile(ClientAppId, TenantId, "openai-api", "chat", "blocked-plan", blocked: true, enabled: false),
+            CreateAccessProfile(ClientAppId, TenantId, "openai-api", null, "api-plan")
+        ],
+        legacyAssignment: CreateLegacyAssignment(planId: "legacy-plan"));
+
+        var resolved = await harness.ResolveAsync(ClientAppId, TenantId, "openai-api", "chat");
+
+        Assert.NotNull(resolved);
+        Assert.False(resolved!.Blocked);
+        Assert.Equal("api-plan", resolved.PlanId);
+    }
+
     private static ClientPlanAssignment CreateLegacyAssignment(string planId, string? routingPolicyId = null, List<string>? allowedDeployments = null)
         => new()
         {

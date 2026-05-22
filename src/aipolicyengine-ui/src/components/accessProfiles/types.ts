@@ -20,6 +20,7 @@ export interface EffectiveAccessPreview {
   planId: string
   routingPolicyId: string | null
   allowedDeployments: string[]
+  blocked: boolean
   enabled: boolean
 }
 

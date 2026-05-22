@@ -61,6 +61,23 @@ public static class PrecheckEndpoints
 
         var resolved = await accessProfileResolver.ResolveAsync(clientAppId, tenantId, apiId, operationId);
         var assignment = await clientRepo.GetAsync($"{clientAppId}:{tenantId}");
+
+        if (resolved is { Blocked: true })
+        {
+            return Results.Json(
+                new
+                {
+                    error = "Access blocked by access profile",
+                    clientAppId,
+                    tenantId,
+                    apiId,
+                    operationId,
+                    accessProfileId = resolved.AccessProfileId,
+                    deniedBy = "access-profile-blocked"
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         if (resolved is null)
         {
             if (assignment is null)

@@ -6,7 +6,7 @@ import { AssignTemplateForm } from "../components/apis/AssignTemplateForm"
 import { PolicyAssignmentPanel } from "../components/apis/PolicyAssignmentPanel"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
-import { fetchPlans } from "../api"
+import { API_BASE, fetchPlans } from "../api"
 import {
   applyApiPolicy,
   applyOperationPolicy,
@@ -143,6 +143,22 @@ function derivePlanDefaults(plans: PlanData[]): Record<string, number> {
   return defaults
 }
 
+function deriveEnvironmentDefaults(): Record<string, string> {
+  const defaults: Record<string, string> = {}
+
+  const apiAppId = import.meta.env.VITE_AZURE_API_APP_ID
+  if (apiAppId) {
+    defaults.ContainerAppAudience = `api://${apiAppId}`
+  }
+
+  const containerAppUrl = (API_BASE || window.location.origin).replace(/\/$/, "")
+  if (containerAppUrl) {
+    defaults.ContainerAppUrl = containerAppUrl
+  }
+
+  return defaults
+}
+
 export function Apis() {
   const { accounts } = useMsal()
   const [templates, setTemplates] = useState<ApimTemplateSummary[]>([])
@@ -187,6 +203,11 @@ export function Apis() {
   const selectedKey = selectedTarget ? targetKey(selectedTarget) : undefined
   const busy = submittingAssignment || clearingAssignment
   const planDefaults = useMemo(() => derivePlanDefaults(plans), [plans])
+  const environmentDefaults = useMemo(() => deriveEnvironmentDefaults(), [])
+  const parameterDefaults = useMemo<Record<string, string | number>>(
+    () => ({ ...environmentDefaults, ...planDefaults }),
+    [environmentDefaults, planDefaults],
+  )
   const pageLoading = initialLoading || catalogLoading
   const pageError = initialError ?? catalogError
 
@@ -458,7 +479,7 @@ export function Apis() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {Object.keys(planDefaults).length > 0 && <Badge variant="blue">Plan defaults available</Badge>}
+          {Object.keys(parameterDefaults).length > 0 && <Badge variant="blue">Defaults available</Badge>}
           <Button type="button" variant="outline" onClick={() => void loadInitialData()} disabled={pageLoading}>
             <RefreshCcw className={`h-4 w-4 ${pageLoading ? "animate-spin" : ""}`} />
             Refresh
@@ -527,7 +548,7 @@ export function Apis() {
           templates={templates}
           initialTemplateId={policyDocument?.assignment?.templateId}
           initialParameters={policyDocument?.assignment?.parameters}
-          planDefaults={planDefaults}
+          parameterDefaults={parameterDefaults}
           submitting={submittingAssignment}
           onSubmit={handleApplyTemplate}
         />

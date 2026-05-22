@@ -149,6 +149,13 @@ public static class AccessProfileEndpoints
                 profile.PlanId = body.PlanId.Trim();
             }
 
+            if (body.Blocked.HasValue)
+                profile.Blocked = body.Blocked.Value;
+
+            // Validate final state: unblocked profiles require a plan
+            if (!profile.Blocked && string.IsNullOrWhiteSpace(profile.PlanId))
+                return Results.BadRequest(new { error = "planId is required when not blocking" });
+
             if (body.RoutingPolicyId is not null)
             {
                 var normalizedRoutingPolicyId = NormalizeOptional(body.RoutingPolicyId);
@@ -258,16 +265,29 @@ public static class AccessProfileEndpoints
     {
         if (string.IsNullOrWhiteSpace(body.ClientAppId) ||
             string.IsNullOrWhiteSpace(body.TenantId) ||
-            string.IsNullOrWhiteSpace(body.ApiId) ||
-            string.IsNullOrWhiteSpace(body.PlanId))
+            string.IsNullOrWhiteSpace(body.ApiId))
         {
-            return new BuildProfileResult(Results.BadRequest("clientAppId, tenantId, apiId, and planId are required"), "clientAppId, tenantId, apiId, and planId are required", null, TryBuildProfileId(body));
+            return new BuildProfileResult(Results.BadRequest("clientAppId, tenantId, and apiId are required"), "clientAppId, tenantId, and apiId are required", null, TryBuildProfileId(body));
         }
 
-        var planId = body.PlanId.Trim();
-        var plan = await planRepository.GetAsync(planId);
-        if (plan is null)
-            return new BuildProfileResult(Results.BadRequest($"Plan '{planId}' not found"), $"Plan '{planId}' not found", null, TryBuildProfileId(body));
+        if (!body.Blocked && string.IsNullOrWhiteSpace(body.PlanId))
+        {
+            return new BuildProfileResult(Results.BadRequest("planId is required when not blocking"), "planId is required when not blocking", null, TryBuildProfileId(body));
+        }
+
+        var planId = body.PlanId?.Trim() ?? string.Empty;
+        if (!body.Blocked)
+        {
+            var plan = await planRepository.GetAsync(planId);
+            if (plan is null)
+                return new BuildProfileResult(Results.BadRequest($"Plan '{planId}' not found"), $"Plan '{planId}' not found", null, TryBuildProfileId(body));
+        }
+        else if (!string.IsNullOrWhiteSpace(body.PlanId))
+        {
+            var plan = await planRepository.GetAsync(planId);
+            if (plan is null)
+                return new BuildProfileResult(Results.BadRequest($"Plan '{planId}' not found"), $"Plan '{planId}' not found", null, TryBuildProfileId(body));
+        }
 
         var routingPolicyId = NormalizeOptional(body.RoutingPolicyId);
         if (routingPolicyId is not null)
@@ -295,6 +315,7 @@ public static class AccessProfileEndpoints
             PlanId = planId,
             RoutingPolicyId = routingPolicyId,
             AllowedDeployments = NormalizeAllowedDeployments(body.AllowedDeployments),
+            Blocked = body.Blocked,
             Enabled = body.Enabled,
             CreatedBy = GetActor(user),
             CreatedAt = now,

@@ -56,6 +56,7 @@ function sourceVariant(source: "direct" | "api" | "global" | "client"): "teal" |
 
 function directTone(profile: AccessProfile | null): string {
   if (!profile) return "border-dashed border-slate-300/70 bg-slate-500/5 dark:border-slate-700/70 dark:bg-slate-500/10"
+  if (profile.blocked) return "border-red-500/50 bg-red-500/10"
   if (!profile.enabled) return "border-amber-400/50 bg-amber-500/10"
   return "border-emerald-500/30 bg-emerald-500/10"
 }
@@ -68,6 +69,20 @@ function renderSummary(
   const effective = cell.effective
   if (!effective) {
     return <p className="text-sm text-muted-foreground">No direct or inherited profile resolves at this scope.</p>
+  }
+
+  if (effective.blocked) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="destructive">Blocked</Badge>
+          <Badge variant={sourceVariant(effective.source)}>
+            {effective.source === "direct" ? "Direct override" : effective.sourceLabel}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">All requests are denied with 403 Forbidden.</p>
+      </div>
+    )
   }
 
   const planName = plansById[effective.planId]?.name ?? effective.planId

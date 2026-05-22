@@ -249,7 +249,7 @@ resource "azurerm_role_definition" "container_app_apim_manager" {
 }
 
 resource "azurerm_role_assignment" "container_app_apim_manager" {
-  count = var.container_app_principal_id != "" ? 1 : 0
+  count = var.create_container_app_role ? 1 : 0
 
   scope              = azurerm_api_management.this.id
   role_definition_id = azurerm_role_definition.container_app_apim_manager.role_definition_resource_id

@@ -8,6 +8,7 @@ export interface AccessProfile {
   planId: string
   routingPolicyId: string | null
   allowedDeployments: string[]
+  blocked: boolean
   enabled: boolean
   createdBy: string
   createdAt: string
@@ -19,9 +20,10 @@ export interface AccessProfileCreateRequest {
   tenantId: string
   apiId: string
   operationId?: string | null
-  planId: string
+  planId?: string
   routingPolicyId?: string | null
   allowedDeployments?: string[]
+  blocked?: boolean
   enabled?: boolean
 }
 
@@ -29,6 +31,7 @@ export interface AccessProfileUpdateRequest {
   planId?: string
   routingPolicyId?: string | null
   allowedDeployments?: string[]
+  blocked?: boolean
   enabled?: boolean
 }
 

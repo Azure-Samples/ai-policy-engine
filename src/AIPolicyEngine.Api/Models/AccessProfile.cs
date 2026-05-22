@@ -19,6 +19,7 @@ public sealed class AccessProfile
     public string PlanId { get; set; } = string.Empty;
     public string? RoutingPolicyId { get; set; }
     public List<string> AllowedDeployments { get; set; } = [];
+    public bool Blocked { get; set; }
     public bool Enabled { get; set; } = true;
     public string CreatedBy { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

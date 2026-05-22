@@ -160,6 +160,48 @@ public sealed class AccessProfilePrecheckTests : IClassFixture<ChargebackApiFact
     }
 
     [Fact]
+    public async Task Precheck_BlockedProfile_Returns403()
+    {
+        SeedClientAssignment(CreateLegacyAssignment(planId: "legacy-plan"));
+
+        var (resolverProxy, tracker) = CreateResolverProxy((clientAppId, tenantId, apiId, operationId) =>
+            new ResolvedAccessSnapshot(
+                PlanId: "",
+                RoutingPolicyId: null,
+                AllowedDeployments: [],
+                SourceProfileId: $"ap:{clientAppId}:{tenantId}:{apiId}:{operationId ?? "_all"}",
+                Blocked: true));
+
+        using var client = CreateClient(resolverProxy);
+        var response = await client.GetAsync($"/api/precheck/{ClientAppId}/{TenantId}?deploymentId=gpt-4o&apiId=openai-api&operationId=chat");
+        var json = await ReadJsonAsync(response);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Single(tracker.Calls);
+        Assert.Equal("access-profile-blocked", json.RootElement.GetProperty("deniedBy").GetString());
+        Assert.Equal($"ap:{ClientAppId}:{TenantId}:openai-api:chat", json.RootElement.GetProperty("accessProfileId").GetString());
+    }
+
+    [Fact]
+    public async Task Precheck_BlockedProfile_Returns403_EvenWithoutClientAssignment()
+    {
+        var (resolverProxy, _) = CreateResolverProxy((clientAppId, tenantId, apiId, operationId) =>
+            new ResolvedAccessSnapshot(
+                PlanId: "",
+                RoutingPolicyId: null,
+                AllowedDeployments: [],
+                SourceProfileId: $"ap:{clientAppId}:{tenantId}:{apiId}:{operationId ?? "_all"}",
+                Blocked: true));
+
+        using var client = CreateClient(resolverProxy);
+        var response = await client.GetAsync($"/api/precheck/{ClientAppId}/{TenantId}?deploymentId=gpt-4o&apiId=openai-api");
+        var json = await ReadJsonAsync(response);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("access-profile-blocked", json.RootElement.GetProperty("deniedBy").GetString());
+    }
+
+    [Fact]
     public void TemplateRendering_ApiIdVariableExtraction()
     {
         foreach (var templateId in ShippedTemplateIds)

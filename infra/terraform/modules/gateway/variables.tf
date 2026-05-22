@@ -62,6 +62,12 @@ variable "container_app_principal_id" {
   default     = ""
 }
 
+variable "create_container_app_role" {
+  description = "Whether to create the APIM role assignment for the Container App. Use instead of checking container_app_principal_id in count to avoid unknown-at-plan-time errors."
+  type        = bool
+  default     = false
+}
+
 variable "api_app_id" {
   description = "Application (client) ID of the AI Policy API app registration."
   type        = string

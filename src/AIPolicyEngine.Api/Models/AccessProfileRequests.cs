@@ -9,6 +9,7 @@ public sealed class AccessProfileCreateRequest
     public string PlanId { get; set; } = string.Empty;
     public string? RoutingPolicyId { get; set; }
     public List<string>? AllowedDeployments { get; set; }
+    public bool Blocked { get; set; }
     public bool Enabled { get; set; } = true;
 }
 
@@ -17,6 +18,7 @@ public sealed class AccessProfileUpdateRequest
     public string? PlanId { get; set; }
     public string? RoutingPolicyId { get; set; }
     public List<string>? AllowedDeployments { get; set; }
+    public bool? Blocked { get; set; }
     public bool? Enabled { get; set; }
 }
 
