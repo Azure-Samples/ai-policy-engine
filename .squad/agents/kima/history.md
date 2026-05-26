@@ -12,184 +12,178 @@
 
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
+*Core learnings consolidated in Core Context section above (see git history for detailed entries).*
+- 2026-05-21: The `/apis` page render loop came from `loadInitialData` depending on `operationsByApi` while also resetting that state to a fresh `{}`, which changed the callback identity and re-fired the mount effect forever.
+- Rule: if an effect triggers a callback that mutates local maps/arrays, keep the callback keyed to stable inputs and read the latest collection through a ref or stable ID instead of adding the collection itself to the callback deps.
 
-### 2026-03-31 — Phase 0 Complete: Backend Storage Architecture Established
+## Archived Learnings (Pre-May 2026)
 
-**Phase 0 Status:** ✅ COMPLETE (Freamon + Bunk)
+All development work from Phase 0–3 (2026-03-31 to 2026-05-14) is documented in Core Context and git commit history. Key achievements:
+- Phase 0: Cosmos + Redis storage architecture
+- Phase 1: Model routing policies + multiplier billing
+- Phase 2: Agent365 Observability integration
+- Phase 3: APIM policy variants and infrastructure
+- Infrastructure: Terraform + azd deployment (77 resources)
 
-The backend storage architecture has been refactored from Redis-only to a durable CosmosDB source-of-truth pattern with Redis as a write-through cache. This is the foundational layer for all upcoming work (routing, pricing, policy enhancements).
+For detailed work items, see:
+- .squad/decisions.md — architectural decisions
+- .squad/orchestration-log/ — agent completion logs
+- git log --oneline — implementation history
 
-**Key Implications for Frontend:**
-- **Backend API contracts unchanged** — All endpoint signatures remain the same. The refactoring is internal (storage layer only).
-- **Data durability improved** — Configuration data (plans, clients, pricing, routing policies) now survives Redis restarts and evictions.
-- **Performance unchanged** — Redis remains the read cache; startup is now slightly slower due to cache warming, but request latency is identical.
-- **New Repositories Pattern** — Future frontend changes will interact with the same API endpoints, which now use `IRepository<T>` abstraction instead of direct Redis.
+## 2026-05-21 — APIs management UI (M4)
 
-**What Kima Needs to Know:**
-- Phase 1 (Model Routing) will add new fields to the precheck response: `routedDeployment` (the actual deployment after routing is applied).
-- Future billing UI will need to adapt based on plan configuration (Phase 2–3 multiplier pricing work).
-- No frontend code changes required for Phase 0 — backend refactoring only.
-- Phase 0 completes the architectural debt fix; Phase 1 onwards adds new features without storage concerns.
+- Added APIM UI under `src/aipolicyengine-ui/src/pages/Apis.tsx` with dedicated client/types files in `src/api/apim.ts` and `src/types/apim.ts`; keep APIM shapes separate from legacy dashboard DTOs.
+- For list/detail admin pages, the current pattern is Tailwind + local state: left tree/list in a `Card`, right details/actions in a second `Card`, dialogs for destructive/assignment flows, and inline fixed-position toast messaging for retryable network failures.
+- APIM status polling is UI-driven: after a 202 apply response, set optimistic `applying` state and poll `GET .../policy` every 2 seconds until status leaves `pending`/`applying`.
+- Template parameter defaults should prefer the current assignment, then template defaults, and only shared plan-level values; there is no contract yet to map a specific plan to an API assignment, so avoid guessing per-plan defaults.
+- The SPA now maps top-level tabs to pathname routes in `App.tsx` (including `/apis`) without adding a router dependency; keep using this lightweight history API pattern unless the app adopts React Router later.
 
-**Test Results:** 129/129 tests pass (36 new Phase 5 tests for repositories/migration/warmup).
+## 2026-05-21 — ASP.NET Core Nested Configuration Convention (FYI)
 
-### 2026-03-31 — Phase 1 Complete: Backend API Stable for Phase 4 Frontend Work
+**Informational Context for Future Backend Config**
 
-**Phase 1 Status:** ✅ COMPLETE (Freamon + Bunk)
+Freamon fixed a config-binding bug in the APIM infrastructure: the env var `APIM_RESOURCE_ID` does not bind to nested config keys in ASP.NET Core. The standard convention is **double underscore**: `Apim__ResourceId`.
 
-Backend storage architecture, model routing, and multiplier pricing are complete. All API contracts finalized. Ready for frontend adaptive UI implementation.
+**Pattern for Reference:**
+- C# class `ApimManagementOptions` bound to section `"Apim"`
+- Config key in code: `Apim:ResourceId` (colon)
+- Environment variable: `Apim__ResourceId` (double underscore)
 
-**What Kima Needs to Know for Phase 4:**
+**If Frontend Consumes Similar Config Later:**
+- Backend will emit env vars using this convention (e.g., `Foo__Bar__Baz` for nested settings)
+- When frontend reads backend config, expect the same pattern
+- This is idiomatic ASP.NET Core, not a special case
 
-- **Backend is Stable:** No breaking changes planned. All routing + pricing features are finalized and tested (200/200 tests pass).
-- **New Precheck Response Fields:** The precheck endpoint now returns `routedDeployment` (actual deployment after routing), `requestingDeployment`, and `routingPolicyId`. Frontend can use these for diagnostic dashboards.
-- **Request Summary Export Ready:** New endpoints available:
-  - `GET /api/chargeback/request-summary?clientId=...&startDate=...&endDate=...` — query request usage by period
-  - `GET /api/export/request-billing?format=csv` — download request billing data
-- **Multiplier Billing UI:** Plans now have `UseMultiplierBilling` flag. Dashboard should adapt:
-  - If ALL plans use multiplier → show only request-based views (no token UI)
-  - If ALL plans use token → show only token-based views (no multiplier UI)
-  - If MIXED → show hybrid view (both models visible)
-  - Applies to dashboards, usage views, client detail pages, export options
-- **Tier Tracking:** Clients now track `RequestsByTier` (e.g., Standard, Premium, Enterprise). Dashboard can show per-tier breakdowns and cost analysis.
-- **Request Utilization:** ClientUsageResponse includes `CurrentPeriodRequests`, `OverbilledRequests`, and `RequestUtilizationPercent`. Dashboard can show quota usage and overage alerts.
-- **Backward Compat:** All new fields are nullable. Existing dashboard code continues to work. New UI is additive.
+**Full decision merged into `.squad/decisions.md`.**
 
-**Ready for Phase 4 Frontend Development:**
-- Plan response includes `UseMultiplierBilling`, `MonthlyRequestQuota`, `OverageRatePerRequest`
-- Client detail response includes `CurrentPeriodRequests`, `OverbilledRequests`, `RequestsByTier`, `RequestUtilizationPercent`
-- Model pricing includes `Multiplier`, `TierName`
-- Export endpoints ready for download functionality
-- No API breaking changes — pure feature additions
+## 2026-05-22 — Flex+Truncate Pattern for Badge/Title Rows
 
-**Test Results:** 200/200 tests pass (30 new Phase 2 integration tests from Bunk B5.7 + B5.8).
+**Layout Bug Fix Session:**
+- Fixed text overflow in API tree rows and modal parameter cards
+- Pattern: when a title and badge(s) share a flex row, the title needs `min-w-0 flex-1 truncate` and badges need `flex-shrink-0`
+- Without `min-w-0`, flex items won't shrink below intrinsic content width, causing overflow
+- Removed redundant `serviceUrl` from API tree (path is sufficient, URL cluttered the row)
+- Simplified operation rows: show method badge + urlTemplate instead of duplicated `displayName` + verb + badge
+- Modal horizontal scroll fixed with `overflow-x-hidden` on dialog container
+- Parameter card grid changed from `md:grid-cols-2` to `sm:grid-cols-2` for narrower modal viewport fit
 
-### 2026-03-31 — Phase 4 Complete: Frontend UI for Routing & Multiplier Billing
+**Rule:** For any flex row with text + badges: `<span class="min-w-0 flex-1 truncate">Text</span><Badge class="flex-shrink-0">Label</Badge>`
 
-**Phase 4 Status:** ✅ COMPLETE (Kima K4.1–K4.9)
+## 2026-05-21 — AAA M6 UI Pending (Access Profile Admin Page)
 
-All frontend work for model routing policies and multiplier billing is implemented. Build passes, lint clean (no new issues).
+**Status:** Pending — awaiting M3 precheck contract finalization
 
-**What Was Built:**
+**Scope:** Build `/access` page (new admin UI for Access Profiles)
 
-- **K4.8 — TypeScript types:** `ModelRoutingPolicy`, `RouteRule`, `RoutingBehavior`, `PlanDataExtended`, `ClientAssignmentExtended`, `ModelPricingExtended`, `RequestSummaryResponse`, `BillingMode` in `types.ts`
-- **K4.9 — API client:** CRUD for routing policies, request summary fetch, request billing export download in `api.ts`
-- **K4.1 — Routing Policies page:** Full CRUD with rule builder (deployment picker or manual input), default behavior selector, fallback deployment, "used by plans" indicator, delete warning
-- **K4.2 — Plans page extended:** Routing policy selector, UseMultiplierBilling toggle, MonthlyRequestQuota/OverageRatePerRequest fields (conditionally visible), Billing Mode and Routing Policy columns in table
-- **K4.3 — Clients page extended:** Routing policy override selector, effective request usage display with progress bar + tier breakdown badges, routing override column in table
-- **K4.4 — Pricing page extended:** Multiplier column (color-coded: green < 1.0, amber > 1.0), TierName column with badges, multiplier/tier fields in create/edit dialog
-- **K4.5 — Request Billing dashboard:** KPI cards (total/effective/overbilled/active clients), bar chart by client, donut chart by tier, overage alerts with progress bars, per-client summary table. Adaptive: only visible when multiplier billing plans exist
-- **K4.6 — Client detail extended:** Request billing section with quota gauge, overbilled requests card, tier pie chart, requests-by-model table. Only shown when client's plan uses multiplier billing
-- **K4.7 — Export page extended:** Request Billing Export card with period selector. Adaptive: only visible when multiplier billing plans exist
+**Layout & Components:**
+- **Top:** Client selector (dropdown/search from existing `GET /api/clients`)
+- **Main grid:** APIs (rows) with columns: Plan, Routing Policy, Deployments allowed, Enable toggle
+- **Drill-down:** Click API row to expand operations with per-operation overrides
+- **Add/Edit form:** Select Plan (dropdown from existing plans), optionally select Routing Policy, optionally restrict deployments
+- **Bulk action:** "Apply to multiple APIs" — select APIs from checklist, assign same profile to all in one shot
 
-**Adaptive UI Logic (per Zack's directive):**
-- `BillingMode` type: `'token' | 'multiplier' | 'hybrid'`
-- App.tsx computes billing mode from plan data, passes to Layout
-- Layout conditionally shows "Request Billing" nav tab
-- RequestBilling page shows empty state when no multiplier plans
-- Export shows request billing card only when multiplier plans exist
-- ClientDetail shows request billing section only for multiplier-billed plans
+**Reuse:** Plan selector dropdown (already built for client assignment), Routing Policy selector (already built for Plans page)
 
-**Architecture Decisions:**
-- Extended existing types with `PlanDataExtended`, `ClientAssignmentExtended`, `ModelPricingExtended` to avoid breaking existing code
-- No new dependencies — reused Recharts, Lucide, Tailwind, existing component library
-- Followed existing patterns: `useCallback` data loading, `authFetch` wrapper, Card/Table/Badge/Dialog components
-- Routing Policies is always visible (routing is useful regardless of billing mode)
+**Client First Workflow:** Primary user journey is "configure THIS client's access to various APIs" — not "which clients use this API". So the layout starts with client selector, then shows their API matrix.
 
-**Build Results:** `tsc -b && vite build` succeeds. Lint: 9 pre-existing errors, 0 new.
+**Integration:** POST/PUT/DELETE via `/api/access-profiles/*` (Freamon M2). Trigger profile creation when form submits.
 
-### 2026-03-31 — Session Complete: All 5 Phases Delivered
+**Validation:** Contract awaits M3 precheck integration (apiId/operationId handling) and M4 log-ingest (audit trail).
 
-**Project Status:** ✅ COMPLETE
+**Next:** Start after M2 API contracts firm (2-3 days out).
 
-All work is done. Phase 0 (storage), Phase 1 (routing + pricing), Phase 2 (enforcement), Phase 3 (APIM policies), Phase 4 (frontend UI), Phase 5 (testing) all complete. 222 tests passing. Full end-to-end system operational.
+### 2026-05-21T21:48:19Z — AAA M5 UI (`/access` Page) In-Flight
 
-**Kima's Contributions:**
-- Phase 4 (K4.1–K4.9): Frontend UI for model routing policies and multiplier billing, adaptive billing dashboards, routing policy CRUD page, request billing exports
+**Status:** 🔄 IN-FLIGHT
 
-**What's Ready for Deployment:**
-- React frontend with all routing and billing UI components
-- Adaptive UI logic: billing mode computed from plan configuration (token/multiplier/hybrid)
-- Full CRUD for routing policies, detailed client billing views, tier-based analytics
-- Integration with all backend API endpoints
-- TypeScript strict mode compliant, no new linting issues
+**Scope:**
+Build the `/access` admin page for Access Profile management (new per-client, per-API authorization overrides).
 
-**User Experience:**
-- Dashboard auto-adapts based on billing configuration
-- Routing policies fully manageable from UI
-- Request billing tracking with per-client, per-tier analytics
-- Export functionality for billing data
+**Layout & Components:**
+- **Top Section:** Client selector (dropdown/search from `/api/clients`)
+- **Main Grid:** API rows with columns:
+  - Plan (read-only, shows from profile or inherited)
+  - Routing Policy (select or null for inherit)
+  - Deployments Allowed (multi-select or null for inherit)
+  - Enable/Disable toggle
+- **Drill-down:** Click API row to reveal operations table with per-operation overrides (same column structure)
+- **Add/Edit Form:** Modal with Plan selector, optional Routing Policy, optional deployment restrictions, submit/cancel
+- **Bulk Action:** Select multiple APIs from checklist, apply the same profile to all in one shot
 
-**Next Phase (Future):**
-- Advanced policy engine UI for enforced model rewrites
-- Custom dashboard builder
-- Audit log UI for policy change history
+**Reuse Existing Components:**
+- Plan selector dropdown (`.squad/skills/` available)
+- Routing Policy selector (already built for Plans page)
+- Tailwind flex+truncate pattern for row overflow (`.squad/skills/tailwind-flex-truncate-pattern/SKILL.md`)
+- React render-loop debugging skill (`.squad/skills/react-render-loop-debugging/SKILL.md` — avoid Apis.tsx pattern)
 
-### 2026-03-31 — Code Review Fix Pass: 5 Findings Resolved
+**API Contract:**
+- GET `/api/access-profiles` — list profiles for a client
+- POST/PUT `/api/access-profiles/{id}` — create/update profile
+- DELETE `/api/access-profiles/{id}` — delete profile
+- Bulk endpoint (TBD via Freamon M2 spec)
 
-**Context:** McNulty reviewed the frontend and flagged 5 issues (2 bugs, 3 suggestions). All fixes implemented, tsc + vite build clean.
+**Blockers Now Cleared:**
+- ✅ Freamon M1-M3: Precheck contract finalized (apiId/operationId path ready)
+- ✅ Bunk: 21-test matrix validates response shapes
 
-**What Changed:**
+**Parallel to M4:**
+- Sydnor's M4 template updates do not block UI work
+- API endpoint contracts already firm
 
-1. **B2 — billingPeriod type mismatch:** `RequestSummaryResponse.billingPeriod` changed from `{ year: number; month: number }` to `string` (YYYY-MM format matching backend). `RequestBilling.tsx` now displays the string directly instead of accessing `.month`/`.year`.
+**Next Steps:**
+- Start component structure (ClientSelector, ApiGrid, OperationGrid, ProfileForm)
+- Implement data fetch + caching patterns (parallel to API updates)
+- Polish flex+truncate styling for API/operation rows
+- Mock data for component testing before API integration
 
-2. **B3 — RouteRule missing fields:** Added `priority: number` and `enabled: boolean` to `RouteRule`. `RoutingPolicies.tsx` rule builder now includes a priority number input (auto-incremented on add) and an enabled checkbox (defaults to true). Existing rule display shows priority badge and enable/disable toggle.
+## 2026-05-21T22:07:10Z — AAA M5 Admin UI Complete
 
-3. **S5 — ModelPricing base type consolidation:** Added `multiplier` and `tierName` to base `ModelPricing` and `ModelPricingCreateRequest`. Eliminated all `Extended` type variants (`ModelPricingExtended`, `PlanDataExtended`, `ClientAssignmentExtended`) by folding their fields into the base types (`PlanData`, `ClientAssignment`). Removed all `as Extended` casts across 7 component files.
+**Status:** ✅ COMPLETE
 
-4. **S6 — Plan request type safety:** Added `modelRoutingPolicyId`, `monthlyRequestQuota`, `overageRatePerRequest`, `useMultiplierBilling` to `PlanCreateRequest` and `PlanUpdateRequest`. Plans.tsx no longer bypasses type checking via object spread.
+**Commits:**
+- Kima M5: `ec54c29c`
 
-5. **S8 — Rich API error messages:** Added `parseErrorMessage()` helper to `api.ts` that extracts `error` or `message` from backend JSON responses. Applied to all 24 API functions. Users now see actionable messages (e.g., "Deployment not allowed") instead of generic "Bad Request".
+**Delivered:**
+- New `/access` admin page for Access Profile management
+  - **Client selector** (top): Searchable client dropdown using existing `/api/clients`
+  - **API grid** (main): Rows for each API, columns for Plan (read-only), Routing Policy (select), Deployments Allowed (multi-select), Enable toggle
+  - **Drill-down:** Click API row to expand operations table with per-operation override fields
+  - **Add/Edit form:** Modal with Plan selector, optional Routing Policy, optional deployment restrictions
+  - **Bulk action:** Select multiple APIs, apply same profile to all via `/api/access-profiles/bulk`
+- Extracted shared `useApimCatalog` hook: lifted from `/apis` page, now used by both `/access` and `/apis` for APIM catalog loading
+  - Render-loop-safe ref/callback pattern preserved
+  - Eliminates duplicate API/operation loading logic
+  - Backward-compatible with existing `/apis` page
+- UI behavior:
+  - Empty cells show effective cascade result (not blank)
+  - Direct overrides visually distinct from inherited values (CascadeBadge component)
+  - Disabled profiles stay visible, treated as non-winning per backend cascade
+  - API cards lazy-load operations when expanded
+  - Editor supports both single-scope and bulk creation
 
-**Learnings:**
-- Extended types as band-aids accumulate tech debt quickly — fold fields into base types early
-- API error parsing should be a shared helper, not copy-pasted per function
-- Backend returns structured JSON errors — always parse them for the UI
+**Validation:**
+- ✅ `cd src\aipolicyengine-ui && npm run lint` — passed
+- ✅ `cd src\aipolicyengine-ui && npm run build` — passed
+- ✅ Shared hook refactored without breaking `/apis` page
 
-**Build Results:** `tsc -b` clean, `vite build` succeeds (2556 modules, 11.5s).
+**Files Created/Modified:**
+- `src/aipolicyengine-ui/src/App.tsx` — Route wiring for `/access`
+- `src/aipolicyengine-ui/src/components/Layout.tsx` — Navigation item
+- `src/aipolicyengine-ui/src/components/ui/dialog.tsx` — Drawer-style support via `contentClassName`
+- `src/aipolicyengine-ui/src/hooks/useApimCatalog.ts` — Shared catalog loading hook
+- `src/aipolicyengine-ui/src/api/accessProfiles.ts` — API client (NEW)
+- `src/aipolicyengine-ui/src/types/accessProfiles.ts` — Type definitions (NEW)
+- `src/aipolicyengine-ui/src/pages/AccessProfiles.tsx` — Main page (NEW)
+- `src/aipolicyengine-ui/src/pages/Apis.tsx` — Refactored to use shared hook
+- `src/aipolicyengine-ui/src/components/accessProfiles/CascadeBadge.tsx` — Cascade indicator (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ClientList.tsx` — Client selector (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileEditor.tsx` — Edit form (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileGrid.tsx` — Matrix view (NEW)
+- `src/aipolicyengine-ui/src/components/accessProfiles/types.ts` — UI types (NEW)
 
-### 2026-04-01 — Fix #5: Frontend DTO Mismatch (CRITICAL)
+**Learning:** Shared hooks extracted from page-specific implementations reduce code duplication and improve maintainability. The render-loop debugging pattern (ref + stable callback identity) is now reusable across all APIM integration pages.
 
-**Issue:** `RequestBilling.tsx` referenced fields that don't exist in the backend `RequestSummaryResponse.cs`. The frontend types (`RequestClientSummary`, `RequestSummaryTotals`) had invented fields (`planName`, `totalRequests`, `effectiveRequests`, `monthlyQuota`, `utilizationPercent`, `overbilledRequests`, `requestsByTier`, `requestsByModel`) that the backend never sends. At runtime this produced empty/NaN values.
-
-**Root Cause:** Frontend types were authored speculatively during Phase 4 without verifying the backend DTO field names. The C# model uses different naming: `rawRequestCount` not `totalRequests`, `totalEffectiveRequests` not `effectiveRequests`, `multiplierOverageCost` not `overbilledRequests`, `effectiveRequestsByTier` not `requestsByTier`.
-
-**What Changed:**
-1. **types.ts** — Renamed `RequestClientSummary` → `RequestSummaryClient` to match backend class name. Fixed all fields to match `RequestSummaryResponse.cs` exactly: `totalEffectiveRequests`, `effectiveRequestsByTier`, `multiplierOverageCost`, `rawRequestCount`. Removed phantom fields (`planName`, `totalRequests`, `effectiveRequests`, `monthlyQuota`, `utilizationPercent`, `overbilledRequests`, `requestsByModel`). Fixed `RequestSummaryTotals`: `totalRawRequests`, `totalMultiplierOverageCost`, `effectiveRequestsByTier`.
-2. **RequestBilling.tsx** — Updated all field accesses to match corrected types. Removed UI columns for non-existent fields (Plan, Quota, Utilization). Changed "Overbilled" KPI to "Overage Cost" (displays dollar amount). Changed overage alerts from utilization-percent-based to cost-based. Removed unused `Progress` import.
-3. **api.ts** — No changes needed; already returns correct type.
-
-**Learnings:**
-- Always verify frontend types against the actual backend C# model before building UI. The backend is the source of truth.
-- Field naming convention: C# PascalCase serializes to camelCase in JSON by default with System.Text.Json — match those exact camelCase names in TypeScript.
-- When backend doesn't provide a computed field (like `utilizationPercent`), don't invent it in the DTO — compute it in the UI from available data, or omit the feature.
-
-**Build Results:** `tsc -b` clean, `vite build` succeeds (2556 modules, 9.65s).
-
-### 2026-05-14 — Cross-Agent Note: Infrastructure Changes Must Be Validated Before Commit
-
-**From:** Zack Way (User directive captured by Scribe)  
-**Note:** When fixing infrastructure/deployment errors, **always validate fixes by running the relevant `azd` command** (e.g., `azd provision --preview`, `azd up`) **BEFORE committing**. Do not write commits with unvalidated infrastructure changes. This keeps the commit tree clean of speculative/bad infrastructure history and ensures only known-working fixes enter the codebase.
-
-**Application:** All agents working on infrastructure, deployment, or orchestration. Sydnor validated the Terraform tfvars fix via `azd provision --preview` before the orchestration log was written.
-
-### 2026-05-14T16:22:25Z — Cross-Agent Learning: Large azd + Terraform Deployment Pattern
-
-**From:** Scribe (based on Sydnor's successful execution)
-
-**Pattern Validated:**
-- `azd up` with 77+ Azure resources succeeds in ~9m59s when auth alignment is correct (azd + az CLI on same tenant)
-- Longest pole is always Redis Enterprise (~6m22s for this deployment)
-- Container App deployed and reachable within 9-10m
-- APIM policies configured to call precheck/log endpoints post-compute
-- All infrastructure outputs available immediately after `azd up` succeeds
-
-**Key Learning for Frontend/UI Agents:**
-When deploying via azd:
-1. Your frontend assets are deployed to the Container App's wwwroot/spa directory. Build output must match app directory structure.
-2. APIM gateway is configured to route requests through policies before backend. Your APIs see pre-authenticated requests (policy enforces auth).
-3. Named values in APIM (like Container App URL) are populated during deployment. If you need dynamic configuration, update it post-deployment.
-4. SPA builds should succeed locally before pushing to production; deployment mirrors local build if Dockerfile and vite.config.ts are correct.
-
-**Captured in Skill:** `.squad/skills/azd-terraform-large-deployment/SKILL.md` — Full guide for auth alignment, provider configuration, timing, troubleshooting, validation patterns.
+**Cross-Team Notes:**
+- Freamon M1-M3 backend contracts validated; all CRUD + bulk endpoints consumed
+- Sydnor M4 templates shipped with metadata propagation; `/access` page now shows all cascade levels
+- Bunk all 21 AAA tests active and passing; UI integration complete

@@ -223,6 +223,11 @@ resource "azurerm_container_app" "this" {
       }
 
       env {
+        name  = "Apim__ResourceId"
+        value = var.apim_resource_id
+      }
+
+      env {
         name  = "AZURE_AI_ENDPOINT"
         value = var.ai_service_endpoint
       }

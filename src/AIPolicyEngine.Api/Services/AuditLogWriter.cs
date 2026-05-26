@@ -141,7 +141,11 @@ public sealed class AuditLogWriter : BackgroundService
             RoutingPolicyId = item.RoutingPolicyId,
             Multiplier = item.Multiplier,
             EffectiveRequestCost = item.EffectiveRequestCost,
-            TierName = item.TierName
+            TierName = item.TierName,
+            AccessProfileId = item.AccessProfileId,
+            PlanId = item.PlanId,
+            ApiId = item.ApiId,
+            OperationId = item.OperationId
         }).ToList();
 
         for (var attempt = 1; attempt <= MaxRetries; attempt++)

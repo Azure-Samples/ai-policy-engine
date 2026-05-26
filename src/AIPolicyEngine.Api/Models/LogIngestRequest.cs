@@ -29,4 +29,16 @@ public sealed class LogIngestRequest
 
     /// <summary>APIM request ID (context.RequestId) for correlation and deduplication.</summary>
     public string? CorrelationId { get; set; }
+
+    /// <summary>Resolved access profile ID from precheck.</summary>
+    public string? AccessProfileId { get; set; }
+
+    /// <summary>Resolved plan ID from precheck.</summary>
+    public string? PlanId { get; set; }
+
+    /// <summary>API identifier used during precheck resolution.</summary>
+    public string? ApiId { get; set; }
+
+    /// <summary>Operation identifier used during precheck resolution.</summary>
+    public string? OperationId { get; set; }
 }

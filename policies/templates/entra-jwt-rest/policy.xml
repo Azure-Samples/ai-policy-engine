@@ -1,0 +1,132 @@
+<!--
+    IMPORTANT:
+    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.
+    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.
+    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.
+    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.
+    - To remove a policy, delete the corresponding policy statement from the policy document.
+    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.
+    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.
+    - Policies are applied in the order of their appearance, from the top down.
+    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.
+
+    Sample: Entra JWT policy for non-AI REST APIs using native APIM rate/quota enforcement plus fire-and-forget accounting logs.
+
+    Required APIM named values:
+    - {{EntraTenantId}} — shared Entra policy-family named value. This sample mirrors the existing /common OpenID metadata pattern, but keep the tenant ID named value provisioned for sibling policies and future hardening.
+    - {{ExpectedAudience}} — expected aud claim in the incoming Entra access token.
+    - {{NonAiRequestsPerMinute}} — native APIM rate-limit-by-key calls-per-minute value.
+    - {{NonAiMonthlyRequestQuota}} — native APIM quota-by-key monthly request cap.
+    - {{NonAiBackendUrl}} — target non-AI backend host/FQDN. This sample routes to https://{{NonAiBackendUrl}}.
+    - {{ContainerAppUrl}} — AI Policy Engine base URL used for outbound /api/log-rest calls and the commented /api/precheck-rest alternative.
+    - {{ContainerAppAudience}} — audience/resource used when APIM acquires a managed identity token for the policy engine.
+
+    Operational notes:
+    - Native rate-limit-by-key + quota-by-key counters live inside APIM, not Redis. The policy engine only sees /api/log-rest events, so dashboards show derived/aggregated usage rather than APIM's exact real-time counter state.
+    - customerKey = {clientAppId}:{tenantId}. This is multi-tenant safe because the same client app ID in different tenants gets separate counters.
+    - To swap to policy-engine-enforced mode, comment out the native rate-limit-by-key + quota-by-key statements and uncomment the ALTERNATIVE precheck-rest block below.
+-->
+<policies>
+	<inbound>
+		<base />
+		<!-- Validate Entra ID (Azure AD) JWT token — mirrors the existing Entra policy's /common multi-tenant pattern -->
+		<validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized. Access token is missing or invalid.">
+			<openid-config url="https://login.microsoftonline.com/common/.well-known/openid-configuration" />
+			<required-claims>
+				<claim name="aud" match="all">
+					<value>{{ExpectedAudience}}</value>
+				</claim>
+			</required-claims>
+		</validate-jwt>
+		<!-- Extract JWT claims into variables -->
+		<set-variable name="tenantId" value="@(context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;,&quot;&quot;).Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(&quot;tid&quot;,&quot;&quot;))" />
+		<set-variable name="clientAppId" value="@{
+			var jwt = context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;,&quot;&quot;).Split(' ').Last().AsJwt();
+			// azp is present in delegated (user) tokens, appid in client_credentials tokens
+			var azp = jwt?.Claims.GetValueOrDefault(&quot;azp&quot;,&quot;&quot;);
+			return !string.IsNullOrEmpty(azp) ? azp : jwt?.Claims.GetValueOrDefault(&quot;appid&quot;,&quot;&quot;);
+		}" />
+		<set-variable name="customerKey" value="@((string)context.Variables[&quot;clientAppId&quot;] + &quot;:&quot; + (string)context.Variables[&quot;tenantId&quot;])" />
+		<set-variable name="apiIdValue" value="@(context.Api.Id)" />
+		<set-variable name="operationIdValue" value="@(context.Operation.Id)" />
+		<!-- Default limit source: APIM named values rendered at policy-apply time.
+		     Alternative: a deployment job can fetch per-API plan limits from the policy engine and render/update this policy before import.
+		     APIM gotcha: quota-by-key's calls and renewal-period attributes do not allow runtime policy expressions, so a request-time send-request config lookup cannot directly drive quota-by-key. -->
+		<rate-limit-by-key calls="{{NonAiRequestsPerMinute}}" renewal-period="60" counter-key="@((string)context.Variables[&quot;customerKey&quot;])" />
+		<!-- quota-by-key uses a fixed 30-day window (2592000 seconds), not a true calendar month.
+		     Calendar-month alignment is a future enhancement that requires custom counters outside native APIM quota-by-key. -->
+		<quota-by-key calls="{{NonAiMonthlyRequestQuota}}" renewal-period="2592000" counter-key="@((string)context.Variables[&quot;customerKey&quot;])" />
+		<set-backend-service base-url="https://{{NonAiBackendUrl}}" />
+		<!-- Acquire a managed identity token for the policy engine so outbound logging (and the alternative precheck block) can call the Container App securely. -->
+		<authentication-managed-identity resource="{{ContainerAppAudience}}" output-token-variable-name="msi-access-token" ignore-error="false" />
+		<!-- ALTERNATIVE: Policy-engine-enforced precheck (McNulty proposal)
+		     Swap steps:
+		     1. Comment out the native rate-limit-by-key and quota-by-key policies above.
+		     2. Keep authentication-managed-identity so APIM can call the policy engine.
+		     3. Uncomment this block to let /api/precheck-rest/{clientAppId} decide 200/429 centrally.
+		     4. Keep outbound /api/log-rest so dashboards and audit stay consistent.
+
+		<send-request mode="new" response-variable-name="precheckRestResponse" timeout="10" ignore-error="true">
+			<set-url>@($"{{ContainerAppUrl}}/api/precheck-rest/{(string)context.Variables["clientAppId"]}?tenantId={(string)context.Variables["tenantId"]}&apiId={(string)context.Variables["apiIdValue"]}&operationId={(string)context.Variables["operationIdValue"]}")</set-url>
+			<set-method>GET</set-method>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+			</set-header>
+		</send-request>
+		<set-variable name="accessProfileId" value="@(((IResponse)context.Variables["precheckRestResponse"]).Body.As<JObject>(preserveContent: true)["accessProfileId"]?.ToString())" />
+		<set-variable name="resolvedPlanId" value="@(((IResponse)context.Variables["precheckRestResponse"]).Body.As<JObject>(preserveContent: true)["planId"]?.ToString())" />
+		<choose>
+			<when condition="@(context.Variables[\"precheckRestResponse\"] == null)">
+				<return-response>
+					<set-status code="500" reason="Internal Server Error" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>{"error":"REST precheck failed — could not reach policy engine"}</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables[\"precheckRestResponse\"]).StatusCode == 429)">
+				<return-response>
+					<set-status code="429" reason="Too Many Requests" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables[\"precheckRestResponse\"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+		</choose>
+		-->
+	</inbound>
+	<backend>
+		<base />
+	</backend>
+	<outbound>
+		<base />
+		<!-- Fire-and-forget: send REST usage data to AI Policy API without waiting for a response. -->
+		<send-one-way-request mode="new">
+			<set-url>{{ContainerAppUrl}}/api/log-rest</set-url>
+			<set-method>POST</set-method>
+			<set-header name="Content-Type" exists-action="override">
+				<value>application/json</value>
+			</set-header>
+			<set-header name="Authorization" exists-action="override">
+				<value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;msi-access-token&quot;])</value>
+			</set-header>
+			<set-body>@{
+				var latencyMs = (long)(DateTime.UtcNow - context.Timestamp).TotalMilliseconds;
+				var payload = new Newtonsoft.Json.Linq.JObject();
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("tenantId", (string)context.Variables.GetValueOrDefault("tenantId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("clientAppId", (string)context.Variables.GetValueOrDefault("clientAppId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("customerKey", (string)context.Variables.GetValueOrDefault("customerKey", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("requestPath", context.Request.Url.Path));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("statusCode", context.Response.StatusCode));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("latencyMs", latencyMs));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("accessProfileId", context.Variables.GetValueOrDefault<string>("accessProfileId") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("planId", context.Variables.GetValueOrDefault<string>("resolvedPlanId") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("apiId", context.Variables.GetValueOrDefault<string>("apiIdValue") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("operationId", context.Variables.GetValueOrDefault<string>("operationIdValue") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("correlationId", context.RequestId.ToString()));
+				return payload.ToString();
+			}</set-body>
+		</send-one-way-request>
+	</outbound>
+	<on-error>
+		<base />
+	</on-error>
+</policies>

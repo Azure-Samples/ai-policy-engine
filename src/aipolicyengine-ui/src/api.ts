@@ -2,7 +2,7 @@ import { InteractionRequiredAuthError, PublicClientApplication, type SilentReque
 import { msalConfig, loginRequest } from "./auth/msalConfig";
 import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse, RoutingPoliciesResponse, ModelRoutingPolicy, ModelRoutingPolicyCreateRequest, ModelRoutingPolicyUpdateRequest, RequestSummaryResponse } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+export const API_BASE = import.meta.env.VITE_API_URL || "";
 
 const msalInstance = new PublicClientApplication(msalConfig);
 let redirectInFlight = false;
@@ -49,7 +49,7 @@ async function getToken(): Promise<string | null> {
   }
 }
 
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   let token: string | null = null;
   try {
     token = await getToken();
@@ -69,7 +69,7 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   return res;
 }
 
-async function parseErrorMessage(res: Response, fallback: string): Promise<string> {
+export async function parseErrorMessage(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);
   return body?.error || body?.message || `${fallback}: ${res.statusText}`;
 }
@@ -129,7 +129,7 @@ export async function createPlan(data: PlanCreateRequest): Promise<PlanData> {
   return res.json();
 }
 
-export async function updatePlan(planId: string, data: PlanUpdateRequest): Promise<any> {
+export async function updatePlan(planId: string, data: PlanUpdateRequest): Promise<unknown> {
   const res = await authFetch(`${API_BASE}/api/plans/${encodeURIComponent(planId)}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -151,7 +151,7 @@ export async function fetchClients(): Promise<ClientsResponse> {
   return res.json();
 }
 
-export async function assignClient(clientAppId: string, tenantId: string, data: ClientAssignRequest): Promise<any> {
+export async function assignClient(clientAppId: string, tenantId: string, data: ClientAssignRequest): Promise<unknown> {
   const res = await authFetch(`${API_BASE}/api/clients/${encodeURIComponent(clientAppId)}/${encodeURIComponent(tenantId)}`, {
     method: "PUT",
     body: JSON.stringify(data),

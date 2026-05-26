@@ -56,6 +56,12 @@ variable "container_app_id" {
   default     = ""
 }
 
+variable "container_app_principal_id" {
+  description = "Principal ID of the Container App managed identity for APIM role assignment. Empty string to skip."
+  type        = string
+  default     = ""
+}
+
 variable "api_app_id" {
   description = "Application (client) ID of the AI Policy API app registration."
   type        = string

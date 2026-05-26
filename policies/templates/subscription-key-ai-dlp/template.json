@@ -1,0 +1,20 @@
+{
+  "id": "subscription-key-ai-dlp",
+  "displayName": "Subscription Key — AI + DLP",
+  "version": "1.1",
+  "scope": "api",
+  "parameters": [
+    {
+      "name": "ContainerAppAudience",
+      "type": "string",
+      "required": true,
+      "description": "Audience/resource APIM uses when acquiring a managed identity token for the AI Policy Engine."
+    },
+    {
+      "name": "ContainerAppUrl",
+      "type": "string",
+      "required": true,
+      "description": "Base URL for the AI Policy Engine used by precheck, content-check, and log callbacks."
+    }
+  ]
+}

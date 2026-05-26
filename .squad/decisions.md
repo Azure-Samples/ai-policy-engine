@@ -1,6 +1,120 @@
 # Squad Decisions
 
+## Recent Sessions
+
+### 2026-05-21 — APIM Policy Management inbox merge
+- **Goals:** capture the accepted APIM Policy Management architecture; record that prior non-AI limits work is paused.
+- **Agents:** McNulty defined the accepted APIM management architecture and the earlier paused non-AI limits shape; Sydnor produced the parked non-AI REST APIM policy draft and related APIM policy/template inputs; Freamon and Kima are carrying backend/UI APIM management work on `feature/apim-policy-management`; Bunk drafted non-AI test coverage and has separate test changes pending merge; Scribe merged the inbox and archived source notes.
+- **Files:** `git status --short` showed 35 changed paths at merge time (`27` modified, `8` untracked).
+- **Tests baseline:** 219 passing / 4 skipped; Bunk's new tests are still pending merge and are not recorded here as landed.
+- **Branch:** `feature/apim-policy-management`
+- **Open items:** PR not yet opened; Bunk test changes pending merge.
+
 ## Active Decisions
+
+### 2026-05-21T22:07:10Z: Implementation status — AAA M1-M5 layer complete, ready for production
+**By:** Scribe (logged from orchestration)  
+**Status:** Complete  
+**What:** 
+- **M1-M5 COMPLETE:** Full AAA per-client authorization layer shipped
+  - **M1 (Freamon):** AccessProfile model + Cosmos repo
+  - **M2 (Freamon):** Admin CRUD + bulk endpoints
+  - **M3 (Freamon):** Precheck integration with apiId/operationId
+  - **M4 (Sydnor):** APIM templates v1.0→1.1 (5 templates updated, commit `24de42b5`)
+  - **M5 (Kima):** `/access` admin page + shared hooks (commit `ec54c29c`)
+- **All 21 AAA tests active:** 316 pass / 4 skip (pre-existing Purview seams) / 0 fail
+- **M6 (Redis caching):** Deferred as optional optimization
+- **UI/Backend Integration:** Full end-to-end workflows validated
+  - Cascade precedence enforced at all layers
+  - Effective state visible to users
+  - Bulk operations functional
+
+**Validation:**
+- ✅ Sydnor: All 5 templates updated, 4 pending M4 tests unskipped + passing
+- ✅ Kima: `/access` page + UI lint/build green, shared hook refactored with backward compat
+- ✅ Integration: Backend fully consumed by UI, admin workflows tested
+
+**Why:** Mark full layer completion. AAA authorization layer production-ready for PR review + merge.
+
+**Next:** PR to main, optional M6 if performance tuning needed, documentation finalization.
+
+### 2026-05-21T21:48:19Z: Implementation status — AAA M1-M3 backend complete, M4-M5 parallel in-flight
+**By:** Scribe (logged from orchestration)  
+**Status:** In-Flight  
+**What:** 
+- **M1-M3 COMPLETE (Freamon):** AccessProfile model, Cosmos repo, IAccessProfileResolver cascade, CRUD endpoints, precheck integration, log-ingest integration. Commit `3d409d24`.
+- **21-test matrix COMPLETE (Bunk):** 17 passing + 4 pending M4 template assertions. Total test baseline: 320 (312 pass, 8 skip). Commit `6c858b96`.
+- **M4 IN-FLIGHT (Sydnor):** APIM template updates (5 templates, version 1.0→1.1, apiId/operationId variables, precheck URL extension, log payload updates).
+- **M5 IN-FLIGHT (Kima):** `/access` admin page (client selector, API grid, per-operation drill-down, assign form).
+
+**Validation:**
+- ✅ Freamon: `dotnet build` + `dotnet test` (311 pass, 8 skip)
+- ✅ Bunk: 21-test matrix (17 pass, 4 pending M4)
+- Sydnor/Kima: Parallel to M3 completion; M4 blockers lifted, M5 API ready
+
+**Why:** Track M1-M3 delivery and verify M4/M5 can proceed without dependency deadlock.
+
+### 2026-05-21T21:28:06Z: User directive — AAA access-profile architecture approved (M1-M6)
+**By:** Zack Way (via McNulty proposal review)  
+**Status:** Approved  
+**What:** Zack greenlit McNulty's AAA per-client endpoint authorization architecture (Access Profiles) with recommended defaults on all 6 open questions:
+- **Client Identity Model:** Keep dual pattern (Entra JWT + subscription-key) for v1; unify in v2 if needed
+- **Routing Paired with Plan:** `planId` is REQUIRED (routing without quota enforcement is meaningless)
+- **Client Lifecycle Drift:** (B) Orphaned profiles are harmless for v1; (C) show stale badge in UI for v2
+- **Multi-Tenancy Scope:** Global to engine (same client across APIs); Access Profiles add per-API scoping
+- **Naming:** "Access Profile" (RADIUS analogy: NAS-Port=endpoint, User-Name=clientAppId:tenantId, Service-Type=Plan+Routing)
+- **Default-Deny vs Default-Allow:** No API-default profiles for v1 (explicit client registration is a feature, not a bug)
+
+**Architecture Summary:**
+- New document type: `AccessProfile` (Cosmos `configuration` container, partition key `"access-profile"`)
+- Resolution cascade: `(client+operation)` > `(client+api)` > `(client+global)` > legacy `ClientPlanAssignment` (level 4)
+- Backward-compatible precheck integration: `apiId`/`operationId` query params optional; fall through to legacy if absent
+- New admin endpoints: `/api/access-profiles/*` (list, get, create, update, delete, bulk)
+- UI: `/access` page (client selector, API grid, per-operation drill-down, assign form) — Kima, starts after M3/M4 contract firm
+
+**Phasing (M1-M6):**
+- **M1:** AccessProfile model + Cosmos repo + IAccessProfileResolver cascade service (Freamon)
+- **M2:** Admin CRUD endpoints + bulk assign (Freamon)
+- **M3:** Precheck integration — apiId/operationId param parsing, extended response (planId, accessProfileId, allowedDeployments) (Freamon)
+- **M4:** Log-ingest integration — flow AccessProfileId + PlanId + ApiId + OperationId through to audit trail (Freamon)
+- **M5:** Template updates — all 5 APIM templates get apiId/operationId variables + precheck URL extension + profile extraction + log payload updates, version bump 1.0→1.1 (Freamon/Sydnor)
+- **M6:** UI `/access` page (Kima) — parallel to M1-M5 after M2 API ready
+
+**Test Coverage (Bunk):** 21 tests anticipated — resolver cascade (6 levels), precheck backward compat, log integration, template render, end-to-end flow
+
+**Why:** This architecture enables per-client per-API policy overrides while remaining fully backward-compatible. Existing templates/clients keep working unchanged. Access Profiles sit above transport layer (APIM templates) and above enforcement layer (precheck/log) — cleanly layered authorization.
+
+**Files:** Archived decisions:
+- `.squad/decisions/archive/mcnulty-aaa-per-client-arch.md` — Full 387-line architecture spec
+- `.squad/decisions/archive/mcnulty-aaa-pre-post-endpoint-contracts.md` — Full 522-line endpoint contracts addendum
+
+### 2026-05-21T14:16:20Z: User directive — AAA pre/post endpoint integration scope (CAPTURED)
+**By:** Zack Way (via Copilot)  
+**Status:** Captured (merged into approved architecture)  
+**What:** The new AAA per-client access-profile layer MUST integrate into the pre/post (precheck + log) endpoints. The endpoints must accept the API/operation context, resolve via Access Profiles (most-specific-wins cascade), and use the resolved Plan/Routing for enforcement and accounting — not just the legacy global ClientPlanAssignment.  
+**Why:** Architecture scope confirmation — captured for team memory.
+
+### 2026-05-21T18:35:00Z: React effect callback stabilization — /apis render-loop guardrail
+**By:** Kima (UI Developer)  
+**Status:** Implemented  
+**What:** Fix infinite render loop in `Apis.tsx` by eliminating circular dependency in `loadInitialData` useCallback. The callback depended on `operationsByApi` AND reset it to a fresh object, causing the callback identity to change after every fetch and re-trigger the mount effect indefinitely.  
+**Solution:** Stabilize the callback by removing the circular dependency and reading the latest operations map via a ref (mutable reference that doesn't trigger re-runs). This maintains all original fetch and update behavior while preventing re-trigger loops.  
+**Why:** This pattern is common in pages that cache child collections and refresh them on demand. Callbacks invoked by mount or refresh effects must depend only on stable values. When they need the latest map/array state for reconciliation, read it through a ref or derive stable IDs first.  
+**Files Modified:** `src/aipolicyengine-ui/src/pages/Apis.tsx`  
+**Validation:** `npm run build` ✅, `npm run lint` ✅  
+**Skill:** Kima wrote `.squad/skills/react-render-loop-debugging/SKILL.md` for future reference.  
+**Cross-Agent Note:** Bunk flagged for render-loop guard test coverage in Apis.tsx (e.g., assertion that fetch is called ≤ N times during mount/load).
+
+### 2026-05-21T17:43:57Z: APIM ResourceId env binding convention
+**By:** Freamon (Backend Dev)  
+**Status:** Accepted  
+**What:** Use the standard ASP.NET Core environment-variable convention for nested configuration keys: `Apim__ResourceId` (double underscore) instead of `APIM_RESOURCE_ID`. `ApimManagementOptions` binds from the `Apim` configuration section, expecting the APIM resource ID at config key `Apim:ResourceId`.  
+**Why:** 
+- Matches the default `EnvironmentVariablesConfigurationProvider` behavior (no custom alias handling needed).
+- Keeps the application code strict and idiomatic.
+- Prevents silent runtime misbinding when infrastructure sets nested config values.
+**Impact:** All future Terraform and deployment wiring for APIM management must use `Apim__ResourceId` when populating `Apim:ResourceId`.  
+**Audit Result:** Scanned all 200+ env vars in application configuration; no other single-underscore ASP.NET Core nested-config mismatches found.
 
 ### 2026-04-17T15:52:16Z: User directive — Agent365 SDK integration
 **By:** Zack Way (via Copilot)  
@@ -130,6 +244,87 @@ infra:
 **Why:** azd's Terraform provider requires this file alongside `main.tf` to map azd environment variables to Terraform input variables. Without it, azd cannot initialize the Terraform module.  
 **Impact:** `azd provision` now correctly reads Terraform variables from the template. File is intentionally uncommitted per Zack's directive to validate infra fixes before committing.  
 **Validation:** Ran `azd provision --preview` — "file not found" error resolved; Terraform plan succeeds.
+
+### 2026-05-14T15:54:01Z: Redirect URI Registration in Postprovision Hook
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** The postprovision hook (scripts/postprovision.ps1 and scripts/postprovision.sh) must register redirect URIs on the Terraform-managed API app (api_app_id), query the actual Container App FQDN from Azure (not Terraform state), and be idempotent by not duplicating URIs.  
+**Why:** Fixes AADSTS500113 error when logging into dashboard. UI was configured to use Terraform-managed app, but postprovision was setting URIs on legacy app. Pattern queries live Azure resources, handles SPA flow correctly, and remains idempotent across re-runs.  
+**Implementation:** PowerShell pattern uses Graph API (GET spa, PATCH spa.redirectUris); Bash equivalent provided. Registers Container App FQDN as SPA redirect URI (MSAL.js SPA flow requirement).  
+**Impact:** Dashboard login now works. Redirect URI verified on correct app (d5bd33f4-09b1-4602-af88-29c5ec7728e0).
+
+### 2026-05-14T15:54:02Z: UI-to-API URL Wiring: Same-Origin Pattern for Container Apps
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** For React SPAs served FROM the same Container App as their API, use relative URLs by setting VITE_API_URL= (empty string) in the preprovision script. This works because the UI is built into the API's wwwroot folder, and both are served from the same FQDN.  
+**Why:** Eliminates hardcoded URLs (which go stale when Container App FQDN changes), avoids CORS issues, removes timing problems with Container App FQDN not being known until after azd provision.  
+**Implementation:** Updated scripts/preprovision.ps1 and scripts/preprovision.sh to write VITE_API_URL= (empty string). UI's api.ts reads: const API_BASE = import.meta.env.VITE_API_URL || ""; (defaults to empty, uses relative URLs).  
+**Trade-off:** Only works when UI and API are in the SAME Container App. If separate CAs, use runtime environment variable injection or postprovision script to query API CA FQDN and rewrite config.  
+**Impact:** Dashboard now makes relative API calls to same origin. Timeout issues resolved. No stale URL references.
+
+### 2026-05-15T16:45:18Z: Postprovision Scripts Must Use Terraform Output Variable Names
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** Postprovision scripts that read Terraform outputs via `azd env get-values` must use Terraform's exact output variable names (snake_case like `resource_group_name`, `cosmos_endpoint`), NOT azd's built-in environment variable names (SCREAMING_CASE like `AZURE_RESOURCE_GROUP`, `COSMOS_ENDPOINT`).  
+**Why:** On a fresh `azd up`, Terraform writes its outputs to the azd environment using the exact names defined in `outputs.tf`. If postprovision scripts query different variable names, they silently fail to find the values and skip critical configuration steps (like redirect URI registration). This gotcha doesn't surface on update-style deploys because the azd environment often has BOTH variable naming conventions cached from prior manual runs or legacy scripts.  
+**Implementation:** Updated `scripts/postprovision.ps1` lines 11–12 to use `resource_group_name` and `cosmos_endpoint` instead of the legacy `AZURE_RESOURCE_GROUP` and `COSMOS_ENDPOINT`. Script now correctly resolves resource group and proceeds with Cosmos RBAC assignment and SPA redirect URI registration.  
+**Impact:** Fresh `azd up` now completes end-to-end without manual postprovision fixes. Redirect URI registration and Cosmos RBAC assignment work on first deploy.  
+**Trade-offs:** None — this is a strict bug fix.  
+**Verification:** Tested via fresh `azd up` → `azd hooks run postprovision`: resource group resolved correctly, Cosmos RBAC assigned successfully, redirect URI registered on Terraform-managed API app.
+
+### 2026-05-15T16:52:32Z: Auto-Assign AIPolicy.Admin App Role in Postprovision Hook
+**By:** Sydnor (Infra/DevOps)  
+**Status:** Implemented  
+**What:** Postprovision scripts now auto-assign the deploying user to the `AIPolicy.Admin` app role so the portal is immediately usable after deployment without manual role assignment. Updated `scripts/postprovision.ps1` and `scripts/postprovision.sh` to query the current signed-in user, check if role is already assigned (idempotent), and create the appRoleAssignment via Graph API if needed.  
+**Why:** HTTP 403 errors on routing-policies endpoints after fresh `azd up` — Terraform only assigns app roles to service principals, not human users. Without the role, the deploying user is authenticated but not authorized. Postprovision can access the deploying user via `az ad signed-in-user show`.  
+**How:** (1) Query signed-in user object ID, (2) Query API app service principal and AIPolicy.Admin role ID, (3) Check existing assignments (idempotent), (4) Create appRoleAssignment via `az rest` POST, (5) Emit warning to logout/login for token refresh.  
+**Trade-offs:** Pro: Portal works immediately; idempotent; matches existing patterns. Con: Token refresh required (user must logout/login); only assigns deploying user (teammates need separate assignment or manual assignment).  
+**Key Learning:** App role assignments don't retroactively affect existing tokens — users must obtain fresh token via logout/login or token expiry.  
+**Validation:** Manual role assignment via Graph API succeeded; postprovision scripts updated with idempotent assignment logic; awaiting Zack's logout/login validation.
+
+## 2026-05-16 — Non-AI API Usage Limits Architecture
+**Owner:** McNulty  
+**Status:** paused  
+**Source:** `.squad/decisions/inbox/mcnulty-non-ai-api-limits-architecture.md` (will be archived after merge)
+
+This proposal extended plan management with additive non-AI request limits: flat `NonAiRequestsPerMinute` and `NonAiMonthlyRequestQuota` fields on plan models, `NonAiCurrentPeriodRequests` on client assignments, and dedicated `/api/precheck-rest/{clientAppId}/{tenantId}` plus `/api/log-rest` endpoints for centralized enforcement and accounting. The rationale was to keep non-AI traffic out of the AI precheck hot path while preserving dashboard visibility through the policy engine's Redis/Cosmos usage model.
+
+Implementation is paused per Zack's instruction. The parked XML/template artifacts now live under `.squad/files/non-ai-paused/`, and any future resume should reconcile this earlier endpoint-first design with the accepted APIM Policy Management architecture that now treats non-AI XML as template seed material instead of a standalone rollout.
+
+**Related:** [APIM Policy Management Architecture](#2026-05-16--apim-policy-management-architecture), `.squad/files/non-ai-paused/`, [Non-AI APIM Policy Contract](#2026-05-21--non-ai-apim-policy-contract), [Non-AI API Limits Test Coverage Strategy](#2026-05-21--non-ai-api-limits-test-coverage-strategy)
+
+## 2026-05-16 — APIM Policy Management Architecture
+**Owner:** McNulty  
+**Status:** accepted  
+**Source:** `.squad/decisions/inbox/mcnulty-apim-management-architecture.md` (will be archived after merge)
+
+The session's headline decision is Tier B APIM policy management: admins choose from shipped templates, fill validated parameters, and let the engine render and apply XML through APIM management APIs. Raw XML editing and drift management are deferred. A new APIM assignment document type lives in the existing Cosmos `configuration` container, and the UI/API surface centers on catalog, assignment, apply, and clear flows for APIs and operations.
+
+Runtime control goes through `Azure.ResourceManager.ApiManagement` using the Container App managed identity and a narrow custom APIM policy role, with `APIM_RESOURCE_ID` as the service locator. Existing policy XML files become seed templates under `policies/templates/`; this includes the parked non-AI REST policy when that work resumes. Multi-APIM support and drift detection remain open follow-ons, not launch requirements.
+
+**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), `policies/templates/`, `infra/terraform/modules/gateway/`, `src/AIPolicyEngine.Api/Endpoints/ApimManagementEndpoints.cs`
+
+## 2026-05-21 — Non-AI APIM Policy Contract
+**Owner:** Sydnor  
+**Status:** paused  
+**Source:** `.squad/decisions/inbox/sydnor-non-ai-apim-policy.md` (will be archived after merge)
+
+Sydnor drafted a non-AI REST APIM policy around Entra JWT validation, native APIM `rate-limit-by-key` and `quota-by-key` enforcement, backend routing through `{{NonAiBackendUrl}}`, and fire-and-forget accounting to `/api/log-rest`. The XML also carries a commented `/api/precheck-rest` alternative using APIM managed identity so the team can pivot back to centralized enforcement without redesigning the full contract.
+
+The draft also captured APIM constraints that matter if this path returns: quota windows are fixed 30-day periods rather than billing months, quota values are deployment-time constants, native counters stay in APIM rather than Redis, and quota/rate policies block with different status codes. Because the non-AI work is paused, this draft is now reference material for the parked files and for later templateization under APIM Policy Management.
+
+**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), [APIM Policy Management Architecture](#2026-05-16--apim-policy-management-architecture), `.squad/files/non-ai-paused/`, `.squad/files/non-ai-paused/entra-jwt-rest-policy.xml`
+
+## 2026-05-21 — Non-AI API Limits Test Coverage Strategy
+**Owner:** Bunk  
+**Status:** paused  
+**Source:** `.squad/decisions/inbox/bunk-non-ai-test-plan.md` (will be archived after merge)
+
+Bunk proposed a three-layer test strategy for the non-AI limits feature: endpoint coverage in `src/AIPolicyEngine.Tests/EndpointTests.cs`, deeper integration tests for counter isolation and rollover semantics, and NBomber load coverage for high-throughput non-AI precheck traffic across multiple customers. The plan intentionally mirrors the repository's existing split between endpoint, integration, and load-test suites.
+
+This remains a supporting reference only. It depends on final endpoint/schema decisions, settled `0 = unlimited` and rejected-request semantics, and preferably a clock seam for rollover tests; Bunk's separate implementation work is still pending merge and is not recorded here as landed.
+
+**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), [Non-AI APIM Policy Contract](#2026-05-21--non-ai-apim-policy-contract), `src/AIPolicyEngine.Tests/EndpointTests.cs`, `src/AIPolicyEngine.LoadTest/Program.cs`
 
 ## Governance
 

@@ -19,6 +19,7 @@
     <PackageReference Include="Aspire.Microsoft.Azure.Cosmos" />
     <PackageReference Include="Aspire.StackExchange.Redis" />
     <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Azure.ResourceManager.ApiManagement" />
     <PackageReference Include="Microsoft.Azure.StackExchangeRedis" />
     <PackageReference Include="Microsoft.Agents.AI.Purview" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
@@ -27,6 +28,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AIPolicyEngine.ServiceDefaults\AIPolicyEngine.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\policies\templates\**\*"
+             Link="policies\templates\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
@@ -55,12 +63,7 @@
     <SpaSource Include="$(SpaRoot)src\**\*;$(SpaRoot)public\**\*;$(SpaRoot)index.html" />
   </ItemGroup>
 
-  <Target Name="BuildSpa"
-          Condition="'$(SkipSpaBuild)' != 'true'"
-          DependsOnTargets="EnsureNpmRestored"
-          BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths;PrepareForBuild"
-          Inputs="$(SpaRoot)package.json;$(SpaRoot)package-lock.json;$(SpaRoot)vite.config.ts;$(SpaRoot)tsconfig.json;$(SpaRoot)\.env.production.local;@(SpaSource)"
-          Outputs="$(SpaDist)index.html">
+  <Target Name="BuildSpa" Condition="'$(SkipSpaBuild)' != 'true'" DependsOnTargets="EnsureNpmRestored" BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths;PrepareForBuild" Inputs="$(SpaRoot)package.json;$(SpaRoot)package-lock.json;$(SpaRoot)vite.config.ts;$(SpaRoot)tsconfig.json;$(SpaRoot)\.env.production.local;@(SpaSource)" Outputs="$(SpaDist)index.html">
     <Message Importance="high" Text="Building SPA via 'npm run build' (output: $(SpaDist))..." />
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
     <!--

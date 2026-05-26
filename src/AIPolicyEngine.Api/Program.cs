@@ -1,9 +1,12 @@
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Azure.Identity;
+using Azure.ResourceManager;
 using AIPolicyEngine.Api.Endpoints;
 using AIPolicyEngine.Api.Models;
 using AIPolicyEngine.Api.Services;
+using AIPolicyEngine.Api.Services.AccessProfiles;
+using AIPolicyEngine.Api.Services.ApimManagement;
 using Microsoft.Identity.Web;
 using StackExchange.Redis;
 
@@ -57,6 +60,8 @@ builder.Services.AddSingleton<ChargebackMetrics>();
 builder.Services.AddSingleton<ILogDataService, LogDataService>();
 builder.Services.AddSingleton<IAuditStore, AuditStore>();
 builder.Services.AddSingleton<IDeploymentDiscoveryService, DeploymentDiscoveryService>();
+builder.Services.Configure<ApimManagementOptions>(builder.Configuration.GetSection("Apim"));
+builder.Services.AddSingleton<ArmClient>(_ => new ArmClient(new DefaultAzureCredential()));
 
 // Repository pattern: Cosmos (source of truth) + Redis (cache layer)
 builder.Services.AddSingleton<ConfigurationContainerProvider>();
@@ -65,6 +70,9 @@ builder.Services.AddSingleton<CosmosClientRepository>();
 builder.Services.AddSingleton<CosmosPricingRepository>();
 builder.Services.AddSingleton<CosmosUsagePolicyRepository>();
 builder.Services.AddSingleton<CosmosRoutingPolicyRepository>();
+builder.Services.AddSingleton<CosmosPolicyAssignmentRepository>();
+builder.Services.AddSingleton<IAccessProfileRepository, CosmosAccessProfileRepository>();
+builder.Services.AddSingleton<IAccessProfileResolver, AccessProfileResolver>();
 
 builder.Services.AddSingleton<IRepository<PlanData>>(sp =>
     new CachedRepository<PlanData>(
@@ -106,11 +114,20 @@ builder.Services.AddSingleton<IRepository<ModelRoutingPolicy>>(sp =>
         entity => entity.Id,
         sp.GetRequiredService<ILogger<CachedRepository<ModelRoutingPolicy>>>()));
 
+builder.Services.AddSingleton<IPolicyAssignmentRepository>(sp => sp.GetRequiredService<CosmosPolicyAssignmentRepository>());
+builder.Services.AddSingleton<IApimCatalogService, ApimCatalogService>();
+builder.Services.AddSingleton<ITemplateLibraryService, TemplateLibraryService>();
+builder.Services.AddSingleton<ApimPolicyApplyService>();
+builder.Services.AddSingleton<IApimPolicyApplyService>(sp => sp.GetRequiredService<ApimPolicyApplyService>());
+builder.Services.AddSingleton(Channel.CreateUnbounded<ApimPolicyApplyWorkItem>(
+    new UnboundedChannelOptions { SingleReader = true, SingleWriter = false }));
+
 builder.Services.AddSingleton<IUsagePolicyStore, UsagePolicyStore>();
 
 // Startup services: migration first, then cache warming (sequential, blocks app start)
 builder.Services.AddHostedService<RedisToCosmosMigrationService>();
 builder.Services.AddHostedService<CacheWarmingService>();
+builder.Services.AddHostedService<ApimPolicyApplyBackgroundService>();
 
 // Audit log channel + background writer for batched Cosmos DB writes
 builder.Services.AddSingleton(Channel.CreateUnbounded<AuditLogItem>(
@@ -180,7 +197,9 @@ app.MapPricingEndpoints();
 app.MapUsagePolicyEndpoints();
 app.MapDeploymentEndpoints();
 app.MapRoutingPolicyEndpoints();
+app.MapAccessProfileEndpoints();
 app.MapRequestBillingEndpoints();
+app.MapApimManagementEndpoints();
 
 // SPA client-side routing fallback (anonymous — SPA handles its own auth)
 app.MapFallbackToFile("index.html").AllowAnonymous();

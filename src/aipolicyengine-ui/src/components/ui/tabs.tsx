@@ -74,7 +74,8 @@ interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
   _onTabChange?: (value: string) => void
 }
 
-function TabsContent({ className, value, _activeTab, _onTabChange: _, children, ...props }: TabsContentProps) {
+function TabsContent({ className, value, _activeTab, _onTabChange, children, ...props }: TabsContentProps) {
+  void _onTabChange
   if (_activeTab !== value) return null
   return (
     <div className={cn("mt-2 ring-offset-background focus-visible:outline-none", className)} {...props}>

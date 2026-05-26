@@ -17,6 +17,11 @@ output "apim_gateway_url" {
   value       = module.gateway.apim_gateway_url
 }
 
+output "apim_resource_id" {
+  description = "Resource ID of the API Management instance."
+  value       = module.gateway.apim_resource_id
+}
+
 output "key_vault_name" {
   description = "Name of the Key Vault instance."
   value       = module.compute.key_vault_name
