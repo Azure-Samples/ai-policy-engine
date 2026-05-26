@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, parseErrorMessage } from "../api.ts"
+import { authFetch, parseErrorMessage } from "../api.ts"
 import type {
   ApisResponse,
   ApiOperationsResponse,
@@ -27,7 +27,7 @@ async function buildHttpError(res: Response, fallback: string): Promise<HttpErro
 }
 
 async function requestJson<T>(path: string, fallback: string, options: RequestInit = {}): Promise<T> {
-  const res = await authFetch(`${API_BASE}${path}`, options)
+  const res = await authFetch(path, options)
   if (!res.ok) {
     throw await buildHttpError(res, fallback)
   }
