@@ -307,7 +307,7 @@ public static class PrecheckEndpoints
                 }
             }
         }
-        else if (effectiveUsage >= plan.MonthlyTokenQuota && !plan.AllowOverbilling)
+        else if (plan.MonthlyTokenQuota > 0 && effectiveUsage >= plan.MonthlyTokenQuota && !plan.AllowOverbilling)
         {
             return includeAccessProfileMetadata
                 ? Results.Json(
@@ -359,22 +359,57 @@ public static class PrecheckEndpoints
         long currentRpm = 0;
         long currentTpm = 0;
 
-        if (plan.RequestsPerMinuteLimit > 0)
+        // For non-AI REST calls (apiId present, no deploymentId): use API-scoped RPM key and REST quota.
+        // This ensures each API has its own counter rather than sharing a single tenant-level bucket.
+        var isRestCall = !string.IsNullOrEmpty(apiId) && string.IsNullOrEmpty(effectiveDeployment);
+
+        if (isRestCall && plan.MonthlyRestRequestQuota > 0)
         {
-            var rpmKey = !string.IsNullOrEmpty(effectiveDeployment)
-                ? RedisKeys.RateLimitRpm(clientAppId, tenantId, effectiveDeployment, minuteWindow)
-                : RedisKeys.RateLimitRpm(clientAppId, tenantId, minuteWindow);
+            var apiUsage = newBillingPeriod ? 0 : assignment.ApiUsage.GetValueOrDefault(apiId!, 0);
+            if (apiUsage >= plan.MonthlyRestRequestQuota)
+            {
+                return includeAccessProfileMetadata
+                    ? Results.Json(
+                        new
+                        {
+                            error = "Monthly REST quota exceeded",
+                            usage = apiUsage,
+                            limit = plan.MonthlyRestRequestQuota,
+                            planId = resolvedPlanId,
+                            accessProfileId,
+                            apiId,
+                            operationId,
+                            deniedBy = "rest-quota-exceeded"
+                        },
+                        statusCode: StatusCodes.Status429TooManyRequests)
+                    : Results.Json(
+                        new { error = "Monthly REST quota exceeded", usage = apiUsage, limit = plan.MonthlyRestRequestQuota },
+                        statusCode: StatusCodes.Status429TooManyRequests);
+            }
+        }
+
+        var effectiveRpmLimit = isRestCall && plan.RestRequestsPerMinuteLimit > 0
+            ? plan.RestRequestsPerMinuteLimit
+            : plan.RequestsPerMinuteLimit;
+
+        if (effectiveRpmLimit > 0)
+        {
+            var rpmKey = isRestCall
+                ? RedisKeys.RateLimitRpmApi(clientAppId, tenantId, apiId!, minuteWindow)
+                : !string.IsNullOrEmpty(effectiveDeployment)
+                    ? RedisKeys.RateLimitRpm(clientAppId, tenantId, effectiveDeployment, minuteWindow)
+                    : RedisKeys.RateLimitRpm(clientAppId, tenantId, minuteWindow);
             currentRpm = await db.StringIncrementAsync(rpmKey);
             if (currentRpm == 1)
                 await db.KeyExpireAsync(rpmKey, TimeSpan.FromSeconds(120));
-            if (currentRpm > plan.RequestsPerMinuteLimit)
+            if (currentRpm > effectiveRpmLimit)
             {
                 return includeAccessProfileMetadata
                     ? Results.Json(
                         new
                         {
                             error = "Rate limit exceeded — requests per minute",
-                            limit = plan.RequestsPerMinuteLimit,
+                            limit = effectiveRpmLimit,
                             current = currentRpm,
                             planId = resolvedPlanId,
                             accessProfileId,
@@ -384,7 +419,7 @@ public static class PrecheckEndpoints
                         },
                         statusCode: StatusCodes.Status429TooManyRequests)
                     : Results.Json(
-                        new { error = "Rate limit exceeded — requests per minute", limit = plan.RequestsPerMinuteLimit, current = currentRpm },
+                        new { error = "Rate limit exceeded — requests per minute", limit = effectiveRpmLimit, current = currentRpm },
                         statusCode: StatusCodes.Status429TooManyRequests);
             }
         }

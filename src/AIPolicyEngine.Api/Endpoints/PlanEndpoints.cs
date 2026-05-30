@@ -128,6 +128,8 @@ public static class PlanEndpoints
                 MonthlyRequestQuota = body.MonthlyRequestQuota ?? 0,
                 OverageRatePerRequest = body.OverageRatePerRequest ?? 0,
                 UseMultiplierBilling = body.UseMultiplierBilling ?? false,
+                RestRequestsPerMinuteLimit = body.RestRequestsPerMinuteLimit ?? 0,
+                MonthlyRestRequestQuota = body.MonthlyRestRequestQuota ?? 0,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -180,6 +182,8 @@ public static class PlanEndpoints
             if (body.MonthlyRequestQuota.HasValue) plan.MonthlyRequestQuota = body.MonthlyRequestQuota.Value;
             if (body.OverageRatePerRequest.HasValue) plan.OverageRatePerRequest = body.OverageRatePerRequest.Value;
             if (body.UseMultiplierBilling.HasValue) plan.UseMultiplierBilling = body.UseMultiplierBilling.Value;
+            if (body.RestRequestsPerMinuteLimit.HasValue) plan.RestRequestsPerMinuteLimit = body.RestRequestsPerMinuteLimit.Value;
+            if (body.MonthlyRestRequestQuota.HasValue) plan.MonthlyRestRequestQuota = body.MonthlyRestRequestQuota.Value;
             plan.UpdatedAt = DateTime.UtcNow;
 
             var persisted = await planRepo.UpsertAsync(plan);

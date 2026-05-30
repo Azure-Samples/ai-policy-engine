@@ -1,0 +1,679 @@
+<!--
+  IMPORTANT:
+    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.
+    - Only the <forward-request> policy element can appear within the <backend> section element.
+    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.
+    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.
+    - To add a policy position the cursor at the desired insertion point and click on the round button associated with the policy.
+    - To remove a policy, delete the corresponding policy statement from the policy document.
+    - Policies are applied in the order of their appearance, from the top down.
+  NOTE:
+  - Version 0.1
+  - Define a Named Value called "tenant-backend-map" that contains a JSON object:
+    {
+      "tenantTiger": "az-tiger",
+      "tenantLeo": "az-leo",
+      "tenant123": "aws-oec2",
+      "tenantUnknown": "az-tiger",
+      "halliburton842": "az-tiger",
+      "halliburton888": "az-tiger"
+    }
+  - Ensure APIM Backends with those backend-ids exist.
+  - Commented out cache key generation and cache lookup to disable caching for now. Can re-enable and set up cache later when needed.
+  - If tenantId is missing or unknown, it defaults to "tenantUnknown" which maps to the "az-tiger" backend. This is to allow requests with missing tenantid claim (e.g. from service principals) to still be routed to a default backend instead of being rejected.
+  - Disabled cache responses by commenting out the build cache key section in inbound policy
+  - Requests to /archtigeropenai2/openai and /openai-llm bypass Keycloak JWT validation
+    but ARE validated against Azure AD using validate-azure-ad-token (audience
+    https://cognitiveservices.azure.com/ and tenant {{AzureAdTenantId}}).
+    This confirms the service principal was granted a token scoped to the Foundry resource.
+    Requests are then routed to their respective backends:
+      /archtigeropenai2/openai  → archtigeropenai2-ai-endpoint
+      /openai-llm        → archtigeropenai2llm-ai-endpoint
+  - Ensure a Named Value "AzureAdTenantId" exists and contains your Azure AD tenant ID (GUID).
+-->
+
+<policies>
+    <inbound>
+        <!-- enable CORS for browser connections -->
+        <cors>
+            <allowed-origins>
+                <origin>https://apimtigerai.developer.azure-api.net</origin>
+                <origin>https://feat-da-apim-de-dm-app.tiger.dazlmkengdev02.ienergycloud.solutions</origin>
+            </allowed-origins>
+            <allowed-methods>
+                <method>*</method>
+            </allowed-methods>
+            <allowed-headers>
+                <header>*</header>
+            </allowed-headers>
+            <expose-headers>
+                <header>*</header>
+            </expose-headers>
+        </cors>
+
+        <!-- Set variable to capture request start time -->
+        <set-variable name="requestStartTime" value="@(DateTime.UtcNow.Ticks.ToString())" />
+
+        <!-- Detect Foundry / service-principal path — no Keycloak JWT will be present.
+             Authentication for this path is enforced via validate-azure-ad-token below,
+             checking that the Bearer token targets the Cognitive Services resource.    -->
+        <set-variable name="isFoundryRequest"
+            value='@{
+                string path = context.Request.OriginalUrl.Path;
+                return path.StartsWith("/archTigerOpenAI2/openai", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWith("/openai-llm", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWith("/openai", StringComparison.OrdinalIgnoreCase) && (context.Api.Path ?? "").IndexOf("archTigerOpenAI2", StringComparison.OrdinalIgnoreCase) >= 0;
+            }' />
+
+        <!-- Debug: log path info to APIM trace to verify isFoundryRequest evaluation -->
+        <trace source="foundry-debug" severity="information">
+            @($"isFoundryRequest={context.Variables["isFoundryRequest"]} | OriginalUrl.Path={context.Request.OriginalUrl.Path} | Url.Path={context.Request.Url.Path} | Api.Path={context.Api.Path ?? "null"}")
+        </trace>
+
+        <!-- JWT validation and claim extraction (skipped for the Foundry/service-principal path) -->
+        <choose>
+            <when condition='@(!(bool)context.Variables["isFoundryRequest"])'>
+                <!-- Validate JWT against the specific tenant's openid-config -->
+                <validate-jwt header-name="Authorization"
+                            require-scheme="Bearer"
+                            failed-validation-httpcode="401"
+                            failed-validation-error-message="Unauthorized"
+                            output-token-variable-name="valid-jwt">
+                    <openid-config url='https://dssecurity.tiger.dazlmkengdev02.ienergycloud.solutions/auth/realms/DecisionSpace_Integration_Server/.well-known/openid-configuration' />
+                    <openid-config url='https://dssecurity.dsif.dazlmkleodev01.ienergycloud.solutions/auth/realms/DecisionSpace_Integration_Server/.well-known/openid-configuration' />
+                    <audiences>
+                        <audience>dsis-data</audience>
+                    </audiences>
+                </validate-jwt>
+
+                <!-- clientAppId: use "azp" (authorized party) as the stable client identifier -->
+                <set-variable name="clientAppId"
+                    value='@{
+                        var jwt = (Jwt)context.Variables["valid-jwt"];
+                        if (jwt.Claims.ContainsKey("azp"))
+                        {
+                            var val = string.Join(",", jwt.Claims["azp"]);
+                            if (!string.IsNullOrEmpty(val)) { return val.Split(',')[0]; }
+                        }
+                        if (jwt.Claims.ContainsKey("sub"))
+                        {
+                            var val = string.Join(",", jwt.Claims["sub"]);
+                            if (!string.IsNullOrEmpty(val)) { return val.Split(',')[0]; }
+                        }
+                        return "";
+                    }' />
+
+                <!-- If tenantid is missing from the token, tenantId is set to "tenantUnknown".
+                     The backend map routes "tenantUnknown" to "az-tiger". -->
+
+                <!-- Extract tenantid claim and save to variable -->
+                <set-variable name="tenantId"
+                    value='@{
+                        var jwt = (Jwt)context.Variables["valid-jwt"];
+                        if (jwt.Claims.ContainsKey("tenantid"))
+                        {
+                            var val = string.Join(",", jwt.Claims["tenantid"]);
+                            return !string.IsNullOrEmpty(val) ? val.Split(',')[0] : "tenantUnknown";
+                        }
+                        return "tenantUnknown";
+                    }' />
+
+                <!-- Extract email claim and save to variable -->
+                <set-variable name="userEmail"
+                    value='@{
+                        var jwt = (Jwt)context.Variables["valid-jwt"];
+                        if (jwt.Claims.ContainsKey("email"))
+                        {
+                            var val = string.Join(",", jwt.Claims["email"]);
+                            return !string.IsNullOrEmpty(val) ? val : "default";
+                        }
+                        return "default";
+                    }' />
+            </when>
+            <otherwise>
+                <!-- Foundry / service-principal path: validate that the incoming Bearer token  -->
+                <!-- was issued by Azure AD specifically for the Cognitive Services resource.    -->
+                <!-- This ensures the SP has (or had at token-issuance time) an RBAC role on   -->
+                <!-- the Azure OpenAI / Foundry resource (e.g. Cognitive Services OpenAI User) -->
+                <!-- because Azure AD only issues a cognitiveservices.azure.com audience token  -->
+                <!-- when the SP is permitted to request one for that resource.                 -->
+                <!-- The Azure OpenAI backend will further enforce resource-level RBAC.         -->
+                <validate-azure-ad-token
+                    tenant-id="{{AzureAdTenantId}}"
+                    header-name="Authorization"
+                    failed-validation-httpcode="401"
+                    failed-validation-error-message="Unauthorized: token must target the Azure OpenAI / Foundry resource (audience https://cognitiveservices.azure.com/)"
+                    output-token-variable-name="foundry-jwt">
+                    <audiences>
+                        <audience>https://cognitiveservices.azure.com/</audience>
+                    </audiences>
+                </validate-azure-ad-token>
+
+                <set-variable name="clientAppId" value="drillminer" />
+                <set-variable name="tenantId"    value="tenantTiger" />
+                <set-variable name="userEmail"   value="service-principal" />
+            </otherwise>
+        </choose>
+
+        <!-- Extract deploymentId from the URL path and save to variable, only applicable for AI requests -->
+        <!-- Finds the segment after "deployments" to handle both standard and Foundry paths:       -->
+        <!--   Standard:  /something/deployments/gpt-4o/...  → index after "deployments" = gpt-4o  -->
+        <!--   Foundry:   /archTigerOpenAI2/openai/deployments/gpt-4o/... → same logic             -->
+        <set-variable name="deploymentId"
+            value='@{
+                string[] parts = context.Request.Url.Path.Split('/');
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (string.Equals(parts[i], "deployments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return parts[i + 1];
+                    }
+                }
+                return string.Empty;
+            }' />
+
+        <!-- Obtain a cached Keycloak service-account token for APIM → Chargeback API -->
+        <!-- Runs for ALL requests (including Foundry) so the outbound usage log can authenticate. -->
+        <!-- The token is cached for 4 minutes (Keycloak default lifetime is 5 minutes).           -->
+        <cache-lookup-value key="chargebackApiToken" variable-name="chargebackApiToken" />
+        <choose>
+            <when condition='@(!context.Variables.ContainsKey("chargebackApiToken") || string.IsNullOrEmpty((string)context.Variables["chargebackApiToken"]))'>
+                <send-request mode="new"
+                              response-variable-name="keycloakTokenResp"
+                              timeout="15"
+                              ignore-error="true">
+                    <set-url>{{AIPolicyTokenEndpoint}}</set-url>
+                    <set-method>POST</set-method>
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/x-www-form-urlencoded</value>
+                    </set-header>
+                    <set-body>@($"grant_type=client_credentials&client_id={{AIPolicyApimClientId}}&client_secret={{AIPolicyApimClientSecret}}")</set-body>
+                </send-request>
+                <!-- Guard: fail fast with 503 if token endpoint is unreachable or returns non-200 -->
+                <choose>
+                    <when condition='@(context.Variables["keycloakTokenResp"] == null || ((IResponse)context.Variables["keycloakTokenResp"]).StatusCode != 200)'>
+                        <return-response>
+                            <set-status code="503" reason="Service Unavailable" />
+                            <set-header name="Content-Type" exists-action="override">
+                                <value>application/json</value>
+                            </set-header>
+                            <set-body>{"error":"Could not obtain service token from authorization server"}</set-body>
+                        </return-response>
+                    </when>
+                </choose>
+                <set-variable name="chargebackApiToken"
+                    value='@(((IResponse)context.Variables["keycloakTokenResp"]).Body.As<JObject>()["access_token"].ToString())' />
+                <cache-store-value key="chargebackApiToken"
+                                   value="@((string)context.Variables["chargebackApiToken"])"
+                                   duration="240" />
+            </when>
+        </choose>
+
+        <!-- Alias for template compatibility: Keycloak JWT templates read backend-access-token -->
+        <set-variable name="backend-access-token" value="@((string)context.Variables["chargebackApiToken"])" />
+
+        <!-- Pre-check: verify client plan, quota and rate limits (runs for all requests including Foundry) -->
+        <!-- Foundry requests use clientAppId="drillminer" and tenantId="tenantTiger" (set above) -->
+        <!-- apiId and operationId are included so the policy engine can resolve access profiles      -->
+        <!-- and apply per-API REST limits when deploymentId is empty (non-AI request).              -->
+        <set-variable name="precheckUrl"
+            value='@($"{{AIPolicyApiBaseUrl}}/api/precheck/{(string)context.Variables["clientAppId"]}/{(string)context.Variables["tenantId"]}?deploymentId={(string)context.Variables["deploymentId"]}&apiId={context.Api.Id}&operationId={context.Operation.Id}")' />
+        <set-variable name="precheckStartTime" value="@(DateTime.UtcNow.Ticks.ToString())" />
+        <send-request mode="new"
+                      response-variable-name="precheckResponse"
+                      timeout="10"
+                      ignore-error="true">
+            <set-url>@((string)context.Variables["precheckUrl"])</set-url>
+            <set-method>GET</set-method>
+            <set-header name="Authorization" exists-action="override">
+                <value>@("Bearer " + (string)context.Variables["chargebackApiToken"])</value>
+            </set-header>
+        </send-request>
+
+        <emit-metric name="chargebackApiResponseTimeMs"
+                    value='@((double)((DateTime.UtcNow.Ticks - long.Parse((string)context.Variables["precheckStartTime"])) / 10000.0))'
+                    namespace="apim-metrics">
+            <dimension name="API ID" />
+            <dimension name="Operation ID" />
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+            <dimension name="operation" value="precheck" />
+            <dimension name="statusCode" value="@(context.Variables.ContainsKey("precheckResponse") ? ((IResponse)context.Variables["precheckResponse"]).StatusCode.ToString() : "0")" />
+        </emit-metric>
+
+        <!-- Gate on precheck result -->
+        <choose>
+            <when condition='@(context.Variables["precheckResponse"] == null || ((IResponse)context.Variables["precheckResponse"]).StatusCode == 401)'>
+                <return-response>
+                    <set-status code="401" reason="Unauthorized" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        var resp = context.Variables["precheckResponse"] as IResponse;
+                        return resp != null
+                            ? resp.Body.As<string>()
+                            : "{\"error\":\"Pre-check failed — could not reach authorization service\"}";
+                    }</set-body>
+                </return-response>
+            </when>
+            <when condition='@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 429)'>
+                <return-response>
+                    <set-status code="429" reason="Too Many Requests" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+                </return-response>
+            </when>
+            <when condition='@(((IResponse)context.Variables["precheckResponse"]).StatusCode != 200)'>
+                <return-response>
+                    <set-status code="500" reason="Internal Server Error" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>{"error":"Pre-authorization check failed"}</set-body>
+                </return-response>
+            </when>
+        </choose>
+
+        <!-- Custom metrics -->
+        <emit-metric name="requestCount" value="1" namespace="apim-metrics"> 
+            <dimension name="API ID" /> 
+            <dimension name="Operation ID" /> 
+            <dimension name="Product ID" /> 
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+            <dimension name="userEmail" value="@((string)context.Variables["userEmail"])" />
+        </emit-metric>
+        <emit-metric name="requestSize" value='@((double)(context.Request.Body.As<string>(preserveContent: true)?.Length ?? 0))' namespace="apim-metrics">
+            <dimension name="API ID" />
+            <dimension name="Operation ID" />
+            <dimension name="Product ID" />
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+            <dimension name="userEmail" value="@((string)context.Variables["userEmail"])" />
+        </emit-metric>
+
+        <!-- Build cache key for GET and POST requests (tenant-scoped, body-hashed for POST) -->
+        <!-- Commented out cache key generation and cache lookup to disable caching for now. Can re-enable and set up cache later when needed. -->
+        <!--
+        <choose>
+            <when condition='@(context.Request.Method == "GET" || context.Request.Method == "POST")'>
+                <set-variable name="cacheKey" value='@{
+                    string tenant    = (string)context.Variables["tenantId"];
+                    string operation = context.Operation.Id;
+                    string path      = context.Request.OriginalUrl.Path + context.Request.OriginalUrl.QueryString;
+                    string bodyPart  = "";
+                    if (context.Request.Method == "POST")
+                    {
+                        string body = context.Request.Body.As<string>(preserveContent: true) ?? "";
+                        using (var md5 = System.Security.Cryptography.MD5.Create())
+                        {
+                            var hashBytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(body));
+                            bodyPart = "|" + Convert.ToBase64String(hashBytes);
+                        }
+                    }
+                    return $"{tenant}|{operation}|{path}{bodyPart}";
+                }' />
+                <set-variable name="bypassCache" value="@(context.Request.Headers.GetValueOrDefault("X-Cache-Bypass", "") == "true")" />
+                <choose>
+                    <when condition='@(!(bool)context.Variables["bypassCache"])'>
+                        <cache-lookup-value key='@((string)context.Variables["cacheKey"])' variable-name="cachedResponseBody" caching-type="external" />
+                    </when>
+                </choose>
+                <trace source="cache-debug" severity="information">
+                    @{ return $"CACHE LOOKUP key={context.Variables["cacheKey"]} bypass={(bool)context.Variables["bypassCache"]} hit={context.Variables.ContainsKey("cachedResponseBody") && context.Variables["cachedResponseBody"] != null}"; }
+                </trace>
+                <choose>
+                    <when condition='@(context.Variables.ContainsKey("cachedResponseBody") && context.Variables["cachedResponseBody"] != null)'>
+                        <set-variable name="isCacheHit" value="@(true)" />
+                        <set-variable name="responseTimeMs" value='@(
+                            context.Variables.ContainsKey("requestStartTime")
+                            ? (double)((DateTime.UtcNow.Ticks - long.Parse((string)context.Variables["requestStartTime"])) / 10000.0)
+                            : 0.0
+                        )' />
+                        <emit-metric name="requestCacheCount" value="1" namespace="apim-metrics">
+                            <dimension name="API ID" />
+                            <dimension name="Operation ID" />
+                            <dimension name="Product ID" />
+                            <dimension name="tenantId" value="@((string)context.Variables[&quot;tenantId&quot;])" />
+                            <dimension name="userEmail" value="@((string)context.Variables[&quot;userEmail&quot;])" />
+                            <dimension name="clientAppId" value="@((string)context.Variables[&quot;clientAppId&quot;])" />
+                        </emit-metric>
+                        <emit-metric name="ResponseTimeMs" value='@((double)context.Variables["responseTimeMs"])' namespace="apim-metrics">
+                            <dimension name="API ID" />
+                            <dimension name="Operation ID" />
+                            <dimension name="Product ID" />
+                            <dimension name="tenantId" value="@((string)context.Variables[&quot;tenantId&quot;])" />
+                            <dimension name="userEmail" value="@((string)context.Variables[&quot;userEmail&quot;])" />
+                            <dimension name="clientAppId" value="@((string)context.Variables[&quot;clientAppId&quot;])" />
+                            <dimension name="statusCode" value="200" />
+                            <dimension name="cacheHit" value="true" />
+                        </emit-metric>
+                        <emit-metric name="responseSize" value='@((double)(((string)context.Variables["cachedResponseBody"])?.Length ?? 0))' namespace="apim-metrics">
+                            <dimension name="API ID" />
+                            <dimension name="Operation ID" />
+                            <dimension name="Product ID" />
+                            <dimension name="tenantId" value="@((string)context.Variables[&quot;tenantId&quot;])" />
+                            <dimension name="userEmail" value="@((string)context.Variables[&quot;userEmail&quot;])" />
+                            <dimension name="clientAppId" value="@((string)context.Variables[&quot;clientAppId&quot;])" />
+                            <dimension name="statusCode" value="200" />
+                        </emit-metric>
+                        <trace source="response-trace" severity="information">
+                            @{
+                                return new JObject(
+                                    new JProperty("event", "response-sent"),
+                                    new JProperty("cacheHit", true),
+                                    new JProperty("tenantId", (string)context.Variables["tenantId"]),
+                                    new JProperty("userEmail", (string)context.Variables["userEmail"]),
+                                    new JProperty("apiId", context.Api.Id),
+                                    new JProperty("operationId", context.Operation.Id),
+                                    new JProperty("productId", context.Product?.Id ?? "none"),
+                                    new JProperty("clientAppId", (string)context.Variables["clientAppId"]),
+                                    new JProperty("responseTimeMs", (double)context.Variables["responseTimeMs"]),
+                                    new JProperty("statusCode", 200),
+                                    new JProperty("timestamp", DateTime.UtcNow.ToString("o"))
+                                ).ToString();
+                            }
+                        </trace>
+                        <return-response>
+                            <set-status code="200" reason="OK" />
+                            <set-header name="Content-Type" exists-action="override">
+                                <value>application/json</value>
+                            </set-header>
+                            <set-header name="X-Cache" exists-action="override">
+                                <value>HIT</value>
+                            </set-header>
+                            <set-header name="X-Cache-Key" exists-action="override">
+                                <value>@((string)context.Variables["cacheKey"])</value>
+                            </set-header>
+                            <set-body>@((string)context.Variables["cachedResponseBody"])</set-body>
+                        </return-response>
+                    </when>
+                </choose>
+            </when>
+        </choose>
+        -->
+
+        <!-- Lookup backendId using a Named Value containing JSON -->
+        <set-variable name="tenantBackendMapJson" value="{{tenant-backend-map}}" />
+        
+        <set-variable name="targetBackendId" value='@{
+            var map = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["tenantBackendMapJson"]);
+            string tenant = (string)context.Variables["tenantId"];
+
+            if (!string.IsNullOrEmpty(tenant) && map.ContainsKey(tenant))
+            {
+                return (string)map[tenant];
+            }
+            // tenant not found in map — reject request
+            return "";
+        }' />
+
+        <!-- Route to backend or reject -->
+        <choose>
+            <when condition='@(context.Request.OriginalUrl.Path.StartsWith("/archtigeropenai2/openai", StringComparison.OrdinalIgnoreCase))'>
+                <!-- Foundry / service-principal path: route directly to the archtigeropenai2 backend -->
+                <set-backend-service backend-id="archtigeropenai2-ai-endpoint" />
+                <!-- Strip /archTigerOpenAI2/openai prefix; backend already includes /openai in its base URL -->
+                <rewrite-uri template='@{
+                    string path = context.Request.OriginalUrl.Path;
+                    int idx = path.IndexOf("/openai", StringComparison.OrdinalIgnoreCase);
+                    return idx >= 0 ? path.Substring(idx + "/openai".Length) : "/";
+                }' copy-unmatched-params="true" />
+            </when>
+            <when condition='@(context.Request.OriginalUrl.Path.StartsWith("/openai-llm", StringComparison.OrdinalIgnoreCase))'>
+                <!-- Foundry / service-principal path: route to the archtigeropenai2llm backend -->
+                <set-backend-service backend-id="archtigeropenai2llm-ai-endpoint" />
+                <!-- Strip /openai-llm prefix; backend already includes /openai in its base URL -->
+                <rewrite-uri template='@{
+                    string path = context.Request.OriginalUrl.Path;
+                    int idx = path.IndexOf("/openai", StringComparison.OrdinalIgnoreCase);
+                    return idx >= 0 ? path.Substring(idx + "/openai".Length) : "/";
+                }' copy-unmatched-params="true" />
+            </when>
+            <when condition='@(!string.IsNullOrEmpty((string)context.Variables["targetBackendId"]))'>
+                <set-backend-service backend-id='@((string)context.Variables["targetBackendId"])' />
+                <!-- Rewrite the uri based on the backend + API URL suffix (https://tiger.dazlmkengdev02.ienergycloud.solutions/services/microservice-holesection) -->
+                <rewrite-uri template="@{ return context.Request.OriginalUrl.Path; }" copy-unmatched-params="true" />
+            </when>
+        <otherwise>
+            <return-response>
+            <set-status code="403" reason="Unknown tenant" />
+            <set-header name="Content-Type" exists-action="override">
+                <value>application/json</value>
+            </set-header>
+            <set-body>{"error":"Unknown tenant"}</set-body>
+            </return-response>
+        </otherwise>
+        </choose>
+
+    </inbound>
+
+    <backend>
+        <forward-request />
+    </backend>
+
+    <outbound>
+        <set-variable name="logStartTime" value="@(DateTime.UtcNow.Ticks.ToString())" />
+
+        <!-- Extract token usage from the LLM response body into variables.            -->
+        <!-- Non-AI requests (empty deploymentId) get zero counts and empty model.     -->
+        <!-- These variables are used by both the Chargeback API log and emit-metrics. -->
+        <set-variable name="aiModel" value='@{
+            string deploymentId = (string)context.Variables["deploymentId"];
+            if (string.IsNullOrEmpty(deploymentId)) { return ""; }
+            try {
+                var resp = JObject.Parse(context.Response.Body.As<string>(preserveContent: true) ?? "{}");
+                return resp["model"]?.ToString() ?? "";
+            } catch { return ""; }
+        }' />
+        <set-variable name="promptTokens" value='@{
+            string deploymentId = (string)context.Variables["deploymentId"];
+            if (string.IsNullOrEmpty(deploymentId)) { return 0; }
+            try {
+                var resp = JObject.Parse(context.Response.Body.As<string>(preserveContent: true) ?? "{}");
+                return (int)(resp["usage"]?["prompt_tokens"] ?? 0);
+            } catch { return 0; }
+        }' />
+        <set-variable name="completionTokens" value='@{
+            string deploymentId = (string)context.Variables["deploymentId"];
+            if (string.IsNullOrEmpty(deploymentId)) { return 0; }
+            try {
+                var resp = JObject.Parse(context.Response.Body.As<string>(preserveContent: true) ?? "{}");
+                return (int)(resp["usage"]?["completion_tokens"] ?? 0);
+            } catch { return 0; }
+        }' />
+        <set-variable name="totalTokens" value='@{
+            string deploymentId = (string)context.Variables["deploymentId"];
+            if (string.IsNullOrEmpty(deploymentId)) { return 0; }
+            try {
+                var resp = JObject.Parse(context.Response.Body.As<string>(preserveContent: true) ?? "{}");
+                return (int)(resp["usage"]?["total_tokens"] ?? 0);
+            } catch { return 0; }
+        }' />
+
+        <!-- Fire-and-forget usage log — route to /api/log for AI requests, /api/log-rest for non-AI -->
+        <choose>
+            <when condition='@(!string.IsNullOrEmpty((string)context.Variables["deploymentId"]))'>
+                <!-- AI request: send token usage to /api/log -->
+                <send-request mode="new"
+                              response-variable-name="logResponse"
+                              timeout="3"
+                              ignore-error="true">
+                    <set-url>@($"{{AIPolicyApiBaseUrl}}/api/log")</set-url>
+                    <set-method>POST</set-method>
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-header name="Authorization" exists-action="override">
+                        <value>@("Bearer " + (string)context.Variables["chargebackApiToken"])</value>
+                    </set-header>
+                    <set-body>@{
+                        return new JObject(
+                            new JProperty("clientAppId",  (string)context.Variables["clientAppId"]),
+                            new JProperty("tenantId",     (string)context.Variables["tenantId"]),
+                            new JProperty("deploymentId", (string)context.Variables["deploymentId"]),
+                            new JProperty("responseBody", new JObject(
+                                new JProperty("model", (string)context.Variables["aiModel"]),
+                                new JProperty("usage", new JObject(
+                                    new JProperty("prompt_tokens",     (int)context.Variables["promptTokens"]),
+                                    new JProperty("completion_tokens", (int)context.Variables["completionTokens"]),
+                                    new JProperty("total_tokens",      (int)context.Variables["totalTokens"])
+                                ))
+                            ))
+                        ).ToString();
+                    }</set-body>
+                </send-request>
+            </when>
+            <otherwise>
+                <!-- Non-AI request: send request metadata to /api/log-rest -->
+                <send-request mode="new"
+                              response-variable-name="logResponse"
+                              timeout="3"
+                              ignore-error="true">
+                    <set-url>@($"{{AIPolicyApiBaseUrl}}/api/log-rest")</set-url>
+                    <set-method>POST</set-method>
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-header name="Authorization" exists-action="override">
+                        <value>@("Bearer " + (string)context.Variables["chargebackApiToken"])</value>
+                    </set-header>
+                    <set-body>@{
+                        var payload = new JObject();
+                        payload.Add(new JProperty("tenantId",     (string)context.Variables["tenantId"]));
+                        payload.Add(new JProperty("clientAppId",  (string)context.Variables["clientAppId"]));
+                        payload.Add(new JProperty("customerKey",  (string)context.Variables["clientAppId"] + ":" + (string)context.Variables["tenantId"]));
+                        payload.Add(new JProperty("apiId",        context.Api.Id));
+                        payload.Add(new JProperty("operationId",  context.Operation.Id));
+                        payload.Add(new JProperty("requestPath",  context.Request.OriginalUrl.Path));
+                        payload.Add(new JProperty("statusCode",   context.Response.StatusCode));
+                        payload.Add(new JProperty("latencyMs",    (long)((DateTime.UtcNow.Ticks - long.Parse((string)context.Variables["requestStartTime"])) / 10000)));
+                        payload.Add(new JProperty("correlationId", context.RequestId.ToString()));
+                        return payload.ToString();
+                    }</set-body>
+                </send-request>
+            </otherwise>
+        </choose>
+
+        <emit-metric name="chargebackApiResponseTimeMs"
+                    value='@((double)((DateTime.UtcNow.Ticks - long.Parse((string)context.Variables["logStartTime"])) / 10000.0))'
+                    namespace="apim-metrics">
+            <dimension name="API ID" />
+            <dimension name="Operation ID" />
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+            <dimension name="operation" value="log" />
+            <dimension name="statusCode" value="@(context.Variables.ContainsKey("logResponse") ? ((IResponse)context.Variables["logResponse"]).StatusCode.ToString() : "0")" />
+        </emit-metric>
+
+        <!-- LLM token usage metrics (zero for non-AI requests) -->
+        <choose>
+            <when condition='@(!string.IsNullOrEmpty((string)context.Variables["deploymentId"]))'>
+                <emit-metric name="llmPromptTokens" value='@((double)(int)context.Variables["promptTokens"])' namespace="apim-metrics">
+                    <dimension name="API ID" />
+                    <dimension name="Operation ID" />
+                    <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+                    <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+                    <dimension name="deploymentId" value="@((string)context.Variables["deploymentId"])" />
+                    <dimension name="model" value="@((string)context.Variables["aiModel"])" />
+                </emit-metric>
+                <emit-metric name="llmCompletionTokens" value='@((double)(int)context.Variables["completionTokens"])' namespace="apim-metrics">
+                    <dimension name="API ID" />
+                    <dimension name="Operation ID" />
+                    <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+                    <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+                    <dimension name="deploymentId" value="@((string)context.Variables["deploymentId"])" />
+                    <dimension name="model" value="@((string)context.Variables["aiModel"])" />
+                </emit-metric>
+                <emit-metric name="llmTotalTokens" value='@((double)(int)context.Variables["totalTokens"])' namespace="apim-metrics">
+                    <dimension name="API ID" />
+                    <dimension name="Operation ID" />
+                    <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+                    <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+                    <dimension name="deploymentId" value="@((string)context.Variables["deploymentId"])" />
+                    <dimension name="model" value="@((string)context.Variables["aiModel"])" />
+                </emit-metric>
+            </when>
+        </choose>
+
+        <!-- Custom metrics -->
+        <set-variable name="responseTimeMs" value='@(
+            context.Variables.ContainsKey("requestStartTime") 
+            ? (double)((DateTime.UtcNow.Ticks - long.Parse((string)context.Variables["requestStartTime"])) / 10000.0) 
+            : 0.0
+        )' />
+        <emit-metric name="ResponseTimeMs" value='@( (double)context.Variables["responseTimeMs"])' namespace="apim-metrics"> 
+            <dimension name="API ID" /> 
+            <dimension name="Operation ID" /> 
+            <dimension name="Product ID" /> 
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" /> 
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" /> 
+            <dimension name="userEmail" value="@((string)context.Variables["userEmail"])" /> 
+            <dimension name="statusCode" value="@(((int)context.Response.StatusCode).ToString())" />
+            <dimension name="cacheHit" value="@(context.Variables.ContainsKey("isCacheHit") && (bool)context.Variables["isCacheHit"] ? "true" : "false")" />
+        </emit-metric>
+        <choose>
+            <when condition="@(context.Response.StatusCode >= 400)">
+                <emit-metric name="errorCount" value="1" namespace="apim-metrics">
+                <dimension name="API ID" />
+                <dimension name="Operation ID" />
+                <dimension name="Product ID" />
+                <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+                <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+                <dimension name="userEmail" value="@((string)context.Variables["userEmail"])" />
+                <dimension name="statusCode" value="@(((int)context.Response.StatusCode).ToString())" />
+                </emit-metric>
+            </when>
+        </choose>
+        <emit-metric name="responseSize" value='@((double)(context.Response.Body.As<string>(preserveContent: true)?.Length ?? 0))' namespace="apim-metrics">
+            <dimension name="API ID" />
+            <dimension name="Operation ID" />
+            <dimension name="Product ID" />
+            <dimension name="tenantId" value="@((string)context.Variables["tenantId"])" />
+            <dimension name="clientAppId" value="@((string)context.Variables["clientAppId"])" />
+            <dimension name="userEmail" value="@((string)context.Variables["userEmail"])" />
+            <dimension name="statusCode" value="@(((int)context.Response.StatusCode).ToString())" />
+        </emit-metric>
+        <!-- Return cache key in response header for debugging -->
+        <choose>
+            <when condition='@(context.Variables.ContainsKey("cacheKey"))'>
+                <set-header name="X-Cache-Key" exists-action="override">
+                    <value>@((string)context.Variables["cacheKey"])</value>
+                </set-header>
+            </when>
+        </choose>
+        <!-- Store successful GET/POST responses in external cache (skip if this response was itself a cache hit) -->
+        <choose>
+            <when condition='@(
+                (context.Request.Method == "GET" || context.Request.Method == "POST")
+                && context.Response.StatusCode == 200
+                && context.Variables.ContainsKey("cacheKey")
+                && !(context.Variables.ContainsKey("isCacheHit") && (bool)context.Variables["isCacheHit"]))'>
+                <cache-store-value key='@((string)context.Variables["cacheKey"])' value='@(context.Response.Body.As<string>(preserveContent: true))' duration="300" caching-type="external" />
+                <trace source="cache-debug" severity="information">
+                    @{ return $"CACHE STORE key={context.Variables["cacheKey"]}"; }
+                </trace>
+            </when>
+        </choose>
+        <trace source="response-trace" severity="information">
+            @{
+                return new JObject(
+                    new JProperty("event", "response-sent"),
+                    new JProperty("tenantId", (string)context.Variables["tenantId"]),
+                    new JProperty("clientAppId", (string)context.Variables["clientAppId"]),
+                    new JProperty("userEmail", (string)context.Variables["userEmail"]),
+                    new JProperty("apiId", (string)context.Api.Id),
+                    new JProperty("operationId", (string)context.Operation.Id),
+                    new JProperty("productId", context.Product?.Id ?? "none"),
+                    new JProperty("responseTimeMs", (double)context.Variables["responseTimeMs"]),
+                    new JProperty("statusCode", context.Response.StatusCode),
+                    new JProperty("timestamp", DateTime.UtcNow.ToString("o"))
+                ).ToString();
+            }
+        </trace>
+    </outbound>
+    <on-error />
+</policies>

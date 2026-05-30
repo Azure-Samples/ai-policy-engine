@@ -12,15 +12,15 @@ namespace AIPolicyEngine.Tests.ApimManagement;
 public sealed class TemplateLibraryTests
 {
     [Fact]
-    public async Task ListTemplatesAsync_LoadsAllFiveShippedTemplates()
+    public async Task ListTemplatesAsync_LoadsAllShippedTemplates()
     {
         using var root = TemplateRoot.ForRepositoryTemplates();
 
         var templates = await root.Service.ListTemplatesAsync();
 
-        Assert.Equal(5, templates.Count);
+        Assert.Equal(8, templates.Count);
         Assert.Equal(
-            ["entra-jwt-ai", "entra-jwt-ai-dlp", "entra-jwt-rest", "subscription-key-ai", "subscription-key-ai-dlp"],
+            ["entra-jwt-ai", "entra-jwt-ai-dlp", "entra-jwt-rest", "keycloak-jwt-ai", "keycloak-jwt-ai-dlp", "keycloak-jwt-rest", "subscription-key-ai", "subscription-key-ai-dlp"],
             templates.Select(template => template.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray());
     }
 
@@ -57,7 +57,7 @@ public sealed class TemplateLibraryTests
 
         var templates = await root.Service.ListTemplatesAsync();
 
-        Assert.Equal(5, templates.Count);
+        Assert.Equal(8, templates.Count);
     }
 
     [Fact]

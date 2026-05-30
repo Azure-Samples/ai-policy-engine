@@ -24,4 +24,10 @@ public sealed class PlanUpdateRequest
 
     /// <summary>If true, billing uses per-request multipliers.</summary>
     public bool? UseMultiplierBilling { get; set; }
+
+    /// <summary>Max requests per minute for non-AI REST APIs (0 = fall back to RequestsPerMinuteLimit).</summary>
+    public int? RestRequestsPerMinuteLimit { get; set; }
+
+    /// <summary>Monthly REST request quota (0 = unlimited).</summary>
+    public long? MonthlyRestRequestQuota { get; set; }
 }

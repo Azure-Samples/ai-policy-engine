@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useMsal } from "@azure/msal-react"
+import { useSafeMsal } from "../hooks/useSafeMsal"
+import { useAdminRoleClaims } from "../hooks/useAdminRoleClaims"
 import { AlertTriangle, Network, RefreshCcw } from "lucide-react"
 import { ApiTree } from "../components/apis/ApiTree"
 import { AssignTemplateForm } from "../components/apis/AssignTemplateForm"
@@ -160,7 +161,8 @@ function deriveEnvironmentDefaults(): Record<string, string> {
 }
 
 export function Apis() {
-  const { accounts } = useMsal()
+  const { accounts } = useSafeMsal()
+  const adminRoleClaims = useAdminRoleClaims()
   const [templates, setTemplates] = useState<ApimTemplateSummary[]>([])
   const [plans, setPlans] = useState<PlanData[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
@@ -178,12 +180,6 @@ export function Apis() {
   const [assignFormOpen, setAssignFormOpen] = useState(false)
   const [submittingAssignment, setSubmittingAssignment] = useState(false)
   const [clearingAssignment, setClearingAssignment] = useState(false)
-
-  const adminRoleClaims = useMemo(() => {
-    const firstAccount = accounts[0]
-    const roles = firstAccount?.idTokenClaims?.roles
-    return Array.isArray(roles) ? roles : []
-  }, [accounts])
 
   const lacksExplicitAdminRole = adminRoleClaims.length > 0 && !adminRoleClaims.includes("AIPolicy.Admin")
   const {

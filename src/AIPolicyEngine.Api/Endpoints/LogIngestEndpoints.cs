@@ -32,6 +32,15 @@ public static class LogIngestEndpoints
             .Produces(StatusCodes.Status429TooManyRequests)
             .Produces(StatusCodes.Status500InternalServerError);
 
+        group.MapPost("/log-rest", IngestRestLog)
+            .WithName("IngestRestLog")
+            .WithDescription("Receives log data from the non-AI REST APIM outbound policy — increments per-API usage counters")
+            .RequireAuthorization("ApimPolicy")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status500InternalServerError);
+
         return group;
     }
 
@@ -326,6 +335,83 @@ public static class LogIngestEndpoints
         }
     }
 
+    private static async Task<IResult> IngestRestLog(
+        HttpRequest request,
+        IConnectionMultiplexer redis,
+        IRepository<ClientPlanAssignment> clientRepo,
+        IUsagePolicyStore usagePolicyStore,
+        ILogger<LogIngestRequest> logger)
+    {
+        RestLogIngestRequest? ingestRequest;
+        try
+        {
+            ingestRequest = await request.ReadFromJsonAsync<RestLogIngestRequest>(JsonConfig.Default);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Invalid REST log request body");
+            return Results.BadRequest("Invalid request body");
+        }
+
+        if (ingestRequest is null)
+            return Results.BadRequest("Empty request body");
+
+        if (string.IsNullOrWhiteSpace(ingestRequest.TenantId) ||
+            string.IsNullOrWhiteSpace(ingestRequest.ClientAppId) ||
+            string.IsNullOrWhiteSpace(ingestRequest.ApiId))
+        {
+            return Results.BadRequest("Missing required fields (tenantId, clientAppId, apiId)");
+        }
+
+        try
+        {
+            var db = redis.GetDatabase();
+            var usagePolicy = await usagePolicyStore.GetAsync();
+            var lockToken = (RedisValue)Guid.NewGuid().ToString("N");
+
+            if (!await TryAcquireClientUpdateLock(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger))
+            {
+                return Results.Json(
+                    new { error = "Client usage update is busy, retry request" },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            try
+            {
+                var clientId = $"{ingestRequest.ClientAppId}:{ingestRequest.TenantId}";
+                var assignment = await clientRepo.GetAsync(clientId);
+                if (assignment is null)
+                {
+                    logger.LogWarning("Unauthorized client in REST log: {ClientAppId}/{TenantId}", ingestRequest.ClientAppId, ingestRequest.TenantId);
+                    return Results.Json(new { error = "Client not authorized — no plan assigned" }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                ResetBillingPeriodIfNeeded(assignment, usagePolicy.BillingCycleStartDay, DateTime.UtcNow);
+
+                if (!assignment.ApiUsage.ContainsKey(ingestRequest.ApiId))
+                    assignment.ApiUsage[ingestRequest.ApiId] = 0;
+                assignment.ApiUsage[ingestRequest.ApiId]++;
+                assignment.LastUpdated = DateTime.UtcNow;
+
+                await db.LockExtendAsync(
+                    RedisKeys.ClientUpdateLock(ingestRequest.ClientAppId, ingestRequest.TenantId),
+                    lockToken, ClientUpdateLockTtl);
+                await clientRepo.UpsertAsync(assignment);
+            }
+            finally
+            {
+                await ReleaseClientUpdateLock(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger);
+            }
+
+            return Results.Ok("REST log processed");
+        }
+        catch (RedisException ex)
+        {
+            logger.LogError(ex, "Failed to interact with Redis in REST log ingest");
+            return Results.Json(new { error = "Failed to interact with Redis" }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
     private static async Task<bool> TryAcquireClientUpdateLock(
         IDatabase db,
         string clientAppId,
@@ -392,6 +478,7 @@ public static class LogIngestEndpoints
             assignment.CurrentPeriodRequests = 0;
             assignment.OverbilledRequests = 0;
             assignment.RequestsByTier = new();
+            assignment.ApiUsage = new();
         }
     }
 }

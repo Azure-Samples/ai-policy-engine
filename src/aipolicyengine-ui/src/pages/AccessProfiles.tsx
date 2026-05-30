@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useMsal } from "@azure/msal-react"
+import { useAdminRoleClaims } from "../hooks/useAdminRoleClaims"
 import { AlertTriangle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react"
 import { ClientList } from "../components/accessProfiles/ClientList"
 import { ProfileEditor, type ProfileEditorValues } from "../components/accessProfiles/ProfileEditor"
@@ -119,7 +119,7 @@ function createInheritedPreview(
 }
 
 export function AccessProfiles() {
-  const { accounts } = useMsal()
+  const adminRoleClaims = useAdminRoleClaims()
   const [clients, setClients] = useState<ClientAssignment[]>([])
   const [plans, setPlans] = useState<PlanData[]>([])
   const [routingPolicies, setRoutingPolicies] = useState<ModelRoutingPolicy[]>([])
@@ -139,10 +139,6 @@ export function AccessProfiles() {
   const [accessDenied, setAccessDenied] = useState(false)
 
   const selectedClientKeyRef = useRef("")
-  const adminRoleClaims = useMemo(() => {
-    const roles = accounts[0]?.idTokenClaims?.roles
-    return Array.isArray(roles) ? roles : []
-  }, [accounts])
   const lacksExplicitAdminRole = adminRoleClaims.length > 0 && !adminRoleClaims.includes("AIPolicy.Admin")
 
   const {

@@ -104,6 +104,8 @@ function KeycloakApp() {
       {activeTab === "plans" && <Plans />}
       {activeTab === "pricing" && <Pricing />}
       {activeTab === "routing" && <RoutingPolicies />}
+      {activeTab === "access" && <AccessProfiles />}
+      {activeTab === "apis" && <Apis />}
       {activeTab === "requests" && <RequestBilling onSelectClient={(clientAppId, tenantId) => setSelectedClient({ clientAppId, tenantId })} />}
       {activeTab === "export" && <Export />}
     </Layout>

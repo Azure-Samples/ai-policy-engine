@@ -19,10 +19,11 @@ function operationPolicyPath(apiId: string, operationId: string): string {
 }
 
 async function buildHttpError(res: Response, fallback: string): Promise<HttpError> {
+  const cloned = res.clone()
   const message = await parseErrorMessage(res, fallback)
   const error = new Error(message) as HttpError
   error.status = res.status
-  error.body = await res.clone().json().catch(() => null)
+  error.body = await cloned.json().catch(() => null)
   return error
 }
 

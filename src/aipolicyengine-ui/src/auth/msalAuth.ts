@@ -72,6 +72,13 @@ export function createMsalAuthProvider(config: AuthConfig): AuthProvider {
       const accounts = instance.getAllAccounts();
       return accounts.length > 0 ? accounts[0].name ?? accounts[0].username : null;
     },
+
+    getRoles(): string[] {
+      const accounts = instance.getAllAccounts();
+      if (accounts.length === 0) return [];
+      const roles = accounts[0]?.idTokenClaims?.["roles"];
+      return Array.isArray(roles) ? (roles as string[]) : [];
+    },
   };
 }
 

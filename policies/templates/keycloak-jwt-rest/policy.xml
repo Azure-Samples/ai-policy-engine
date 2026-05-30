@@ -1,58 +1,32 @@
 <!--
-    IMPORTANT:
-    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.
-    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.
-    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.
-    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.
-    - To remove a policy, delete the corresponding policy statement from the policy document.
-    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.
-    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.
-    - Policies are applied in the order of their appearance, from the top down.
-    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.
+    Keycloak JWT — Non-AI REST template.
 
-    Entra JWT policy for non-AI REST APIs.
-    Rate limits and quotas are enforced per-tenant by the AI Policy Engine (plan-based), not by native APIM counters.
-    This means limits can differ per tenant and per API without redeploying the policy.
+    Assumes the All APIs policy handles:
+    - JWT validation (validate-jwt)
+    - Keycloak service account token acquisition (backend-access-token variable)
+    - Extraction of tenantId and clientAppId from JWT claims
+
+    Rate limits and quotas are enforced per-tenant per-API by the AI Policy Engine.
+    Configure limits on the Plan assigned to this tenant via an Access Profile
+    (clientAppId + tenantId + apiId → planId).
 
     Required APIM named values:
-    - {{ExpectedAudience}} — expected aud claim in the incoming Entra access token.
-    - {{ContainerAppAudience}} — audience/resource used when APIM acquires a managed identity token for the policy engine.
-    - {{ContainerAppUrl}} — AI Policy Engine base URL used for /api/precheck and /api/log-rest calls.
-    - {{NonAiBackendUrl}} — target non-AI backend host/FQDN. Routed as https://{{NonAiBackendUrl}}.
+    - {{NonAiBackendUrl}} — target REST backend host/FQDN. Routed as https://{{NonAiBackendUrl}}.
+    - {{ContainerAppUrl}} — Base URL of the AI Policy Engine.
 -->
 <policies>
 	<inbound>
 		<base />
-		<!-- Validate Entra ID (Azure AD) JWT token — uses /common for multi-tenant support -->
-		<validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized. Access token is missing or invalid.">
-			<openid-config url="https://login.microsoftonline.com/common/.well-known/openid-configuration" />
-			<required-claims>
-				<claim name="aud" match="all">
-					<value>{{ExpectedAudience}}</value>
-				</claim>
-			</required-claims>
-		</validate-jwt>
-		<!-- Extract JWT claims into variables -->
-		<set-variable name="tenantId" value="@(context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;,&quot;&quot;).Split(' ').Last().AsJwt()?.Claims.GetValueOrDefault(&quot;tid&quot;,&quot;&quot;))" />
-		<set-variable name="clientAppId" value="@{
-			var jwt = context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;,&quot;&quot;).Split(' ').Last().AsJwt();
-			// azp is present in delegated (user) tokens, appid in client_credentials tokens
-			var azp = jwt?.Claims.GetValueOrDefault(&quot;azp&quot;,&quot;&quot;);
-			return !string.IsNullOrEmpty(azp) ? azp : jwt?.Claims.GetValueOrDefault(&quot;appid&quot;,&quot;&quot;);
-		}" />
 		<set-variable name="customerKey" value="@((string)context.Variables[&quot;clientAppId&quot;] + &quot;:&quot; + (string)context.Variables[&quot;tenantId&quot;])" />
 		<set-variable name="apiIdValue" value="@(context.Api.Id)" />
 		<set-variable name="operationIdValue" value="@(context.Operation.Id)" />
-		<!-- Acquire a managed identity token for the policy engine -->
-		<authentication-managed-identity resource="{{ContainerAppAudience}}" output-token-variable-name="msi-access-token" ignore-error="false" />
 		<set-variable name="containerAppBaseUrl" value="{{ContainerAppUrl}}" />
-		<!-- Precheck: enforces per-tenant rate limits and quotas from the plan assigned to this client.
-		     Returns 429 if RPM/TPM or monthly quota exceeded, 401/403 if client has no plan or access is blocked. -->
+		<!-- Precheck: enforces per-tenant, per-API rate limits and quotas from the assigned plan -->
 		<send-request mode="new" response-variable-name="precheckResponse" timeout="10" ignore-error="true">
 			<set-url>@($"{(string)context.Variables["containerAppBaseUrl"]}/api/precheck/{(string)context.Variables["clientAppId"]}/{(string)context.Variables["tenantId"]}?apiId={(string)context.Variables["apiIdValue"]}&operationId={(string)context.Variables["operationIdValue"]}")</set-url>
 			<set-method>GET</set-method>
 			<set-header name="Authorization" exists-action="override">
-				<value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+				<value>@("Bearer " + (string)context.Variables["backend-access-token"])</value>
 			</set-header>
 		</send-request>
 		<choose>
@@ -88,7 +62,6 @@
 				</return-response>
 			</when>
 		</choose>
-		<!-- Extract plan metadata from precheck response for use in outbound log-rest payload -->
 		<set-variable name="accessProfileId" value="@(((IResponse)context.Variables[&quot;precheckResponse&quot;]).Body.As&lt;JObject&gt;(preserveContent: true)[&quot;accessProfileId&quot;]?.ToString())" />
 		<set-variable name="resolvedPlanId" value="@(((IResponse)context.Variables[&quot;precheckResponse&quot;]).Body.As&lt;JObject&gt;(preserveContent: true)[&quot;planId&quot;]?.ToString())" />
 		<set-backend-service base-url="https://{{NonAiBackendUrl}}" />
@@ -98,15 +71,13 @@
 	</backend>
 	<outbound>
 		<base />
-		<!-- Fire-and-forget: send REST usage data to AI Policy API without waiting for a response. -->
+		<!-- Fire-and-forget REST usage log -->
 		<send-one-way-request mode="new">
 			<set-url>{{ContainerAppUrl}}/api/log-rest</set-url>
 			<set-method>POST</set-method>
-			<set-header name="Content-Type" exists-action="override">
-				<value>application/json</value>
-			</set-header>
+			<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
 			<set-header name="Authorization" exists-action="override">
-				<value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;msi-access-token&quot;])</value>
+				<value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;backend-access-token&quot;])</value>
 			</set-header>
 			<set-body>@{
 				var latencyMs = (long)(DateTime.UtcNow - context.Timestamp).TotalMilliseconds;

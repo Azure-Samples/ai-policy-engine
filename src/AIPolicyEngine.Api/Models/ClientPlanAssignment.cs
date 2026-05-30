@@ -36,6 +36,9 @@ public sealed class ClientPlanAssignment
     /// <summary>Request usage broken down by pricing tier for the current period.</summary>
     public Dictionary<string, decimal> RequestsByTier { get; set; } = new();
 
+    /// <summary>REST request count per API for the current billing period. Key is apiId.</summary>
+    public Dictionary<string, long> ApiUsage { get; set; } = new();
+
     /// <summary>Current requests per minute (populated dynamically, not persisted).</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public long CurrentRpm { get; set; }

@@ -76,5 +76,37 @@ export function createKeycloakAuthProvider(config: AuthConfig): AuthProvider {
         ?? currentUser?.profile?.name
         ?? null;
     },
+
+    getRoles(): string[] {
+      if (!currentUser || currentUser.expired) return [];
+      try {
+        // JWT segments are base64url-encoded; normalise to standard base64 before decoding.
+        const b64 = currentUser.access_token.split(".")[1]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const payload = JSON.parse(atob(b64)) as Record<string, unknown>;
+        const roles: string[] = [];
+
+        // Realm-level roles
+        const realmAccess = payload["realm_access"] as { roles?: unknown } | undefined;
+        if (Array.isArray(realmAccess?.roles)) {
+          roles.push(...(realmAccess.roles as string[]));
+        }
+
+        // Client-level roles (all clients)
+        const resourceAccess = payload["resource_access"] as Record<string, { roles?: unknown }> | undefined;
+        if (resourceAccess && typeof resourceAccess === "object") {
+          for (const client of Object.values(resourceAccess)) {
+            if (Array.isArray(client?.roles)) {
+              roles.push(...(client.roles as string[]));
+            }
+          }
+        }
+
+        return roles;
+      } catch {
+        return [];
+      }
+    },
   };
 }

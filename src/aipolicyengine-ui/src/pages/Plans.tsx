@@ -31,6 +31,8 @@ const emptyPlanForm: PlanFormData = {
   useMultiplierBilling: false,
   monthlyRequestQuota: 0,
   overageRatePerRequest: 0,
+  restRequestsPerMinuteLimit: 0,
+  monthlyRestRequestQuota: 0,
 }
 
 export function Plans() {
@@ -96,6 +98,8 @@ export function Plans() {
       useMultiplierBilling: p.useMultiplierBilling ?? false,
       monthlyRequestQuota: p.monthlyRequestQuota ?? 0,
       overageRatePerRequest: p.overageRatePerRequest ?? 0,
+      restRequestsPerMinuteLimit: p.restRequestsPerMinuteLimit ?? 0,
+      monthlyRestRequestQuota: p.monthlyRestRequestQuota ?? 0,
     })
     setNewDeploymentId("")
     setNewDeploymentLimit("")
@@ -126,6 +130,8 @@ export function Plans() {
       useMultiplierBilling: planForm.useMultiplierBilling ?? false,
       monthlyRequestQuota: planForm.useMultiplierBilling ? (Number(planForm.monthlyRequestQuota) || 0) : undefined,
       overageRatePerRequest: planForm.useMultiplierBilling ? (Number(planForm.overageRatePerRequest) || 0) : undefined,
+      restRequestsPerMinuteLimit: Number(planForm.restRequestsPerMinuteLimit) || 0,
+      monthlyRestRequestQuota: Number(planForm.monthlyRestRequestQuota) || 0,
     }
   }
 
@@ -326,6 +332,23 @@ export function Plans() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Requests/Min Limit</label>
               <Input type="number" min="0" value={planForm.requestsPerMinuteLimit} onChange={(e) => updateField("requestsPerMinuteLimit", e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-3 rounded border p-3">
+            <label className="text-sm font-medium block">Non-AI REST Limits</label>
+            <p className="text-xs text-muted-foreground">
+              Applied per-tenant per-API for REST APIs using the Keycloak JWT — Non-AI REST or Entra JWT — Non-AI REST templates.
+              0 = fall back to the AI RPM limit above (for REST RPM), or unlimited (for REST monthly quota).
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">REST Requests/Min Limit</label>
+                <Input type="number" min="0" value={planForm.restRequestsPerMinuteLimit ?? 0} onChange={(e) => updateField("restRequestsPerMinuteLimit", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Monthly REST Request Quota</label>
+                <Input type="number" min="0" value={planForm.monthlyRestRequestQuota ?? 0} onChange={(e) => updateField("monthlyRestRequestQuota", e.target.value)} />
+              </div>
             </div>
           </div>
           <div className="space-y-2">

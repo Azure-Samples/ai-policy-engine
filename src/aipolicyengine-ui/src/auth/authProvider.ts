@@ -16,6 +16,13 @@ export interface AuthProvider {
   logout(): Promise<void>;
   /** Get the display name of the current user */
   getUserDisplayName(): string | null;
+  /**
+   * Return the current user's roles as a flat string array.
+   * For Azure AD, reads from the ID token's "roles" claim.
+   * For Keycloak, decodes the access token and unions realm_access.roles
+   * with all resource_access.<client>.roles entries.
+   */
+  getRoles(): string[];
 }
 
 export type AuthProviderType = "AzureAd" | "Keycloak";

@@ -1,20 +1,20 @@
 FROM node:20-alpine AS node-build
 WORKDIR /ui
-COPY aipolicyengine-ui/package*.json ./
+COPY src/aipolicyengine-ui/package*.json ./
 RUN npm ci
-COPY aipolicyengine-ui/ ./
+COPY src/aipolicyengine-ui/ ./
 RUN npm run build -- --outDir /ui/dist --emptyOutDir
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY Directory.Packages.props ./
-COPY AIPolicyEngine.ServiceDefaults/AIPolicyEngine.ServiceDefaults.csproj AIPolicyEngine.ServiceDefaults/
-COPY AIPolicyEngine.Api/AIPolicyEngine.Api.csproj AIPolicyEngine.Api/
+COPY src/Directory.Packages.props ./
+COPY src/AIPolicyEngine.ServiceDefaults/AIPolicyEngine.ServiceDefaults.csproj AIPolicyEngine.ServiceDefaults/
+COPY src/AIPolicyEngine.Api/AIPolicyEngine.Api.csproj AIPolicyEngine.Api/
 RUN dotnet restore AIPolicyEngine.Api/AIPolicyEngine.Api.csproj
 
-COPY AIPolicyEngine.ServiceDefaults/ AIPolicyEngine.ServiceDefaults/
-COPY AIPolicyEngine.Api/ AIPolicyEngine.Api/
+COPY src/AIPolicyEngine.ServiceDefaults/ AIPolicyEngine.ServiceDefaults/
+COPY src/AIPolicyEngine.Api/ AIPolicyEngine.Api/
 # Stage the SPA build into the API's wwwroot before publish so the dotnet
 # static web assets manifest includes the SPA. Without this, UseStaticFiles
 # uses an empty manifest and 404s on /index.html etc.
@@ -26,5 +26,8 @@ WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=build /app/publish .
+# Copy APIM policy templates so TemplateLibraryService can find them at
+# {ContentRootPath}/policies/templates → /app/policies/templates
+COPY policies/templates/ policies/templates/
 USER $APP_UID
 ENTRYPOINT ["dotnet", "AIPolicyEngine.Api.dll"]
