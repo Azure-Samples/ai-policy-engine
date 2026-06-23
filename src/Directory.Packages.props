@@ -48,6 +48,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!-- Benchmarks & Load Testing -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="MessagePack" Version="2.5.301" />
     <PackageVersion Include="NBomber" Version="6.4.0" />
     <PackageVersion Include="NBomber.Http" Version="6.2.0" />
     <!-- Other -->
