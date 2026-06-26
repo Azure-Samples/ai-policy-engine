@@ -1,7 +1,9 @@
-import { ChevronDown, ChevronRight, Layers2, RefreshCcw, Shield, Sparkles } from "lucide-react"
+import { useMemo, useState } from "react"
+import { ChevronDown, ChevronRight, Layers2, ListFilter, RefreshCcw, Search, Shield, Sparkles, X } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
+import { Input } from "../ui/input"
 import { CascadeBadge } from "./CascadeBadge"
 import { cn } from "../../lib/utils"
 import type { ClientAssignment, ModelRoutingPolicy, PlanData } from "../../types"
@@ -35,6 +37,42 @@ interface ProfileGridProps {
 
 function scopeKey(target: AccessScopeTarget): string {
   return `${target.apiId}:${target.operationId ?? "_all"}`
+}
+
+type OverrideFilter = "all" | "overrides" | "inherited"
+
+const OVERRIDE_FILTERS: Array<{ value: OverrideFilter; label: string }> = [
+  { value: "all", label: "All scopes" },
+  { value: "overrides", label: "Direct overrides" },
+  { value: "inherited", label: "Inherited only" },
+]
+
+function cellMatchesSearch(
+  cell: AccessGridCellData,
+  normalizedQuery: string,
+  plansById: Record<string, PlanData>,
+): boolean {
+  if (!normalizedQuery) return true
+
+  const { target, effective } = cell
+  const planName = effective ? (plansById[effective.planId]?.name ?? effective.planId) : null
+  const haystacks = [
+    target.apiDisplayName,
+    target.apiId,
+    target.operationDisplayName,
+    target.operationId,
+    target.method,
+    target.urlTemplate,
+    planName,
+  ]
+
+  return haystacks.some((value) => value?.toLowerCase().includes(normalizedQuery))
+}
+
+function cellMatchesOverride(cell: AccessGridCellData, filter: OverrideFilter): boolean {
+  if (filter === "all") return true
+  if (filter === "overrides") return Boolean(cell.directProfile)
+  return !cell.directProfile
 }
 
 function deploymentLabel(deployments: string[]): string[] {
@@ -174,6 +212,62 @@ export function ProfileGrid({
   onOpenCell,
   onToggleQueuedScope,
 }: ProfileGridProps) {
+  const [query, setQuery] = useState("")
+  const [overrideFilter, setOverrideFilter] = useState<OverrideFilter>("all")
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const filtersActive = normalizedQuery.length > 0 || overrideFilter !== "all"
+
+  const globalVisible = globalCell
+    ? cellMatchesSearch(globalCell, normalizedQuery, plansById) && cellMatchesOverride(globalCell, overrideFilter)
+    : false
+
+  const filteredSections = useMemo(() => {
+    return sections
+      .map((section) => {
+        const visibleOperationCells = section.operationCells.filter(
+          (cell) => cellMatchesSearch(cell, normalizedQuery, plansById) && cellMatchesOverride(cell, overrideFilter),
+        )
+        const apiCellVisible =
+          cellMatchesSearch(section.apiCell, normalizedQuery, plansById) && cellMatchesOverride(section.apiCell, overrideFilter)
+        const apiTextMatch =
+          !normalizedQuery ||
+          [section.api.displayName, section.api.path].some((value) => value?.toLowerCase().includes(normalizedQuery))
+
+        return { section, visibleOperationCells, apiCellVisible, apiTextMatch }
+      })
+      .filter(({ section, visibleOperationCells, apiCellVisible, apiTextMatch }) => {
+        if (overrideFilter === "overrides") {
+          if (section.directOverrideCount === 0) return false
+          return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
+        }
+
+        if (overrideFilter === "inherited") {
+          return apiCellVisible || visibleOperationCells.length > 0 || (apiTextMatch && !section.apiCell.directProfile)
+        }
+
+        return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
+      })
+  }, [sections, normalizedQuery, overrideFilter, plansById])
+
+  const visibleScopeCount = useMemo(() => {
+    let count = globalVisible ? 1 : 0
+    for (const { section, visibleOperationCells, apiCellVisible } of filteredSections) {
+      if (filtersActive) {
+        if (apiCellVisible) count += 1
+        count += visibleOperationCells.length
+      } else {
+        count += 1 + (section.expanded ? section.operationCells.length : 0)
+      }
+    }
+    return count
+  }, [filteredSections, filtersActive, globalVisible])
+
+  const clearFilters = () => {
+    setQuery("")
+    setOverrideFilter("all")
+  }
+
   if (!client) {
     return (
       <Card className="h-full">
@@ -211,31 +305,85 @@ export function ProfileGrid({
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-slate-300/70 dark:border-slate-800">
-        <CardHeader className="border-b border-slate-200/70 dark:border-slate-800">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Layers2 className="h-4 w-4 text-[#0078D4]" />
-            Client-global profile
-            {profilesLoading && <Badge variant="secondary" className="ml-auto">Refreshing…</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {globalCell ? (
-            <ScopeRow
-              cell={globalCell}
-              plansById={plansById}
-              routingPoliciesById={routingPoliciesById}
-              queued={queuedScopeKeys.includes(scopeKey(globalCell.target))}
-              onOpenCell={onOpenCell}
-              onToggleQueuedScope={onToggleQueuedScope}
+      <Card className="sticky top-[5.5rem] z-10 overflow-hidden border-slate-300/70 shadow-sm dark:border-slate-800">
+        <CardContent className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by API, operation, plan, method, or path…"
+              className="pl-9"
             />
-          ) : (
-            <div className="p-4 text-sm text-muted-foreground">Client-global scope is unavailable.</div>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200/70 p-1 dark:border-slate-800">
+            <ListFilter className="ml-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            {OVERRIDE_FILTERS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setOverrideFilter(option.value)}
+                className={cn(
+                  "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  overrideFilter === option.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {filtersActive && (
+            <Button type="button" variant="ghost" size="sm" className="flex-shrink-0" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5" />
+              Clear
+            </Button>
           )}
         </CardContent>
       </Card>
 
-      {sections.map((section) => (
+      {filtersActive && (
+        <p className="px-1 text-xs text-muted-foreground">
+          Showing {visibleScopeCount} matching scope{visibleScopeCount === 1 ? "" : "s"}
+          {overrideFilter !== "all" ? ` · ${OVERRIDE_FILTERS.find((option) => option.value === overrideFilter)?.label}` : ""}
+          {normalizedQuery ? ` · “${query.trim()}”` : ""}
+        </p>
+      )}
+
+      {globalVisible && (
+        <Card className="overflow-hidden border-slate-300/70 dark:border-slate-800">
+          <CardHeader className="border-b border-slate-200/70 dark:border-slate-800">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Layers2 className="h-4 w-4 text-[#0078D4]" />
+              Client-global profile
+              {profilesLoading && <Badge variant="secondary" className="ml-auto">Refreshing…</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {globalCell ? (
+              <ScopeRow
+                cell={globalCell}
+                plansById={plansById}
+                routingPoliciesById={routingPoliciesById}
+                queued={queuedScopeKeys.includes(scopeKey(globalCell.target))}
+                onOpenCell={onOpenCell}
+                onToggleQueuedScope={onToggleQueuedScope}
+              />
+            ) : (
+              <div className="p-4 text-sm text-muted-foreground">Client-global scope is unavailable.</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredSections.map(({ section, visibleOperationCells, apiCellVisible }) => {
+        const showApiRow = filtersActive ? apiCellVisible : true
+        const operationCellsToRender = filtersActive
+          ? visibleOperationCells
+          : (section.expanded ? section.operationCells : [])
+
+        return (
         <Card key={section.api.id} className="overflow-hidden border-slate-300/70 dark:border-slate-800">
           <CardHeader className="border-b border-slate-200/70 dark:border-slate-800">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -256,22 +404,30 @@ export function ProfileGrid({
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <ScopeRow
-              cell={section.apiCell}
-              plansById={plansById}
-              routingPoliciesById={routingPoliciesById}
-              queued={queuedScopeKeys.includes(scopeKey(section.apiCell.target))}
-              onOpenCell={onOpenCell}
-              onToggleQueuedScope={onToggleQueuedScope}
-            />
+            {showApiRow && (
+              <ScopeRow
+                cell={section.apiCell}
+                plansById={plansById}
+                routingPoliciesById={routingPoliciesById}
+                queued={queuedScopeKeys.includes(scopeKey(section.apiCell.target))}
+                onOpenCell={onOpenCell}
+                onToggleQueuedScope={onToggleQueuedScope}
+              />
+            )}
 
-            {section.expanded && section.loadingOperations && (
+            {filtersActive && !showApiRow && operationCellsToRender.length === 0 && (
+              <div className="px-4 py-4 text-sm text-muted-foreground">
+                Overrides exist on operations within this API. Expand to view them.
+              </div>
+            )}
+
+            {!filtersActive && section.expanded && section.loadingOperations && (
               <div className="border-t border-slate-200/70 px-4 py-4 text-sm text-muted-foreground dark:border-slate-800">
                 Loading operations…
               </div>
             )}
 
-            {section.expanded && section.operationError && (
+            {!filtersActive && section.expanded && section.operationError && (
               <div className="border-t border-slate-200/70 px-4 py-4 dark:border-slate-800">
                 <div className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                   <span className="min-w-0 flex-1">{section.operationError}</span>
@@ -283,15 +439,15 @@ export function ProfileGrid({
               </div>
             )}
 
-            {section.expanded && !section.loadingOperations && !section.operationError && section.operationCells.length === 0 && (
+            {!filtersActive && section.expanded && !section.loadingOperations && !section.operationError && section.operationCells.length === 0 && (
               <div className="border-t border-slate-200/70 px-4 py-4 text-sm text-muted-foreground dark:border-slate-800">
                 No APIM operations were returned for this API.
               </div>
             )}
 
-            {section.expanded && !section.loadingOperations && !section.operationError && section.operationCells.length > 0 && (
+            {operationCellsToRender.length > 0 && (
               <div className="border-t border-slate-200/70 dark:border-slate-800">
-                {section.operationCells.map((cell) => (
+                {operationCellsToRender.map((cell) => (
                   <ScopeRow
                     key={scopeKey(cell.target)}
                     cell={cell}
@@ -306,7 +462,24 @@ export function ProfileGrid({
             )}
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
+
+      {filtersActive && filteredSections.length === 0 && !globalVisible && (
+        <Card>
+          <CardContent className="flex min-h-[240px] flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+            <Search className="h-9 w-9 text-[#0078D4]" />
+            <div>
+              <p className="font-medium text-foreground">No scopes match your filters</p>
+              <p className="text-sm">Try a different search term or change the override filter.</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5" />
+              Clear filters
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {sections.length === 0 && (
         <Card>

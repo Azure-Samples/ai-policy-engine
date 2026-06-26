@@ -579,8 +579,8 @@ export function AccessProfiles() {
       )}
 
       {!accessDeniedMessage && (
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="min-h-[520px]">
+        <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="xl:sticky xl:top-[5.5rem] xl:self-start xl:h-[calc(100vh-7rem)]">
             {referenceLoading ? (
               <div className="flex h-full min-h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                 Loading clients…
@@ -595,7 +595,7 @@ export function AccessProfiles() {
             )}
           </div>
 
-          <div>
+          <div className="min-w-0">
             {catalogLoading && apis.length === 0 ? (
               <div className="flex min-h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                 Loading APIs…
