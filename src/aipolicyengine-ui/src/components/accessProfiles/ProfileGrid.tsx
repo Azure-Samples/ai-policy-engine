@@ -305,7 +305,7 @@ export function ProfileGrid({
         </CardContent>
       </Card>
 
-      <Card className="sticky top-[5.5rem] z-10 overflow-hidden border-slate-300/70 shadow-sm dark:border-slate-800">
+      <Card className="sticky top-16 z-10 overflow-hidden border-slate-300/70 shadow-sm dark:border-slate-800">
         <CardContent className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -314,15 +314,21 @@ export function ProfileGrid({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search by API, operation, plan, method, or path…"
               className="pl-9"
+              aria-label="Search access profiles"
             />
           </div>
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200/70 p-1 dark:border-slate-800">
+          <div
+            role="group"
+            aria-label="Override filter"
+            className="flex items-center gap-1 rounded-lg border border-slate-200/70 p-1 dark:border-slate-800"
+          >
             <ListFilter className="ml-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
             {OVERRIDE_FILTERS.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 onClick={() => setOverrideFilter(option.value)}
+                aria-pressed={overrideFilter === option.value}
                 className={cn(
                   "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   overrideFilter === option.value

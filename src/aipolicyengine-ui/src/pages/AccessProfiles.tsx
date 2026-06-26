@@ -580,7 +580,7 @@ export function AccessProfiles() {
 
       {!accessDeniedMessage && (
         <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="xl:sticky xl:top-[5.5rem] xl:self-start xl:h-[calc(100vh-7rem)]">
+          <div className="xl:sticky xl:top-16 xl:self-start xl:h-[calc(100vh-4rem)]">
             {referenceLoading ? (
               <div className="flex h-full min-h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                 Loading clients…
