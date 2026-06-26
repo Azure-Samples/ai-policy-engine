@@ -4,26 +4,25 @@ import { Button } from "../ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Input } from "../ui/input"
 import { CascadeBadge } from "./CascadeBadge"
+import { OVERRIDE_FILTERS, type OverrideFilter, type FilteredSection } from "./filtering"
 import { cn } from "../../lib/utils"
 import type { ClientAssignment, ModelRoutingPolicy, PlanData } from "../../types"
 import type { AccessProfile } from "../../types/accessProfiles"
 import type { ApimApiSummary } from "../../types/apim"
 import type { AccessGridCellData, AccessScopeTarget } from "./types"
 
-interface AccessApiSection {
-  api: ApimApiSummary
-  apiCell: AccessGridCellData
-  operationCells: AccessGridCellData[]
-  directOverrideCount: number
-  expanded: boolean
-  loadingOperations: boolean
-  operationError: string | null
-}
-
 interface ProfileGridProps {
   client: ClientAssignment | null
   globalCell: AccessGridCellData | null
-  sections: AccessApiSection[]
+  sections: Array<{
+    api: ApimApiSummary
+    apiCell: AccessGridCellData
+    operationCells: AccessGridCellData[]
+    directOverrideCount: number
+    expanded: boolean
+    loadingOperations: boolean
+    operationError: string | null
+  }>
   plansById: Record<string, PlanData>
   routingPoliciesById: Record<string, ModelRoutingPolicy>
   queuedScopeKeys: string[]
@@ -33,33 +32,20 @@ interface ProfileGridProps {
   onOpenCell: (target: AccessScopeTarget, directProfile: AccessProfile | null, effective: AccessGridCellData["effective"]) => void
   onToggleQueuedScope: (target: AccessScopeTarget) => void
   // Filter state from parent
-  filteredSections: Array<{
-    section: AccessApiSection
-    visibleOperationCells: AccessGridCellData[]
-    apiCellVisible: boolean
-    apiTextMatch: boolean
-  }>
+  filteredSections: FilteredSection[]
   globalVisible: boolean
   visibleScopeCount: number
   filtersActive: boolean
   searchQuery: string
-  overrideFilter: "all" | "overrides" | "inherited"
+  overrideFilter: OverrideFilter
   onSearchChange: (query: string) => void
-  onOverrideFilterChange: (filter: "all" | "overrides" | "inherited") => void
+  onOverrideFilterChange: (filter: OverrideFilter) => void
   onClearFilters: () => void
 }
 
 function scopeKey(target: AccessScopeTarget): string {
   return `${target.apiId}:${target.operationId ?? "_all"}`
 }
-
-type OverrideFilter = "all" | "overrides" | "inherited"
-
-const OVERRIDE_FILTERS: Array<{ value: OverrideFilter; label: string }> = [
-  { value: "all", label: "All scopes" },
-  { value: "overrides", label: "Direct overrides" },
-  { value: "inherited", label: "Inherited only" },
-]
 
 function deploymentLabel(deployments: string[]): string[] {
   return deployments.length > 0 ? deployments : ["All deployments"]
