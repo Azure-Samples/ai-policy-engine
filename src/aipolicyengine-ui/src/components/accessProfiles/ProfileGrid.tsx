@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Layers2, ListFilter, RefreshCcw, Search, Shield, Sparkles, X } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
@@ -33,6 +32,21 @@ interface ProfileGridProps {
   onRetryOperations: (api: ApimApiSummary) => void
   onOpenCell: (target: AccessScopeTarget, directProfile: AccessProfile | null, effective: AccessGridCellData["effective"]) => void
   onToggleQueuedScope: (target: AccessScopeTarget) => void
+  // Filter state from parent
+  filteredSections: Array<{
+    section: AccessApiSection
+    visibleOperationCells: AccessGridCellData[]
+    apiCellVisible: boolean
+    apiTextMatch: boolean
+  }>
+  globalVisible: boolean
+  visibleScopeCount: number
+  filtersActive: boolean
+  searchQuery: string
+  overrideFilter: "all" | "overrides" | "inherited"
+  onSearchChange: (query: string) => void
+  onOverrideFilterChange: (filter: "all" | "overrides" | "inherited") => void
+  onClearFilters: () => void
 }
 
 function scopeKey(target: AccessScopeTarget): string {
@@ -46,34 +60,6 @@ const OVERRIDE_FILTERS: Array<{ value: OverrideFilter; label: string }> = [
   { value: "overrides", label: "Direct overrides" },
   { value: "inherited", label: "Inherited only" },
 ]
-
-function cellMatchesSearch(
-  cell: AccessGridCellData,
-  normalizedQuery: string,
-  plansById: Record<string, PlanData>,
-): boolean {
-  if (!normalizedQuery) return true
-
-  const { target, effective } = cell
-  const planName = effective ? (plansById[effective.planId]?.name ?? effective.planId) : null
-  const haystacks = [
-    target.apiDisplayName,
-    target.apiId,
-    target.operationDisplayName,
-    target.operationId,
-    target.method,
-    target.urlTemplate,
-    planName,
-  ]
-
-  return haystacks.some((value) => value?.toLowerCase().includes(normalizedQuery))
-}
-
-function cellMatchesOverride(cell: AccessGridCellData, filter: OverrideFilter): boolean {
-  if (filter === "all") return true
-  if (filter === "overrides") return Boolean(cell.directProfile)
-  return !cell.directProfile
-}
 
 function deploymentLabel(deployments: string[]): string[] {
   return deployments.length > 0 ? deployments : ["All deployments"]
@@ -211,62 +197,16 @@ export function ProfileGrid({
   onRetryOperations,
   onOpenCell,
   onToggleQueuedScope,
+  filteredSections,
+  globalVisible,
+  visibleScopeCount,
+  filtersActive,
+  searchQuery,
+  overrideFilter,
+  onSearchChange,
+  onOverrideFilterChange,
+  onClearFilters,
 }: ProfileGridProps) {
-  const [query, setQuery] = useState("")
-  const [overrideFilter, setOverrideFilter] = useState<OverrideFilter>("all")
-
-  const normalizedQuery = query.trim().toLowerCase()
-  const filtersActive = normalizedQuery.length > 0 || overrideFilter !== "all"
-
-  const globalVisible = globalCell
-    ? cellMatchesSearch(globalCell, normalizedQuery, plansById) && cellMatchesOverride(globalCell, overrideFilter)
-    : false
-
-  const filteredSections = useMemo(() => {
-    return sections
-      .map((section) => {
-        const visibleOperationCells = section.operationCells.filter(
-          (cell) => cellMatchesSearch(cell, normalizedQuery, plansById) && cellMatchesOverride(cell, overrideFilter),
-        )
-        const apiCellVisible =
-          cellMatchesSearch(section.apiCell, normalizedQuery, plansById) && cellMatchesOverride(section.apiCell, overrideFilter)
-        const apiTextMatch =
-          !normalizedQuery ||
-          [section.api.displayName, section.api.path].some((value) => value?.toLowerCase().includes(normalizedQuery))
-
-        return { section, visibleOperationCells, apiCellVisible, apiTextMatch }
-      })
-      .filter(({ section, visibleOperationCells, apiCellVisible, apiTextMatch }) => {
-        if (overrideFilter === "overrides") {
-          if (section.directOverrideCount === 0) return false
-          return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
-        }
-
-        if (overrideFilter === "inherited") {
-          return apiCellVisible || visibleOperationCells.length > 0 || (apiTextMatch && !section.apiCell.directProfile)
-        }
-
-        return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
-      })
-  }, [sections, normalizedQuery, overrideFilter, plansById])
-
-  const visibleScopeCount = useMemo(() => {
-    let count = globalVisible ? 1 : 0
-    for (const { section, visibleOperationCells, apiCellVisible } of filteredSections) {
-      if (filtersActive) {
-        if (apiCellVisible) count += 1
-        count += visibleOperationCells.length
-      } else {
-        count += 1 + (section.expanded ? section.operationCells.length : 0)
-      }
-    }
-    return count
-  }, [filteredSections, filtersActive, globalVisible])
-
-  const clearFilters = () => {
-    setQuery("")
-    setOverrideFilter("all")
-  }
 
   if (!client) {
     return (
@@ -310,8 +250,8 @@ export function ProfileGrid({
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={searchQuery}
+              onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Search by API, operation, plan, method, or path…"
               className="pl-9"
               aria-label="Search access profiles"
@@ -327,7 +267,7 @@ export function ProfileGrid({
               <button
                 key={option.value}
                 type="button"
-                onClick={() => setOverrideFilter(option.value)}
+                onClick={() => onOverrideFilterChange(option.value)}
                 aria-pressed={overrideFilter === option.value}
                 className={cn(
                   "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
@@ -341,7 +281,7 @@ export function ProfileGrid({
             ))}
           </div>
           {filtersActive && (
-            <Button type="button" variant="ghost" size="sm" className="flex-shrink-0" onClick={clearFilters}>
+            <Button type="button" variant="ghost" size="sm" className="flex-shrink-0" onClick={onClearFilters}>
               <X className="h-3.5 w-3.5" />
               Clear
             </Button>
@@ -353,7 +293,7 @@ export function ProfileGrid({
         <p className="px-1 text-xs text-muted-foreground">
           Showing {visibleScopeCount} matching scope{visibleScopeCount === 1 ? "" : "s"}
           {overrideFilter !== "all" ? ` · ${OVERRIDE_FILTERS.find((option) => option.value === overrideFilter)?.label}` : ""}
-          {normalizedQuery ? ` · “${query.trim()}”` : ""}
+          {searchQuery.trim() ? ` · "${searchQuery.trim()}"` : ""}
         </p>
       )}
 
@@ -479,7 +419,7 @@ export function ProfileGrid({
               <p className="font-medium text-foreground">No scopes match your filters</p>
               <p className="text-sm">Try a different search term or change the override filter.</p>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+            <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
               <X className="h-3.5 w-3.5" />
               Clear filters
             </Button>

@@ -362,6 +362,95 @@ export function AccessProfiles() {
     operationId: null,
   }), [resolveCell])
 
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState("")
+  const [overrideFilter, setOverrideFilter] = useState<"all" | "overrides" | "inherited">("all")
+
+  // Filter helpers
+  const cellMatchesSearch = useCallback((
+    cell: AccessGridCellData,
+    normalizedQuery: string,
+  ): boolean => {
+    if (!normalizedQuery) return true
+
+    const { target, effective } = cell
+    const planName = effective ? (plansById[effective.planId]?.name ?? effective.planId) : null
+    const haystacks = [
+      target.apiDisplayName,
+      target.apiId,
+      target.operationDisplayName,
+      target.operationId,
+      target.method,
+      target.urlTemplate,
+      planName,
+    ]
+
+    return haystacks.some((value) => value?.toLowerCase().includes(normalizedQuery))
+  }, [plansById])
+
+  const cellMatchesOverride = useCallback((
+    cell: AccessGridCellData,
+    filter: "all" | "overrides" | "inherited",
+  ): boolean => {
+    if (filter === "all") return true
+    if (filter === "overrides") return Boolean(cell.directProfile)
+    return !cell.directProfile
+  }, [])
+
+  // Filter-derived state
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filtersActive = normalizedQuery.length > 0 || overrideFilter !== "all"
+
+  const globalVisible = globalCell
+    ? cellMatchesSearch(globalCell, normalizedQuery) && cellMatchesOverride(globalCell, overrideFilter)
+    : false
+
+  const filteredSections = useMemo(() => {
+    return sections
+      .map((section) => {
+        const visibleOperationCells = section.operationCells.filter(
+          (cell) => cellMatchesSearch(cell, normalizedQuery) && cellMatchesOverride(cell, overrideFilter),
+        )
+        const apiCellVisible =
+          cellMatchesSearch(section.apiCell, normalizedQuery) && cellMatchesOverride(section.apiCell, overrideFilter)
+        const apiTextMatch =
+          !normalizedQuery ||
+          [section.api.displayName, section.api.path].some((value) => value?.toLowerCase().includes(normalizedQuery))
+
+        return { section, visibleOperationCells, apiCellVisible, apiTextMatch }
+      })
+      .filter(({ section, visibleOperationCells, apiCellVisible, apiTextMatch }) => {
+        if (overrideFilter === "overrides") {
+          if (section.directOverrideCount === 0) return false
+          return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
+        }
+
+        if (overrideFilter === "inherited") {
+          return apiCellVisible || visibleOperationCells.length > 0 || (apiTextMatch && !section.apiCell.directProfile)
+        }
+
+        return apiCellVisible || visibleOperationCells.length > 0 || apiTextMatch
+      })
+  }, [sections, normalizedQuery, overrideFilter, cellMatchesSearch, cellMatchesOverride])
+
+  const visibleScopeCount = useMemo(() => {
+    let count = globalVisible ? 1 : 0
+    for (const { section, visibleOperationCells, apiCellVisible } of filteredSections) {
+      if (filtersActive) {
+        if (apiCellVisible) count += 1
+        count += visibleOperationCells.length
+      } else {
+        count += 1 + (section.expanded ? section.operationCells.length : 0)
+      }
+    }
+    return count
+  }, [filteredSections, filtersActive, globalVisible])
+
+  const clearFilters = useCallback(() => {
+    setSearchQuery("")
+    setOverrideFilter("all")
+  }, [])
+
   const allCellsByScopeKey = useMemo(() => {
     const entries: Array<[string, AccessGridCellData]> = [[buildScopeKey(globalCell.target.apiId, globalCell.target.operationId), globalCell]]
 
@@ -610,9 +699,18 @@ export function AccessProfiles() {
                 queuedScopeKeys={queuedScopeKeys}
                 profilesLoading={profilesLoading}
                 onToggleApi={handleToggleApi}
-                onRetryOperations={(api) => { void refreshOperations(api) }}
+                onRetryOperations={refreshOperations}
                 onOpenCell={handleOpenCell}
                 onToggleQueuedScope={handleToggleQueuedScope}
+                filteredSections={filteredSections}
+                globalVisible={globalVisible}
+                visibleScopeCount={visibleScopeCount}
+                filtersActive={filtersActive}
+                searchQuery={searchQuery}
+                overrideFilter={overrideFilter}
+                onSearchChange={setSearchQuery}
+                onOverrideFilterChange={setOverrideFilter}
+                onClearFilters={clearFilters}
               />
             )}
           </div>
