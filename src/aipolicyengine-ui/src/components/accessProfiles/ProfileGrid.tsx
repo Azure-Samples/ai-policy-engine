@@ -364,7 +364,9 @@ export function ProfileGrid({
 
             {filtersActive && !showApiRow && operationCellsToRender.length === 0 && (
               <div className="px-4 py-4 text-sm text-muted-foreground">
-                Overrides exist on operations within this API. Expand to view them.
+                {section.expanded
+                  ? "No scopes within this API match your filters."
+                  : "No matching scopes are currently visible for this API. Expand to load operations."}
               </div>
             )}
 
