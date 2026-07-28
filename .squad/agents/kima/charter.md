@@ -35,8 +35,8 @@
 
 ## Model
 
-- **Preferred:** auto
-- **Rationale:** Coordinator selects the best model based on task type — cost first unless writing code
+- **Preferred:** GPT-5.6 Sol
+- **Rationale:** Frontend development UI/UX workflows are best driven by the new GPT-5.6 Sol Model. Use cheaper models when editing or working on smaller changes
 - **Fallback:** Standard chain — the coordinator handles fallback automatically
 
 ## Collaboration

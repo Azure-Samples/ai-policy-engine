@@ -1,333 +1,139 @@
 # Squad Decisions
 
-## Recent Sessions
+## Overview
 
-### 2026-05-21 — APIM Policy Management inbox merge
-- **Goals:** capture the accepted APIM Policy Management architecture; record that prior non-AI limits work is paused.
-- **Agents:** McNulty defined the accepted APIM management architecture and the earlier paused non-AI limits shape; Sydnor produced the parked non-AI REST APIM policy draft and related APIM policy/template inputs; Freamon and Kima are carrying backend/UI APIM management work on `feature/apim-policy-management`; Bunk drafted non-AI test coverage and has separate test changes pending merge; Scribe merged the inbox and archived source notes.
-- **Files:** `git status --short` showed 35 changed paths at merge time (`27` modified, `8` untracked).
-- **Tests baseline:** 219 passing / 4 skipped; Bunk's new tests are still pending merge and are not recorded here as landed.
-- **Branch:** `feature/apim-policy-management`
-- **Open items:** PR not yet opened; Bunk test changes pending merge.
+This file maintains the team's active architectural decisions and recent implementation records. Decisions older than 30 days are archived to `.squad/decisions-archive-*.md` to keep this file focused and under 20KB.
 
-## Active Decisions
+For foundational architectural decisions, design patterns, and full implementation records from the first 8 weeks (2026-03-31 to 2026-05-26), see `.squad/decisions-archive-20260626.md`.
 
-### 2026-05-21T22:07:10Z: Implementation status — AAA M1-M5 layer complete, ready for production
-**By:** Scribe (logged from orchestration)  
-**Status:** Complete  
-**What:** 
-- **M1-M5 COMPLETE:** Full AAA per-client authorization layer shipped
-  - **M1 (Freamon):** AccessProfile model + Cosmos repo
-  - **M2 (Freamon):** Admin CRUD + bulk endpoints
-  - **M3 (Freamon):** Precheck integration with apiId/operationId
-  - **M4 (Sydnor):** APIM templates v1.0→1.1 (5 templates updated, commit `24de42b5`)
-  - **M5 (Kima):** `/access` admin page + shared hooks (commit `ec54c29c`)
-- **All 21 AAA tests active:** 316 pass / 4 skip (pre-existing Purview seams) / 0 fail
-- **M6 (Redis caching):** Deferred as optional optimization
-- **UI/Backend Integration:** Full end-to-end workflows validated
-  - Cascade precedence enforced at all layers
-  - Effective state visible to users
-  - Bulk operations functional
+## Recent Decisions
 
-**Validation:**
-- ✅ Sydnor: All 5 templates updated, 4 pending M4 tests unskipped + passing
-- ✅ Kima: `/access` page + UI lint/build green, shared hook refactored with backward compat
-- ✅ Integration: Backend fully consumed by UI, admin workflows tested
+### 2026-06-26 — Access Profiles Layout Enhancement — Sticky Offsets & Accessibility
 
-**Why:** Mark full layer completion. AAA authorization layer production-ready for PR review + merge.
+**Owner:** Kima (Frontend Developer)  
+**Status:** Implemented  
+**Date:** 2026-06-26  
 
-**Next:** PR to main, optional M6 if performance tuning needed, documentation finalization.
+### Sticky Positioning Rule
 
-### 2026-05-21T21:48:19Z: Implementation status — AAA M1-M3 backend complete, M4-M5 parallel in-flight
-**By:** Scribe (logged from orchestration)  
-**Status:** In-Flight  
-**What:** 
-- **M1-M3 COMPLETE (Freamon):** AccessProfile model, Cosmos repo, IAccessProfileResolver cascade, CRUD endpoints, precheck integration, log-ingest integration. Commit `3d409d24`.
-- **21-test matrix COMPLETE (Bunk):** 17 passing + 4 pending M4 template assertions. Total test baseline: 320 (312 pass, 8 skip). Commit `6c858b96`.
-- **M4 IN-FLIGHT (Sydnor):** APIM template updates (5 templates, version 1.0→1.1, apiId/operationId variables, precheck URL extension, log payload updates).
-- **M5 IN-FLIGHT (Kima):** `/access` admin page (client selector, API grid, per-operation drill-down, assign form).
+**Always match sticky `top-*` offset to the exact header height.**
 
-**Validation:**
-- ✅ Freamon: `dotnet build` + `dotnet test` (311 pass, 8 skip)
-- ✅ Bunk: 21-test matrix (17 pass, 4 pending M4)
-- Sydnor/Kima: Parallel to M3 completion; M4 blockers lifted, M5 API ready
+- Header: `h-16` (4rem = 64px)
+- Sticky elements: `top-16` (not `top-[5.5rem]` or arbitrary pixel values)
+- Pinned viewport height: `h-[calc(100vh-4rem)]` (using the same offset value)
 
-**Why:** Track M1-M3 delivery and verify M4/M5 can proceed without dependency deadlock.
+**Rationale:** Mismatched offsets create visual gaps or overlaps. Using the same Tailwind class for both header height and sticky offset ensures they stay synchronized.
 
-### 2026-05-21T21:28:06Z: User directive — AAA access-profile architecture approved (M1-M6)
-**By:** Zack Way (via McNulty proposal review)  
+### Accessibility Requirements for Search & Filter Controls
+
+1. **Search inputs with icon-only labels:**
+   - Must include `aria-label` (placeholders are not accessible labels)
+   - Example: `<Input aria-label="Search access profiles" placeholder="Search by API…" />`
+
+2. **Filter button groups:**
+   - Wrap in a container with `role="group"` and `aria-label`
+   - Each toggle button must have `aria-pressed={boolean}` to announce state
+
+**Files Affected:** AccessProfiles.tsx, ClientList.tsx, ProfileGrid.tsx
+
+**Why:** WCAG 2.1 accessibility compliance; Tailwind class synchronization prevents future header-height changes from breaking sticky positioning.
+
+---
+
+### 2026-06-26 — Access Profiles Filter Logic Separation of Concerns (Code Review Gate)
+
+**Owner:** McNulty (Lead/Architect)  
 **Status:** Approved  
-**What:** Zack greenlit McNulty's AAA per-client endpoint authorization architecture (Access Profiles) with recommended defaults on all 6 open questions:
-- **Client Identity Model:** Keep dual pattern (Entra JWT + subscription-key) for v1; unify in v2 if needed
-- **Routing Paired with Plan:** `planId` is REQUIRED (routing without quota enforcement is meaningless)
-- **Client Lifecycle Drift:** (B) Orphaned profiles are harmless for v1; (C) show stale badge in UI for v2
-- **Multi-Tenancy Scope:** Global to engine (same client across APIs); Access Profiles add per-API scoping
-- **Naming:** "Access Profile" (RADIUS analogy: NAS-Port=endpoint, User-Name=clientAppId:tenantId, Service-Type=Plan+Routing)
-- **Default-Deny vs Default-Allow:** No API-default profiles for v1 (explicit client registration is a feature, not a bug)
+**Reviewer:** McNulty  
+**Date:** 2026-06-26  
 
-**Architecture Summary:**
-- New document type: `AccessProfile` (Cosmos `configuration` container, partition key `"access-profile"`)
-- Resolution cascade: `(client+operation)` > `(client+api)` > `(client+global)` > legacy `ClientPlanAssignment` (level 4)
-- Backward-compatible precheck integration: `apiId`/`operationId` query params optional; fall through to legacy if absent
-- New admin endpoints: `/api/access-profiles/*` (list, get, create, update, delete, bulk)
-- UI: `/access` page (client selector, API grid, per-operation drill-down, assign form) — Kima, starts after M3/M4 contract firm
+### Verdict: REQUEST CHANGES → APPROVED (After Refactor)
 
-**Phasing (M1-M6):**
-- **M1:** AccessProfile model + Cosmos repo + IAccessProfileResolver cascade service (Freamon)
-- **M2:** Admin CRUD endpoints + bulk assign (Freamon)
-- **M3:** Precheck integration — apiId/operationId param parsing, extended response (planId, accessProfileId, allowedDeployments) (Freamon)
-- **M4:** Log-ingest integration — flow AccessProfileId + PlanId + ApiId + OperationId through to audit trail (Freamon)
-- **M5:** Template updates — all 5 APIM templates get apiId/operationId variables + precheck URL extension + profile extraction + log payload updates, version bump 1.0→1.1 (Freamon/Sydnor)
-- **M6:** UI `/access` page (Kima) — parallel to M1-M5 after M2 API ready
+Initial commit `862fc5d5` introduced 170 lines of filter state and business logic in `ProfileGrid.tsx` (presentation component). Per established pattern, data transformation belongs in the page layer, not the component.
 
-**Test Coverage (Bunk):** 21 tests anticipated — resolver cascade (6 levels), precheck backward compat, log integration, template render, end-to-end flow
+### Required Refactor (Implemented by Kima)
 
-**Why:** This architecture enables per-client per-API policy overrides while remaining fully backward-compatible. Existing templates/clients keep working unchanged. Access Profiles sit above transport layer (APIM templates) and above enforcement layer (precheck/log) — cleanly layered authorization.
+1. **Filter state moved to AccessProfiles.tsx:** `searchQuery`, `overrideFilter` state now owned by page
+2. **Filter logic extracted to pure module:** New `src/components/accessProfiles/filtering.ts` with:
+   - `cellMatchesSearch(cell, query, plansById)` — Case-insensitive search across 7 fields
+   - `cellMatchesOverride(cell, filter)` — Three modes (all/overrides/inherited)
+   - `selectFilteredView(...)` — Section visibility logic with edge case handling
+   - `OVERRIDE_FILTERS` type definitions
+3. **ProfileGrid receives pre-filtered data:** Component now rendering-only, no filter logic
 
-**Files:** Archived decisions:
-- `.squad/decisions/archive/mcnulty-aaa-per-client-arch.md` — Full 387-line architecture spec
-- `.squad/decisions/archive/mcnulty-aaa-pre-post-endpoint-contracts.md` — Full 522-line endpoint contracts addendum
+### Why This Pattern Matters
 
-### 2026-05-21T14:16:20Z: User directive — AAA pre/post endpoint integration scope (CAPTURED)
-**By:** Zack Way (via Copilot)  
-**Status:** Captured (merged into approved architecture)  
-**What:** The new AAA per-client access-profile layer MUST integrate into the pre/post (precheck + log) endpoints. The endpoints must accept the API/operation context, resolve via Access Profiles (most-specific-wins cascade), and use the resolved Plan/Routing for enforcement and accounting — not just the legacy global ClientPlanAssignment.  
-**Why:** Architecture scope confirmation — captured for team memory.
+- **Consistency:** Aligns with existing page-owns-state, component-renders pattern (expand/collapse already follows this)
+- **Testability:** Filter logic testable in isolation without component mounting
+- **Future Features:** Saved filter presets, URL-based filters, bulk operations all now viable without refactoring
+- **State Synchronization:** Eliminates duplication risks between page and grid state
 
-### 2026-05-21T18:35:00Z: React effect callback stabilization — /apis render-loop guardrail
-**By:** Kima (UI Developer)  
-**Status:** Implemented  
-**What:** Fix infinite render loop in `Apis.tsx` by eliminating circular dependency in `loadInitialData` useCallback. The callback depended on `operationsByApi` AND reset it to a fresh object, causing the callback identity to change after every fetch and re-trigger the mount effect indefinitely.  
-**Solution:** Stabilize the callback by removing the circular dependency and reading the latest operations map via a ref (mutable reference that doesn't trigger re-runs). This maintains all original fetch and update behavior while preventing re-trigger loops.  
-**Why:** This pattern is common in pages that cache child collections and refresh them on demand. Callbacks invoked by mount or refresh effects must depend only on stable values. When they need the latest map/array state for reconciliation, read it through a ref or derive stable IDs first.  
-**Files Modified:** `src/aipolicyengine-ui/src/pages/Apis.tsx`  
-**Validation:** `npm run build` ✅, `npm run lint` ✅  
-**Skill:** Kima wrote `.squad/skills/react-render-loop-debugging/SKILL.md` for future reference.  
-**Cross-Agent Note:** Bunk flagged for render-loop guard test coverage in Apis.tsx (e.g., assertion that fetch is called ≤ N times during mount/load).
+### Architecture Alignment
 
-### 2026-05-21T17:43:57Z: APIM ResourceId env binding convention
-**By:** Freamon (Backend Dev)  
-**Status:** Accepted  
-**What:** Use the standard ASP.NET Core environment-variable convention for nested configuration keys: `Apim__ResourceId` (double underscore) instead of `APIM_RESOURCE_ID`. `ApimManagementOptions` binds from the `Apim` configuration section, expecting the APIM resource ID at config key `Apim:ResourceId`.  
-**Why:** 
-- Matches the default `EnvironmentVariablesConfigurationProvider` behavior (no custom alias handling needed).
-- Keeps the application code strict and idiomatic.
-- Prevents silent runtime misbinding when infrastructure sets nested config values.
-**Impact:** All future Terraform and deployment wiring for APIM management must use `Apim__ResourceId` when populating `Apim:ResourceId`.  
-**Audit Result:** Scanned all 200+ env vars in application configuration; no other single-underscore ASP.NET Core nested-config mismatches found.
+Per M5 spec (2026-05-21): `/access` page owns data transformation; ProfileGrid owns presentation. This pattern ensures clean separation and consistent maintainability across all admin pages (Plans, Routing, APIs).
 
-### 2026-04-17T15:52:16Z: User directive — Agent365 SDK integration
-**By:** Zack Way (via Copilot)  
-**Status:** Accepted  
-**What:** Each APIM client is registered and pushes data to the Agent 365 SDK (`Microsoft.Agents.A365.*`) as an Agent for all calls to the Foundry endpoints. The Agent365 SDK (https://github.com/microsoft/Agent365-dotnet) provides the enterprise observability/identity layer we need. Docs at https://learn.microsoft.com/en-us/microsoft-agent-365/developer/identity.  
-**Why:** User found the missing SDK. This replaces/augments our custom PurviewGraphClient with the official Agent365 Observability pipeline. Each client becomes an Agent365 agentic identity.  
-**Key packages:** Microsoft.Agents.A365.Observability, .Runtime, .Hosting, .Extensions.OpenAI  
-**Impact:** Our PurviewAuditService + PurviewGraphClient may be refactored to use the A365 Observability SDK's tracing/exporter pipeline instead of direct Graph REST calls.
+---
 
-### 2026-04-17T16:19:17Z: User directive — A365 integration scope
-**By:** Zack Way (via Copilot)  
-**Status:** Accepted  
-**What:** Q1: Start with lightweight observability only (Option C — use ClientAppId as agent.id, no full Agentic User provisioning). Q2: Emit A365 spans from Precheck and Log Ingest only, following manual instrumentation guide at https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=dotnet#manual-instrumentation  
-**Why:** User decision — lightweight first, full identity provisioning deferred to Phase 2.
+### 2026-06-26 — Frontend Test Framework Decision (Quality Gate)
 
-### 2026-04-17T16:23:41Z: User directive — A365 integration Q3-Q6 answers
-**By:** Zack Way (via Copilot)  
-**Status:** Accepted  
-**What:**
-- Q3: Don't worry about deprecating PurviewGraphClient for now. As long as we use the same App ID for both A365 Observability and Purview, reports/dashboards will correlate.
-- Q4: Emit spans for ALL OpenAI or Foundry endpoints. When non-agent platform API endpoints are added later, those should be excluded. For now, everything gets traced.
-- Q5: A365 is HOST TENANT scoped. If the host tenant has Purview/A365 configured, it's on globally. If not configured, it's off. No per-client/per-tenant configuration needed.
-- Q6: Use Aspire Dashboard for local OTel testing (A365 uses OpenTelemetry). Zack's test tenant has A365/Frontier enabled for integration testing.  
-**Why:** User decisions to unblock Phase 1 implementation.
+**Owner:** Bunk (Tester/QA)  
+**Status:** Approved & Implemented  
+**Date:** 2026-06-26  
 
-### 2026-04-01T00:00:00Z: Agent365 SDK Integration Architecture Plan (PROPOSAL)
-**By:** McNulty (Lead / Architect)  
-**Status:** Proposal — awaiting implementation prioritization  
-**What:** Full architecture plan for integrating Microsoft Agent365 SDK (`Microsoft.Agents.A365.*`) for enterprise-grade observability, identity, and governance:
-- **Key Finding:** A365 Observability SDK is **SEPARATE AND COMPLEMENTARY** to existing `Microsoft.Agents.AI.Purview` DLP integration. 
-  - `Microsoft.Agents.AI.Purview` = Real-time DLP policy enforcement (block/allow at request time)
-  - `Microsoft.Agents.A365.Observability` = Telemetry export (audit trail, session tracking, inference logs sent to M365/Purview for compliance dashboards)
-- **Recommended Architecture:** Keep both SDKs — integrate A365 Observability alongside existing Purview DLP, mapping each `ClientPlanAssignment` to an Agent365 identity.
-- **Three-Phase Plan:**
-  1. **Phase 1 (Lightweight Observability):** Add A365 SDK packages, wrap PrecheckEndpoints with `InvokeAgent` scope, wrap LogIngestEndpoints with `ExecuteInference` scope. No breaking changes.
-  2. **Phase 2 (Agent Identity Provisioning):** Provision Agentic User identities per-client, store mapping in CosmosDB (requires Zack's identity strategy decision).
-  3. **Phase 3 (Purview Deprecation):** Once `Microsoft.Agents.AI.Purview` promotes `IScopedContentProcessor` to public API, replace custom `PurviewGraphClient` with SDK wrapper.
-- **Package Dependencies:** Microsoft.Agents.A365.Observability, .Runtime, .Extensions.OpenAI (if wrapping Azure OpenAI calls)
-- **Integration Points:**
-  - PrecheckEndpoints: `InvokeAgent` scope with `gen_ai.agent.id=ClientAppId`, `microsoft.tenant.id=TenantId`, `gen_ai.conversation.id=correlationId`
-  - LogIngestEndpoints: `ExecuteInference` scope capturing model, tokens, latency, routing decision
-  - DLP Action Attribution: Set `threat.diagnostics.summary` attribute when `CheckContentAsync` blocks request
-- **Configuration:** ENABLE_A365_OBSERVABILITY_EXPORTER=true env var, Agent365 settings in appsettings.json
-- **Open Questions Resolved by Zack:** (1) Agent identity strategy (lightweight vs. full), (2) scope of integration (which endpoints), (3) Purview DLP replacement timeline, (4) Foundry endpoint filtering, (5) tenant/subscription requirements, (6) testing strategy
-- **Estimated Effort:** Phase 1 = 2-3 days; Phase 2 = 1-5 days (depends on identity strategy); Phase 3 = 1 day (when SDK ready)
-- **Risk Assessment:** Beta SDK (API may change), Frontier preview access required (not all tenants), Agent identity provisioning workflow unclear (mitigation: start lightweight)
-- **Reference Document:** See .squad/decisions/inbox/mcnulty-agent365-architecture.md for full architecture analysis (60+ sections covering SDK structure, observability data model, integration patterns, migration path, identity model analysis, and comprehensive Q&A)
+### Problem
 
-### 2026-04-17T16:33:20Z: Microsoft Agent365 Observability SDK Integration (Phase 1)
-**By:** Freamon (Backend Dev) under guidance from Zack Way  
-**Status:** Implemented  
-**What:** Add Agent365 Observability SDK v0.1.75-beta alongside existing OpenTelemetry and Purview DLP. Pure additive integration. Instrument Precheck + ContentCheck endpoints with `InvokeAgentScope` and LogIngest endpoint with `InferenceScope`. Use ClientAppId as lightweight agent identity. Opt-in via `ENABLE_A365_OBSERVABILITY_EXPORTER` env var (default: false).  
-**Why:** Provide agent-specific telemetry patterns for AI workloads; infrastructure for future A365 backend integration when SDK stabilizes.  
-**How:** Service abstraction (`IAgent365ObservabilityService`) with stub implementation (TODO markers) and no-op fallback. DI registration. Scope wrapping in endpoint handlers. Correlation ID from `X-Correlation-ID` header.  
-**Trade-offs:** Stub implementation (SDK v0.1.75-beta lacks public scope creation APIs; full implementation deferred to v0.2.x+). No per-client toggle (host-level only). No M365 identity provisioning. Config CRUD not instrumented (focused on hot path).  
-**Testing:** 225 tests (221 pass, 4 skipped); zero regressions.  
-**Future:** Upgrade SDK, implement token acquisition, add integration tests, enforce correlation ID.
+The frontend (`src/aipolicyengine-ui`) had ZERO test framework configured. Commit `862fc5d5` introduced significant user-facing filter logic:
+- `cellMatchesSearch` — Case-insensitive search across 7 fields (API/operation/plan/method/path)
+- `cellMatchesOverride` — Three filter modes with directProfile presence checks
+- Section visibility + visibleScopeCount — Complex memo logic
+- Empty state rendering
 
-### 2026-04-11T13:16:03Z: Agent365 SDK Real Implementation + Scope Instrumentation (IMPLEMENTED)
-**By:** Freamon (Backend Dev)  
-**Status:** Implemented  
-**Supersedes:** 2026-04-17T16:33:20Z (stub implementation placeholder)  
-**What:** Replaced Agent365 Observability stubs with real SDK scope calls using Microsoft.Agents.A365.Observability.Runtime 0.1.75-beta. Full implementation of `InvokeAgentScope.Start()` and `InferenceScope.Start()` with proper AgentDetails, TenantDetails, Request/InferenceCallDetails parameters. Manual OpenTelemetry configuration added (AddA365Tracing extension not available in this SDK version). All scope creation wrapped in try/catch fail-safe blocks.  
-**Key Decisions:**
-- `InvokeAgentScope.Start()` called with AgentDetails (clientAppId, clientDisplayName), TenantDetails (tenantId), Request (promptContent), and session/correlation IDs
-- `InferenceScope.Start()` called with InferenceCallDetails (model, operationName, token counts), AgentDetails, TenantDetails
-- Manual OpenTelemetry registration (AddA365Tracing not available in v0.1.75-beta)
-- Namespace conflict resolution: `using A365Request = Microsoft.Agents.A365.Observability.Runtime.Tracing.Contracts.Request` alias
-- Placeholder endpoint: `https://apim.example.com` (APIM scenario has no fixed agent endpoint)
-- Fail-safe design: null returns on any exception, never breaks request flow
-**Files Modified:**
-- `src/Chargeback.Api/Services/Agent365ServiceExtensions.cs` — Removed TODO, added OpenTelemetry config
-- `src/Chargeback.Api/Services/Agent365ObservabilityService.cs` — Implemented real scope creation  
-**Test Results:** 235 tests pass (231 pass, 4 documented skips), zero regressions  
-**Why:** Production-ready observability. Stubs were causing confusion; SDK is stable enough per Microsoft docs. Real scopes provide agent-specific telemetry when enabled.
+**Quality Gate Failure:** 0% coverage on production-grade logic.
 
-### 2026-04-11T13:16:03Z: APIM DLP Policy Variants — Fail-Open Content-Check (IMPLEMENTED)
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** Created two DLP-enabled APIM policy variants offering customers choice between baseline (precheck-only) and DLP-enabled (precheck + content-check) policies. Customers without Purview DLP requirements use base policies; customers with DLP requirements use DLP-suffix variants. Both auth types have variants: subscription-key and entra-jwt.  
-**New Files:**
-- `policies/subscription-key-policy-dlp.xml` — Subscription key auth + DLP content-check
-- `policies/entra-jwt-policy-dlp.xml` — Entra JWT auth + DLP content-check  
-**Files Unchanged:** Base policies (subscription-key-policy.xml, entra-jwt-policy.xml) remain identical  
-**Content-Check Pipeline:**
-- **Placement:** After precheck succeeds (200) + routing logic, before backend forwarding
-- **Request:** POST /api/content-check/{clientAppId}/{tenantId} with original requestBody
-- **Response Handling:** HTTP 451 → block, other statuses/failures → proceed (fail-open)
-- **Fail-Open Strategy:** Uses `ignore-error="true"` on send-request; transient failures don't block valid requests
-- **Timeout:** 10 seconds (matches precheck timeout)
-- **Authentication:** APIM managed identity token (same as precheck)  
-**Error Response (HTTP 451):** Mimics Azure OpenAI content_filter format for client compatibility
-**Why:** Not all customers need DLP. Offer choice. Fail-open prioritizes availability — transient content-check failures don't create outages. Only explicit HTTP 451 blocks requests.
-**Trade-offs:** 4 policies to maintain (base + DLP × 2 auth types); future changes must be applied consistently across variants
+### Decision: Adopt Vitest for Frontend Testing
 
-### 2026-05-14T15:54:00Z: User directive — Always validate infra fixes before committing
-**By:** Zack Way (via Copilot)  
-**Status:** Accepted  
-**What:** When fixing infrastructure/deploy errors, the team must validate fixes by actually running the relevant `azd` command (e.g., `azd provision`, `azd up`) BEFORE committing. Do not write commits with unvalidated fixes — keeps the commit tree clean of speculative/bad history.  
-**Why:** User request — captured for team memory
+**Framework Choice:** Vitest v4.1.9
+- **Why:** Vite-native (zero-config), React 19 compatible, fast test execution (~7ms for 35 tests), industry standard for Vite projects
+- **Additional Packages:** @testing-library/react (component testing future), @testing-library/jest-dom, jsdom (browser env), @vitest/ui (optional)
+- **Config:** `vitest.config.ts` (node environment for pure functions; jsdom available for component tests)
 
-### 2026-05-14T15:54:00Z: azd Terraform Provider Configuration
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** Added `infra:` section to `azure.yaml` to declare Terraform as the IaC provider for azd:
-```yaml
-infra:
-  provider: terraform
-  path: infra/terraform
-  module: main
-```
-**Why:** azd CLI defaults to Bicep when no `infra:` section is declared. This configuration is required to use Terraform with azd.  
-**Impact:** `azd provision` now invokes Terraform instead of looking for `infra/main.bicep`. No Terraform module changes needed.  
-**Validation:** `azd provision --preview` succeeds through Terraform plan phase (blocked only by Azure tenant Conditional Access policy, not code).
+### Implementation
 
-### 2026-05-14T15:54:00Z: azd Terraform Provider Requires main.tfvars.json Template
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** Created `infra/terraform/main.tfvars.json` as a template file with azd environment variable substitution:
-```json
-{
-  "subscription_id": "${AZURE_SUBSCRIPTION_ID}",
-  "location": "${AZURE_LOCATION}",
-  "workload_name": "${AZURE_ENV_NAME}"
-}
-```
-**Why:** azd's Terraform provider requires this file alongside `main.tf` to map azd environment variables to Terraform input variables. Without it, azd cannot initialize the Terraform module.  
-**Impact:** `azd provision` now correctly reads Terraform variables from the template. File is intentionally uncommitted per Zack's directive to validate infra fixes before committing.  
-**Validation:** Ran `azd provision --preview` — "file not found" error resolved; Terraform plan succeeds.
+**Commit:** `cdebab40`  
+- Created `vitest.config.ts` with test configuration
+- Created `src/components/accessProfiles/filtering.test.ts` — 35 unit tests
+- Added `npm test` (CI mode) and `npm run test:watch` (dev mode) scripts
 
-### 2026-05-14T15:54:01Z: Redirect URI Registration in Postprovision Hook
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** The postprovision hook (scripts/postprovision.ps1 and scripts/postprovision.sh) must register redirect URIs on the Terraform-managed API app (api_app_id), query the actual Container App FQDN from Azure (not Terraform state), and be idempotent by not duplicating URIs.  
-**Why:** Fixes AADSTS500113 error when logging into dashboard. UI was configured to use Terraform-managed app, but postprovision was setting URIs on legacy app. Pattern queries live Azure resources, handles SPA flow correctly, and remains idempotent across re-runs.  
-**Implementation:** PowerShell pattern uses Graph API (GET spa, PATCH spa.redirectUris); Bash equivalent provided. Registers Container App FQDN as SPA redirect URI (MSAL.js SPA flow requirement).  
-**Impact:** Dashboard login now works. Redirect URI verified on correct app (d5bd33f4-09b1-4602-af88-29c5ec7728e0).
+### Test Coverage
 
-### 2026-05-14T15:54:02Z: UI-to-API URL Wiring: Same-Origin Pattern for Container Apps
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** For React SPAs served FROM the same Container App as their API, use relative URLs by setting VITE_API_URL= (empty string) in the preprovision script. This works because the UI is built into the API's wwwroot folder, and both are served from the same FQDN.  
-**Why:** Eliminates hardcoded URLs (which go stale when Container App FQDN changes), avoids CORS issues, removes timing problems with Container App FQDN not being known until after azd provision.  
-**Implementation:** Updated scripts/preprovision.ps1 and scripts/preprovision.sh to write VITE_API_URL= (empty string). UI's api.ts reads: const API_BASE = import.meta.env.VITE_API_URL || ""; (defaults to empty, uses relative URLs).  
-**Trade-off:** Only works when UI and API are in the SAME Container App. If separate CAs, use runtime environment variable injection or postprovision script to query API CA FQDN and rewrite config.  
-**Impact:** Dashboard now makes relative API calls to same origin. Timeout issues resolved. No stale URL references.
+**35 Passing Tests (100% of filtering.ts):**
+- `cellMatchesSearch` — 11 tests (empty query, case-insensitive matching, null planName handling, field coverage)
+- `cellMatchesOverride` — 3 tests (all/overrides/inherited modes)
+- `selectFilteredView` — 21 tests (section visibility, override filtering, visibleScopeCount, edge cases)
 
-### 2026-05-15T16:45:18Z: Postprovision Scripts Must Use Terraform Output Variable Names
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** Postprovision scripts that read Terraform outputs via `azd env get-values` must use Terraform's exact output variable names (snake_case like `resource_group_name`, `cosmos_endpoint`), NOT azd's built-in environment variable names (SCREAMING_CASE like `AZURE_RESOURCE_GROUP`, `COSMOS_ENDPOINT`).  
-**Why:** On a fresh `azd up`, Terraform writes its outputs to the azd environment using the exact names defined in `outputs.tf`. If postprovision scripts query different variable names, they silently fail to find the values and skip critical configuration steps (like redirect URI registration). This gotcha doesn't surface on update-style deploys because the azd environment often has BOTH variable naming conventions cached from prior manual runs or legacy scripts.  
-**Implementation:** Updated `scripts/postprovision.ps1` lines 11–12 to use `resource_group_name` and `cosmos_endpoint` instead of the legacy `AZURE_RESOURCE_GROUP` and `COSMOS_ENDPOINT`. Script now correctly resolves resource group and proceeds with Cosmos RBAC assignment and SPA redirect URI registration.  
-**Impact:** Fresh `azd up` now completes end-to-end without manual postprovision fixes. Redirect URI registration and Cosmos RBAC assignment work on first deploy.  
-**Trade-offs:** None — this is a strict bug fix.  
-**Verification:** Tested via fresh `azd up` → `azd hooks run postprovision`: resource group resolved correctly, Cosmos RBAC assigned successfully, redirect URI registered on Terraform-managed API app.
+**All 10 Original Priority Cases — COVERED**
 
-### 2026-05-15T16:52:32Z: Auto-Assign AIPolicy.Admin App Role in Postprovision Hook
-**By:** Sydnor (Infra/DevOps)  
-**Status:** Implemented  
-**What:** Postprovision scripts now auto-assign the deploying user to the `AIPolicy.Admin` app role so the portal is immediately usable after deployment without manual role assignment. Updated `scripts/postprovision.ps1` and `scripts/postprovision.sh` to query the current signed-in user, check if role is already assigned (idempotent), and create the appRoleAssignment via Graph API if needed.  
-**Why:** HTTP 403 errors on routing-policies endpoints after fresh `azd up` — Terraform only assigns app roles to service principals, not human users. Without the role, the deploying user is authenticated but not authorized. Postprovision can access the deploying user via `az ad signed-in-user show`.  
-**How:** (1) Query signed-in user object ID, (2) Query API app service principal and AIPolicy.Admin role ID, (3) Check existing assignments (idempotent), (4) Create appRoleAssignment via `az rest` POST, (5) Emit warning to logout/login for token refresh.  
-**Trade-offs:** Pro: Portal works immediately; idempotent; matches existing patterns. Con: Token refresh required (user must logout/login); only assigns deploying user (teammates need separate assignment or manual assignment).  
-**Key Learning:** App role assignments don't retroactively affect existing tokens — users must obtain fresh token via logout/login or token expiry.  
-**Validation:** Manual role assignment via Graph API succeeded; postprovision scripts updated with idempotent assignment logic; awaiting Zack's logout/login validation.
+### Validation
 
-## 2026-05-16 — Non-AI API Usage Limits Architecture
-**Owner:** McNulty  
-**Status:** paused  
-**Source:** `.squad/decisions/inbox/mcnulty-non-ai-api-limits-architecture.md` (will be archived after merge)
+✅ All 35 tests passing  
+✅ TypeScript clean (`tsc -b`)  
+✅ Vite build successful  
 
-This proposal extended plan management with additive non-AI request limits: flat `NonAiRequestsPerMinute` and `NonAiMonthlyRequestQuota` fields on plan models, `NonAiCurrentPeriodRequests` on client assignments, and dedicated `/api/precheck-rest/{clientAppId}/{tenantId}` plus `/api/log-rest` endpoints for centralized enforcement and accounting. The rationale was to keep non-AI traffic out of the AI precheck hot path while preserving dashboard visibility through the policy engine's Redis/Cosmos usage model.
+### Future Scope
 
-Implementation is paused per Zack's instruction. The parked XML/template artifacts now live under `.squad/files/non-ai-paused/`, and any future resume should reconcile this earlier endpoint-first design with the accepted APIM Policy Management architecture that now treats non-AI XML as template seed material instead of a standalone rollout.
+- Component tests for ProfileGrid.tsx (switch vitest.config to jsdom)
+- Coverage reporting script for CI pipelines
+- Pre-commit hooks (husky + lint-staged)
+- GitHub Actions CI integration
 
-**Related:** [APIM Policy Management Architecture](#2026-05-16--apim-policy-management-architecture), `.squad/files/non-ai-paused/`, [Non-AI APIM Policy Contract](#2026-05-21--non-ai-apim-policy-contract), [Non-AI API Limits Test Coverage Strategy](#2026-05-21--non-ai-api-limits-test-coverage-strategy)
+**Key Decision:** Vitest is now the established frontend test runner for aipolicyengine-ui.
 
-## 2026-05-16 — APIM Policy Management Architecture
-**Owner:** McNulty  
-**Status:** accepted  
-**Source:** `.squad/decisions/inbox/mcnulty-apim-management-architecture.md` (will be archived after merge)
-
-The session's headline decision is Tier B APIM policy management: admins choose from shipped templates, fill validated parameters, and let the engine render and apply XML through APIM management APIs. Raw XML editing and drift management are deferred. A new APIM assignment document type lives in the existing Cosmos `configuration` container, and the UI/API surface centers on catalog, assignment, apply, and clear flows for APIs and operations.
-
-Runtime control goes through `Azure.ResourceManager.ApiManagement` using the Container App managed identity and a narrow custom APIM policy role, with `APIM_RESOURCE_ID` as the service locator. Existing policy XML files become seed templates under `policies/templates/`; this includes the parked non-AI REST policy when that work resumes. Multi-APIM support and drift detection remain open follow-ons, not launch requirements.
-
-**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), `policies/templates/`, `infra/terraform/modules/gateway/`, `src/AIPolicyEngine.Api/Endpoints/ApimManagementEndpoints.cs`
-
-## 2026-05-21 — Non-AI APIM Policy Contract
-**Owner:** Sydnor  
-**Status:** paused  
-**Source:** `.squad/decisions/inbox/sydnor-non-ai-apim-policy.md` (will be archived after merge)
-
-Sydnor drafted a non-AI REST APIM policy around Entra JWT validation, native APIM `rate-limit-by-key` and `quota-by-key` enforcement, backend routing through `{{NonAiBackendUrl}}`, and fire-and-forget accounting to `/api/log-rest`. The XML also carries a commented `/api/precheck-rest` alternative using APIM managed identity so the team can pivot back to centralized enforcement without redesigning the full contract.
-
-The draft also captured APIM constraints that matter if this path returns: quota windows are fixed 30-day periods rather than billing months, quota values are deployment-time constants, native counters stay in APIM rather than Redis, and quota/rate policies block with different status codes. Because the non-AI work is paused, this draft is now reference material for the parked files and for later templateization under APIM Policy Management.
-
-**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), [APIM Policy Management Architecture](#2026-05-16--apim-policy-management-architecture), `.squad/files/non-ai-paused/`, `.squad/files/non-ai-paused/entra-jwt-rest-policy.xml`
-
-## 2026-05-21 — Non-AI API Limits Test Coverage Strategy
-**Owner:** Bunk  
-**Status:** paused  
-**Source:** `.squad/decisions/inbox/bunk-non-ai-test-plan.md` (will be archived after merge)
-
-Bunk proposed a three-layer test strategy for the non-AI limits feature: endpoint coverage in `src/AIPolicyEngine.Tests/EndpointTests.cs`, deeper integration tests for counter isolation and rollover semantics, and NBomber load coverage for high-throughput non-AI precheck traffic across multiple customers. The plan intentionally mirrors the repository's existing split between endpoint, integration, and load-test suites.
-
-This remains a supporting reference only. It depends on final endpoint/schema decisions, settled `0 = unlimited` and rejected-request semantics, and preferably a clock seam for rollover tests; Bunk's separate implementation work is still pending merge and is not recorded here as landed.
-
-**Related:** [Non-AI API Usage Limits Architecture](#2026-05-16--non-ai-api-usage-limits-architecture), [Non-AI APIM Policy Contract](#2026-05-21--non-ai-apim-policy-contract), `src/AIPolicyEngine.Tests/EndpointTests.cs`, `src/AIPolicyEngine.LoadTest/Program.cs`
+---
 
 ## Governance
 
 - All meaningful changes require team consensus
-- Document architectural decisions here
+- Archive decisions older than 30 days to `.squad/decisions-archive-*.md`
+- Document architectural decisions for team memory
 - Keep history focused on work, decisions focused on direction
+**By:** Scribe (logged from orchestration)  

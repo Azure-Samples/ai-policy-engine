@@ -38,6 +38,27 @@ RoutingPolicyEndpoints.ValidateDeployments skips validation when Foundry is empt
 
 <!-- Active learnings from ongoing work below -->
 
+### 2026-06-26 — Frontend Test Gap: Access Profiles Filter Logic (commit 862fc5d5)
+
+**Assessment:** The frontend (`src/aipolicyengine-ui`) has ZERO test framework configured — no Vitest/Jest, no @testing-library/react, no test files. The `package.json` includes only Vite, TypeScript, ESLint in devDependencies.
+
+**Commit Scope:** Branch `fix/access-profiles-layout` (commit `862fc5d5`) added search + override filter logic to `ProfileGrid.tsx`:
+- `cellMatchesSearch` — Case-insensitive search across 7 fields (API/operation/plan/method/path)
+- `cellMatchesOverride` — Three filter modes (all/overrides/inherited), checks `directProfile` presence
+- Section visibility + `visibleScopeCount` — Complex memo logic, conditional count (filtered vs expanded)
+- Empty result state when no scopes match
+
+**Edge Cases Untested:**
+1. Empty query, null planName, special characters in search
+2. Override filter with `directOverrideCount > 0` at section but no `directProfile` at cell
+3. `apiTextMatch=true` but all cells filtered out (section shows message)
+4. `visibleScopeCount` off-by-one risks (filters on vs expanded/collapsed count)
+5. Collapsed sections with operation-level overrides
+
+**Recommendation Documented:** `.squad/decisions/inbox/bunk-access-profiles-filter-coverage.md` — Flagged as quality gate failure (0% vs 80% floor). Recommended Vitest + @testing-library/react if team approves frontend testing. Priority test cases listed.
+
+**Decision Required:** Team must approve frontend test framework introduction before I can write tests. Not adding tooling unprompted per charter.
+
 ### 2026-05-21 — Non-AI API Limits Test Plan Draft
 
 - Non-AI API limits should extend the existing endpoint-pattern tests in `src/AIPolicyEngine.Tests/EndpointTests.cs`, especially the current `CreatePlan_*`, `UpdatePlan_*`, `Precheck_*`, and `Precheck_RpmLimitExceeded_Returns429OnSecondRequest` cases.
@@ -550,3 +571,79 @@ When writing tests for deployed infrastructure:
 - Admin workflows functional end-to-end
 
 **Next:** PR review + merge; M6 (Redis caching) deferred as optional optimization
+
+### 2026-06-26 — Vitest Setup + Access Profiles Filter Tests (commit cdebab40)
+
+**Decision Approved:** Zack Way approved standing up frontend testing infrastructure. Prior quality gate failure (0% frontend coverage, commit 862fc5d5) is now actionable.
+
+**Framework:** Vitest v4.1.9 (Vite-native, pairs with existing Vite 7 setup)
+**Additional Packages:** @testing-library/react@16.x, @testing-library/jest-dom@6.x, jsdom@26.x, @vitest/ui@4.x
+**Config:** itest.config.ts with node environment (pure function tests — no DOM needed for this module)
+**Test Scripts:** 
+pm test (vitest run), 
+pm run test:watch (vitest)
+
+**Test File:** src/aipolicyengine-ui/src/components/accessProfiles/filtering.test.ts
+**Coverage:** 35 unit tests for pure filter functions (commit cdebab40):
+- cellMatchesSearch: 11 tests (empty query, case-insensitive matching across apiDisplayName/apiId/operationDisplayName/operationId/method/urlTemplate/planName, null effective, unknown planId fallback, non-match)
+- cellMatchesOverride: 3 tests (all/overrides/inherited filter modes)
+- selectFilteredView: 21 tests (global visibility, section visibility under all/overrides/inherited filters, visibleScopeCount math for filtered vs unfiltered/expanded, empty result, filtersActive flag, query normalization)
+
+**Test Fixtures:**
+- Mock PlanData records (plan-1, plan-2) with required fields (createdAt/updatedAt)
+- createMockCell() helper for AccessGridCellData with realistic defaults
+- createMockSection() helper for AccessApiSection with full structure
+
+**Edge Cases Covered:**
+1. Empty query → all cells match
+2. Null planName when effective is missing → no crash
+3. Unknown planId → falls back to planId string in search
+4. Override filter: directOverrideCount > 0 at section + piTextMatch=true → section visible (collapsed operation overrides)
+5. Inherited filter: API text match + directProfile → section hidden
+6. visibleScopeCount: correct math when filters active (count visible cells) vs inactive (count API + expanded operations)
+
+**Validation:** All 35 tests pass. TypeScript compilation clean. Vite build successful.
+
+**Learnings:**
+- Vitest fixtures must match production types exactly (PlanData requires createdAt/updatedAt)
+- Spread syntax (...createMockCell({}).target) causes object duplication — use const baseCell = createMockCell({}) instead for cleaner test setup
+- Vitest runs fast (~7ms for 35 tests) — node environment is sufficient for pure function tests
+- Future component tests (e.g., ProfileGrid rendering) will need jsdom environment + @testing-library/react
+
+**Sign-Off:** ✅ APPROVED for merge. Filter logic now has comprehensive test coverage (100% of pure functions). Foundation established for future UI component tests.
+
+## Cross-Team Context — Vitest Infrastructure Established
+
+**Status:** Vitest is now the established frontend test framework for aipolicyengine-ui.
+
+**Why Vitest:**
+- Vite-native (already in use for React app build)
+- Fast (~7ms for 35 pure-function tests)
+- React 19 compatible
+- Industry standard for Vite-based projects
+- Supports both pure function tests (node environment) and component tests (jsdom environment)
+
+**Pattern Established:**
+- Pure logic extracted to `.ts` modules (example: `filtering.ts` with 4 export functions + 3 types)
+- Tests colocated with source in `__tests__/` subdirs or as `.test.ts` next to source
+- Fixtures match production types exactly (avoid spread duplication; use const baseModel = create())
+- Node environment sufficient for pure functions; jsdom available when component rendering tests needed
+
+**Packages Ready (Pre-installed):**
+- `vitest` — test runner
+- `@testing-library/react` — for future component tests
+- `@testing-library/jest-dom` — DOM matchers for future component tests
+- `jsdom` — browser environment for component tests
+- `@vitest/ui` — optional web UI for test exploration
+
+**Future Test Opportunities:**
+- ProfileGrid.tsx component tests (render behavior, user interactions, accessibility)
+- ClientList.tsx component tests
+- AccessProfiles.tsx integration tests (filter state + render coordination)
+- Coverage reporting script for CI pipelines
+
+**Learnings from First Test Suite:**
+1. Test fixtures must match production types exactly (field names, required timestamps)
+2. Spread syntax in fixture setup causes duplication — use const baseModel = create({ overrides }) pattern
+3. Vitest runs fast; pure function tests are instant feedback
+4. Edge cases matter: empty query, null values, fallback values, boundary conditions all covered in Access Profiles tests

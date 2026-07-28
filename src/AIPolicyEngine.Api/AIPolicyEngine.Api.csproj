@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Agents.AI.Purview" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Identity.Web" />
+    <PackageReference Include="Microsoft.OpenApi" />
   </ItemGroup>
 
   <ItemGroup>

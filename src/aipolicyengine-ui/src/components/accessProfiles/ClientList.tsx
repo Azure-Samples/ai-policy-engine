@@ -42,7 +42,7 @@ export function ClientList({ clients, plans, selectedClientKey, onSelectClient }
   }, [clients, plansById, query])
 
   return (
-    <Card className="h-full overflow-hidden border-slate-300/70 bg-gradient-to-b from-slate-50 via-white to-slate-100/80 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+    <Card className="flex h-full flex-col overflow-hidden border-slate-300/70 bg-gradient-to-b from-slate-50 via-white to-slate-100/80 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
       <CardHeader className="border-b border-slate-200/70 pb-4 dark:border-slate-800">
         <CardTitle className="flex items-center gap-2 text-base">
           <UserRoundCog className="h-4 w-4 text-[#0078D4]" />
@@ -51,11 +51,17 @@ export function ClientList({ clients, plans, selectedClientKey, onSelectClient }
         </CardTitle>
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search client, tenant, plan…" className="pl-9" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search client, tenant, plan…"
+            className="pl-9"
+            aria-label="Search clients"
+          />
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="max-h-[72vh] overflow-auto">
+      <CardContent className="min-h-0 flex-1 p-0">
+        <div className="h-full max-h-[60vh] overflow-auto xl:max-h-none">
           {filteredClients.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">No clients match your search.</div>
           ) : (

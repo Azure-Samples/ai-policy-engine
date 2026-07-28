@@ -113,3 +113,99 @@ For detailed work items, see:
 **Commits:** Freamon 3d409d24, Sydnor 24de42b5, Kima c54c29c
 
 **Next:** PR review + merge to main; documentation finalization
+
+## 2026-06-26T18:14:59Z — Access Profiles Layout Enhancement Review (VERDICT: REQUEST CHANGES)
+
+**Commit:** 862fc5d5 on branch `fix/access-profiles-layout`  
+**Author:** Zack Way (coordinator), owned by Kima (Frontend)  
+**Scope:** Frontend-only — sticky client list, policy search bar, override filter (All/Direct overrides/Inherited only) with match count
+
+**Review Focus:** Maintainability, separation of concerns, no regressions to cascade semantics, alignment with AAA `/access` architecture
+
+**FINDINGS:**
+
+1. **CSS Changes (✅ APPROVED):**
+   - ClientList.tsx: Sticky positioning with independent scroll at xl breakpoint — clean, appropriate
+   - AccessProfiles.tsx: Grid layout adjustments for pinned left column — good
+   - ProfileGrid.tsx: Sticky search bar positioning — follows existing conventions
+
+2. **Filter UI Patterns (✅ APPROVED):**
+   - Search bar with clear button
+   - Override filter segmented control (All/Direct overrides/Inherited only)
+   - Match count display
+   - Empty state with actionable clear-filters button
+   - All follow existing UI conventions
+
+3. **Separation of Concerns (❌ BLOCKING ISSUE):**
+   - ProfileGrid.tsx now owns ~170 lines of filter state + logic + presentation decisions:
+     - Local state: `query`, `overrideFilter` (lines 215-216)
+     - Filter functions: `cellMatchesSearch()`, `cellMatchesOverride()` (lines 51-77)
+     - Derived state: `filteredSections`, `visibleScopeCount` (useMemo, lines 224-273)
+     - Conditional rendering based on filters throughout the component
+   - **This violates component boundaries:** AccessProfiles.tsx owns section construction and expansion state; ProfileGrid.tsx should own only rendering.
+   - **State duplication risk:** The page manages `apis` and `expandedApiIds`; the grid now manages a parallel filtered view. These can diverge.
+   - **Future feature friction:** Saved filter presets, URL-based filters, or filter-aware bulk operations would require refactoring this logic back to the page layer.
+
+4. **No Regressions (✅ APPROVED):**
+   - Filtering is presentation-only; cascade resolution semantics unchanged
+   - No backend/contract changes (expected)
+   - Existing expand/collapse behavior preserved
+
+**VERDICT: REQUEST CHANGES**
+
+**Required Changes (Kima to implement):**
+
+1. **Move filter state to AccessProfiles.tsx:**
+   - Add `searchQuery: string` and `overrideFilter: "all" | "overrides" | "inherited"` to page state
+   - Expose `onSearchChange` and `onOverrideFilterChange` callbacks to ProfileGrid
+
+2. **Move filtering logic to AccessProfiles.tsx:**
+   - Implement `cellMatchesSearch()`, `cellMatchesOverride()`, and section filtering as pure functions or useMemo in the page
+   - Compute `filteredSections` and `visibleScopeCount` in AccessProfiles.tsx
+   - Pass pre-filtered sections + match count to ProfileGrid as props
+
+3. **ProfileGrid receives filtered data:**
+   - Props: `filteredSections`, `visibleScopeCount`, `filtersActive: boolean`, `searchQuery`, `overrideFilter`, `onSearchChange`, `onOverrideFilterChange`, `onClearFilters`
+   - ProfileGrid renders the filter UI and the pre-filtered sections — no filtering logic internally
+
+4. **Preserve existing behavior:**
+   - Expand/collapse state remains in AccessProfiles.tsx
+   - Filter UI remains visually sticky in ProfileGrid (CSS-only)
+   - All existing callbacks (onOpenCell, onToggleQueuedScope, onToggleApi) unchanged
+
+**Why This Matters:**
+
+The `/access` page is the primary admin interface for the AAA authorization layer. Maintaining clean separation between data transformation (page) and presentation (grid) ensures:
+- Future filter features (saved presets, URL state, bulk operations) integrate cleanly
+- Filter logic is testable independently of UI
+- No state synchronization bugs between page and grid
+- Consistent pattern with existing page/component boundaries
+
+**References:**
+- AAA M5 spec: Page owns client selection, API catalog, and section construction; ProfileGrid owns rendering
+- Existing pattern: AccessProfiles.tsx manages `expandedApiIds`, ProfileGrid receives sections with `expanded` flag
+
+**Outcome:** Changes blocked pending refactor. Kima to implement separation-of-concerns fix before merge.
+
+## 2026-06-26T18:36:45Z — Access Profiles Separation of Concerns (APPROVED After Refactor)
+
+**Verdict:** REQUEST CHANGES → APPROVED
+
+**Resolution:** Kima implemented the requested refactor across 3 commits:
+- `4212be72` — Fixed sticky offsets to match h-16 header + added ARIA labels per accessibility gate
+- `603d5ce4` — Lifted filter state/logic from ProfileGrid.tsx to AccessProfiles.tsx page layer
+- `4fc0a5a6` — Extracted pure filter logic into `src/components/accessProfiles/filtering.ts` module
+
+**Architecture Pattern Confirmed:**
+- **Page owns:** State (searchQuery, overrideFilter), data transformation (selectFilteredView call in useMemo), business logic (cellMatchesSearch, cellMatchesOverride as pure functions)
+- **Component owns:** Rendering only; receives pre-filtered sections + callbacks as props; filter UI (sticky positioning) as CSS-only styling
+- **Separation validated:** No state duplication risk, future features (URL state, saved presets, bulk operations) now unblocked
+
+**Pattern Consistency:** This matches existing page/component boundary model across admin pages (expand/collapse state in page, section rendering in component). Consistency ensures maintainability and future extensibility.
+
+**Quality Gate Sequence:**
+1. ✅ McNulty: Separation of concerns gate APPROVED
+2. ✅ Bunk: Testing gate APPROVED (35 passing tests for filtering.ts)
+3. ✅ Zack: Frontend test infrastructure decision APPROVED (Vitest adopted as standard)
+
+**Outcome:** Feature complete, all gates closed, ready for PR review + merge.

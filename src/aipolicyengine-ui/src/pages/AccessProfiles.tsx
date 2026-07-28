@@ -4,6 +4,7 @@ import { AlertTriangle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react"
 import { ClientList } from "../components/accessProfiles/ClientList"
 import { ProfileEditor, type ProfileEditorValues } from "../components/accessProfiles/ProfileEditor"
 import { ProfileGrid } from "../components/accessProfiles/ProfileGrid"
+import { selectFilteredView, type OverrideFilter } from "../components/accessProfiles/filtering"
 import type { AccessGridCellData, AccessScopeTarget, EffectiveAccessPreview } from "../components/accessProfiles/types"
 import { Button } from "../components/ui/button"
 import { fetchClients, fetchDeployments, fetchPlans, fetchRoutingPolicies } from "../api"
@@ -366,6 +367,21 @@ export function AccessProfiles() {
     operationId: null,
   }), [resolveCell])
 
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState("")
+  const [overrideFilter, setOverrideFilter] = useState<OverrideFilter>("all")
+
+  // Compute filtered view using pure helper
+  const { filteredSections, globalVisible, visibleScopeCount, filtersActive } = useMemo(
+    () => selectFilteredView(sections, globalCell, searchQuery, overrideFilter, plansById),
+    [sections, globalCell, searchQuery, overrideFilter, plansById],
+  )
+
+  const clearFilters = useCallback(() => {
+    setSearchQuery("")
+    setOverrideFilter("all")
+  }, [])
+
   const allCellsByScopeKey = useMemo(() => {
     const entries: Array<[string, AccessGridCellData]> = [[buildScopeKey(globalCell.target.apiId, globalCell.target.operationId), globalCell]]
 
@@ -589,8 +605,8 @@ export function AccessProfiles() {
       )}
 
       {!accessDeniedMessage && (
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="min-h-[520px]">
+        <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="xl:sticky xl:top-16 xl:self-start xl:h-[calc(100vh-4rem)]">
             {referenceLoading ? (
               <div className="flex h-full min-h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                 Loading clients…
@@ -605,7 +621,7 @@ export function AccessProfiles() {
             )}
           </div>
 
-          <div>
+          <div className="min-w-0">
             {catalogLoading && apis.length === 0 ? (
               <div className="flex min-h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                 Loading APIs…
@@ -620,9 +636,18 @@ export function AccessProfiles() {
                 queuedScopeKeys={queuedScopeKeys}
                 profilesLoading={profilesLoading}
                 onToggleApi={handleToggleApi}
-                onRetryOperations={(api) => { void refreshOperations(api) }}
+                onRetryOperations={refreshOperations}
                 onOpenCell={handleOpenCell}
                 onToggleQueuedScope={handleToggleQueuedScope}
+                filteredSections={filteredSections}
+                globalVisible={globalVisible}
+                visibleScopeCount={visibleScopeCount}
+                filtersActive={filtersActive}
+                searchQuery={searchQuery}
+                overrideFilter={overrideFilter}
+                onSearchChange={setSearchQuery}
+                onOverrideFilterChange={setOverrideFilter}
+                onClearFilters={clearFilters}
               />
             )}
           </div>

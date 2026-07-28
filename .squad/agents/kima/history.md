@@ -187,3 +187,181 @@ Build the `/access` admin page for Access Profile management (new per-client, pe
 - Freamon M1-M3 backend contracts validated; all CRUD + bulk endpoints consumed
 - Sydnor M4 templates shipped with metadata propagation; `/access` page now shows all cascade levels
 - Bunk all 21 AAA tests active and passing; UI integration complete
+
+## 2026-06-26 — Access Profiles Layout Review & Accessibility Fixes
+
+**Status:** ✅ COMPLETE
+
+**Commits:**
+- Original coordinator work: `862fc5d5`
+- Kima accessibility & offset fixes: `4212be7`
+
+**Scope:**
+Reviewed and fixed layout/accessibility issues on the `/access` Access Profiles page after coordinator implemented sticky columns and search/filter controls.
+
+**Changes Reviewed:**
+1. **Sticky left column** (xl breakpoint) — ClientList pinned with independent scroll
+2. **Search bar** — Full-text search across API, operation, plan, method, path
+3. **Override filter** — Three modes (All scopes / Direct overrides / Inherited only) with live count and clear control
+
+**Issues Found & Fixed:**
+- **Sticky offset mismatch**: Header is `h-16` (4rem) but original used `top-[5.5rem]` (88px), creating a 24px gap. Fixed to `top-16` to align with header bottom edge.
+- **Client list height calc error**: Original used `h-[calc(100vh-7rem)]` but should be `h-[calc(100vh-4rem)]` to match the `top-16` offset.
+- **Missing accessibility labels**: 
+  - Search inputs lacked `aria-label` for screen readers — added `aria-label="Search clients"` and `aria-label="Search access profiles"`.
+  - Override filter buttons needed semantic markup — added `role="group"`, `aria-label="Override filter"`, and `aria-pressed` to each button.
+
+**Responsive Behavior Verified:**
+- Below xl: client list scrolls normally with `max-h-[60vh]`, no sticky behavior.
+- At xl+: client list sticks to viewport with `xl:sticky xl:top-16`, fills remaining height with `xl:h-[calc(100vh-4rem)]`, scrolls internally.
+- Filter controls stack vertically on mobile (flex-col), row layout on lg+ (flex-row).
+
+**Component Patterns Followed:**
+- Flex+truncate pattern for badges and titles (existing skill)
+- Sticky positioning consistent with existing page headers
+- Search icon absolute positioning with left padding on input
+- Filter buttons use Tailwind `cn()` utility for conditional classes
+
+**Validation:**
+- ✅ `npx tsc -b` — clean
+- ✅ `npx eslint` — clean
+- ✅ `npm run build` — success
+
+**Files Modified:**
+- `src/aipolicyengine-ui/src/pages/AccessProfiles.tsx` — Sticky offset and height calc
+- `src/aipolicyengine-ui/src/components/accessProfiles/ClientList.tsx` — Search aria-label
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileGrid.tsx` — Sticky offset, search aria-label, filter group semantics
+
+**Key Learnings:**
+- **Sticky offset rule**: Always match `top-*` to header height exactly (header is `h-16` → sticky uses `top-16`, not arbitrary pixel values).
+- **Calc height pattern**: When pinning to viewport with `top-N`, use `h-[calc(100vh-N)]` with the same offset value for seamless fill.
+- **Filter button a11y pattern**: Button groups need `role="group"` + `aria-label` on container, `aria-pressed` on each toggle button for proper screen reader announcement.
+- **Search input a11y**: Icon-only inputs must have `aria-label` even when placeholder exists — placeholders are not accessible labels.
+
+**Cross-Team Notes:**
+- Coordinator implemented feature correctly; only needed offset/a11y polish.
+- No breaking changes; filter logic and count math are correct (visibleScopeCount handles expanded sections properly).
+- Layout is production-ready after fixes.
+
+## 2026-06-26 — Access Profiles Filter Refactor (McNulty Review)
+
+**Status:** ✅ COMPLETE
+
+**Commits:**
+- Architecture refactor: `603d5ce4`
+
+**Scope:**
+McNulty's code review requested refactor of filter state/logic from ProfileGrid component up to AccessProfiles page to follow established container/presentation pattern.
+
+**Blocking Issue:**
+ProfileGrid owned ~170 lines of filter state, business logic, and data transformation (searchQuery/overrideFilter state, cellMatchesSearch/cellMatchesOverride helpers, filteredSections/visibleScopeCount memos). This violated the established pattern where AccessProfiles.tsx owns data transformation and ProfileGrid owns rendering.
+
+**Refactor Completed:**
+- **Lifted state**: Moved `searchQuery` and `overrideFilter` from ProfileGrid to AccessProfiles
+- **Lifted logic**: Moved `cellMatchesSearch` and `cellMatchesOverride` helpers to page level (useCallback for stability)
+- **Lifted filtering**: Moved `filteredSections` and `visibleScopeCount` useMemo computations to page
+- **Updated ProfileGrid props**: Now receives pre-filtered data (`filteredSections`, `globalVisible`, `visibleScopeCount`) and filter UI state/callbacks (`searchQuery`, `overrideFilter`, `onSearchChange`, `onOverrideFilterChange`, `onClearFilters`)
+- **Preserved behavior**: All search, override filter modes, match counts, empty states, and collapsed-section handling work identically
+
+**Pattern Now Consistent:**
+- AccessProfiles.tsx: Owns client selection, API catalog, section construction, expansion state, **filter state**, and assignment workflows
+- ProfileGrid.tsx: Renders pre-computed sections with cascade badges, search/filter UI controls, but no filtering logic
+- Matches existing expand/collapse pattern where page manages `expandedApiIds` and passes `section.expanded` flag to grid
+
+**Benefits:**
+- Clean separation: data transformation (page) vs presentation (component)
+- Future filter features (saved presets, URL filters, bulk operations on filtered scopes) integrate cleanly without refactoring
+- Filter logic testable independently of UI (pure functions + memos at page level)
+- No state sync bugs between page and grid
+- Consistent with Plans, APIs, Routing pages
+
+**Validation:**
+- ✅ `npx tsc -b` — clean
+- ✅ `npx eslint` — clean
+- ✅ `npm run build` — success
+
+**Files Modified:**
+- `src/aipolicyengine-ui/src/pages/AccessProfiles.tsx` — Added filter state, helpers, memos; passes pre-filtered data to ProfileGrid
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileGrid.tsx` — Removed filter state/logic; receives pre-filtered data as props
+
+**Key Learning:**
+- **Container/presentation pattern**: Page components own state, logic, and data transformation; child components receive computed props and callbacks, focus on rendering.
+- **Refactor signal**: When a component has useState + useMemo for derived data that depends on parent-owned collections (sections, apis), the state likely belongs in the parent.
+- **Prop explosion is OK**: Passing 20+ props is acceptable when it maintains clear responsibility boundaries; prefer explicit props over implicit state management.
+
+## 2026-06-26 — Filter Logic Extraction for Testing (Bunk Coordination)
+
+**Status:** ✅ COMPLETE
+
+**Commits:**
+- Pure function extraction: `4fc0a5a6`
+
+**Scope:**
+Final cleanup after McNulty review — extracted filter logic into pure, testable module to prepare for Bunk's unit tests.
+
+**Refactor:**
+- Created `src/aipolicyengine-ui/src/components/accessProfiles/filtering.ts` — dedicated module for all filter logic
+- **Exported pure functions:**
+  - `cellMatchesSearch(cell, normalizedQuery, plansById): boolean` — search matching logic
+  - `cellMatchesOverride(cell, filter): boolean` — override filter logic
+  - `selectFilteredView(sections, globalCell, searchQuery, overrideFilter, plansById): FilteredView` — complete filtering with sections, visibility, count
+- **Exported types/constants:**
+  - `OverrideFilter` type alias
+  - `OVERRIDE_FILTERS` constant array
+  - `AccessApiSection`, `FilteredSection`, `FilteredView` interfaces
+- **AccessProfiles.tsx changes:**
+  - Imports `selectFilteredView` and `OverrideFilter` from filtering module
+  - Calls `selectFilteredView` in useMemo with state inputs
+  - Receives `{ filteredSections, globalVisible, visibleScopeCount, filtersActive }` as result
+- **ProfileGrid.tsx changes:**
+  - Imports `OverrideFilter`, `OVERRIDE_FILTERS`, and `FilteredSection` from filtering module
+  - Removed local type/constant definitions (now imported)
+
+**Benefits:**
+- **Unit testable**: All filter logic is pure functions (no side effects, no component mounting required)
+- **Separation complete**: State in page (AccessProfiles), logic in module (filtering.ts), rendering in component (ProfileGrid)
+- **Ready for Bunk**: Pure functions export makes test writing trivial
+- **McNulty satisfied**: Logic completely out of rendering components
+
+**Pattern:**
+```typescript
+// filtering.ts (pure functions)
+export function selectFilteredView(sections, globalCell, query, filter, plans): FilteredView { ... }
+
+// AccessProfiles.tsx (state + calls pure helper)
+const [searchQuery, setSearchQuery] = useState("")
+const [overrideFilter, setOverrideFilter] = useState<OverrideFilter>("all")
+const { filteredSections, globalVisible, visibleScopeCount, filtersActive } = useMemo(
+  () => selectFilteredView(sections, globalCell, searchQuery, overrideFilter, plansById),
+  [sections, globalCell, searchQuery, overrideFilter, plansById],
+)
+
+// ProfileGrid.tsx (rendering only)
+<ProfileGrid filteredSections={filteredSections} ... />
+```
+
+**Validation:**
+- ✅ `npx tsc -b` — clean
+- ✅ `npx eslint` — clean
+- ✅ `npm run build` — success
+
+**Files:**
+- `src/aipolicyengine-ui/src/components/accessProfiles/filtering.ts` — NEW pure logic module
+- `src/aipolicyengine-ui/src/pages/AccessProfiles.tsx` — Imports and calls filtering module
+- `src/aipolicyengine-ui/src/components/accessProfiles/ProfileGrid.tsx` — Imports types/constants from filtering module
+
+**Next:** Bunk will add unit tests for filtering.ts functions (no test framework setup needed from frontend).
+
+## 2026-06-26 — Access Profiles UX Complete + Vitest Foundation
+
+**Work Completed:** Access Profiles `/access` page layout enhancement complete with sticky positioning, policy search, and override filter. Filter state/logic ownership moved to page per McNulty's architectural gate. Pure filter logic extracted to `filtering.ts` module for testing + reusability.
+
+**Key Pattern Established:** Page owns state + business logic transformation; component receives pre-computed filtered data + callbacks; rendering logic stays in component. This separation unblocks Bunk's unit tests (pure functions) and future features (URL state, saved presets, bulk operations).
+
+**Team-Wide Context — Vitest is Now the Frontend Test Standard:**
+- **Framework:** Vitest v4.1.9 (Vite-native, fast, React 19 compatible)
+- **Test Location:** `src/components/accessProfiles/filtering.test.ts` (35 passing tests)
+- **Future:** Component tests for ProfileGrid.tsx when JSX rendering needs validation (requires jsdom environment)
+- **Pattern:** Extract pure functions to `.ts` modules; test independently via Vitest; import into components for use
+
+**Cross-Team Note:** Vitest infrastructure now in place. Future frontend features should follow this pattern: pure logic in dedicated modules, components as thin rendering layers, tests for pure functions. Component-level testing can follow when needed (jsdom + @testing-library/react are already installed).
