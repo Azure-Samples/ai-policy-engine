@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useMsal } from "@azure/msal-react"
+import { useSafeMsal } from "../hooks/useSafeMsal"
+import { useAdminRoleClaims } from "../hooks/useAdminRoleClaims"
 import { AlertTriangle, Network, RefreshCcw } from "lucide-react"
 import { ApiTree } from "../components/apis/ApiTree"
 import { AssignTemplateForm } from "../components/apis/AssignTemplateForm"
 import { PolicyAssignmentPanel } from "../components/apis/PolicyAssignmentPanel"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
-import { fetchPlans } from "../api"
+import { API_BASE, fetchPlans } from "../api"
 import {
   applyApiPolicy,
   applyOperationPolicy,
@@ -143,8 +144,25 @@ function derivePlanDefaults(plans: PlanData[]): Record<string, number> {
   return defaults
 }
 
+function deriveEnvironmentDefaults(): Record<string, string> {
+  const defaults: Record<string, string> = {}
+
+  const apiAppId = import.meta.env.VITE_AZURE_API_APP_ID
+  if (apiAppId) {
+    defaults.ContainerAppAudience = `api://${apiAppId}`
+  }
+
+  const containerAppUrl = (API_BASE || window.location.origin).replace(/\/$/, "")
+  if (containerAppUrl) {
+    defaults.ContainerAppUrl = containerAppUrl
+  }
+
+  return defaults
+}
+
 export function Apis() {
-  const { accounts } = useMsal()
+  const { accounts } = useSafeMsal()
+  const adminRoleClaims = useAdminRoleClaims()
   const [templates, setTemplates] = useState<ApimTemplateSummary[]>([])
   const [plans, setPlans] = useState<PlanData[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
@@ -162,12 +180,6 @@ export function Apis() {
   const [assignFormOpen, setAssignFormOpen] = useState(false)
   const [submittingAssignment, setSubmittingAssignment] = useState(false)
   const [clearingAssignment, setClearingAssignment] = useState(false)
-
-  const adminRoleClaims = useMemo(() => {
-    const firstAccount = accounts[0]
-    const roles = firstAccount?.idTokenClaims?.roles
-    return Array.isArray(roles) ? roles : []
-  }, [accounts])
 
   const lacksExplicitAdminRole = adminRoleClaims.length > 0 && !adminRoleClaims.includes("AIPolicy.Admin")
   const {
@@ -187,6 +199,11 @@ export function Apis() {
   const selectedKey = selectedTarget ? targetKey(selectedTarget) : undefined
   const busy = submittingAssignment || clearingAssignment
   const planDefaults = useMemo(() => derivePlanDefaults(plans), [plans])
+  const environmentDefaults = useMemo(() => deriveEnvironmentDefaults(), [])
+  const parameterDefaults = useMemo<Record<string, string | number>>(
+    () => ({ ...environmentDefaults, ...planDefaults }),
+    [environmentDefaults, planDefaults],
+  )
   const pageLoading = initialLoading || catalogLoading
   const pageError = initialError ?? catalogError
 
@@ -458,7 +475,7 @@ export function Apis() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {Object.keys(planDefaults).length > 0 && <Badge variant="blue">Plan defaults available</Badge>}
+          {Object.keys(parameterDefaults).length > 0 && <Badge variant="blue">Defaults available</Badge>}
           <Button type="button" variant="outline" onClick={() => void loadInitialData()} disabled={pageLoading}>
             <RefreshCcw className={`h-4 w-4 ${pageLoading ? "animate-spin" : ""}`} />
             Refresh
@@ -527,7 +544,7 @@ export function Apis() {
           templates={templates}
           initialTemplateId={policyDocument?.assignment?.templateId}
           initialParameters={policyDocument?.assignment?.parameters}
-          planDefaults={planDefaults}
+          parameterDefaults={parameterDefaults}
           submitting={submittingAssignment}
           onSubmit={handleApplyTemplate}
         />

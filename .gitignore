@@ -104,3 +104,11 @@ src/AIPolicyEngine.LoadTest/reports/
 # Squad AI team state (local tooling, not part of the product)
 .squad/
 .squad-workstream
+
+# Claude agent configurations
+.claude/
+.claude/agents/
+.claude/skills/
+
+# Local APIs Policy
+policies/all-apis-policy.json

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useMsal } from "@azure/msal-react"
+import { useAdminRoleClaims } from "../hooks/useAdminRoleClaims"
 import { AlertTriangle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react"
 import { ClientList } from "../components/accessProfiles/ClientList"
 import { ProfileEditor, type ProfileEditorValues } from "../components/accessProfiles/ProfileEditor"
@@ -55,6 +55,7 @@ function buildInitialValues(profile: AccessProfile | null, effective: EffectiveA
       planId: profile.planId,
       routingPolicyId: profile.routingPolicyId,
       allowedDeployments: profile.allowedDeployments,
+      blocked: profile.blocked,
       enabled: profile.enabled,
     }
   }
@@ -63,6 +64,7 @@ function buildInitialValues(profile: AccessProfile | null, effective: EffectiveA
     planId: effective?.planId ?? "",
     routingPolicyId: effective?.routingPolicyId ?? null,
     allowedDeployments: effective?.allowedDeployments ?? [],
+    blocked: effective?.blocked ?? false,
     enabled: effective?.enabled ?? true,
   }
 }
@@ -76,20 +78,23 @@ function createDirectPreview(
   return {
     source: "direct",
     sourceLabel: "Direct override",
-    sourceDescription: profile.enabled
-      ? "This scope has its own Access Profile."
-      : "This scope has a stored override, but it is disabled and no longer wins in the cascade.",
+    sourceDescription: profile.blocked
+      ? "This scope is blocked — all requests are denied with 403 Forbidden."
+      : profile.enabled
+        ? "This scope has its own Access Profile."
+        : "This scope has a stored override, but it is disabled and no longer wins in the cascade.",
     profileId: profile.id,
     planId: profile.planId,
     routingPolicyId: profile.routingPolicyId ?? plan?.modelRoutingPolicyId ?? null,
     allowedDeployments: profile.allowedDeployments.length > 0 ? profile.allowedDeployments : (plan?.allowedDeployments ?? []),
+    blocked: profile.blocked,
     enabled: profile.enabled,
   }
 }
 
 function createInheritedPreview(
   source: "api" | "global" | "client",
-  payload: { id?: string | null; planId: string; routingPolicyId: string | null; allowedDeployments: string[] },
+  payload: { id?: string | null; planId: string; routingPolicyId: string | null; allowedDeployments: string[]; blocked?: boolean },
   plansById: Record<string, PlanData>,
 ): EffectiveAccessPreview {
   const plan = plansById[payload.planId]
@@ -98,21 +103,24 @@ function createInheritedPreview(
     source,
     sourceLabel: source === "api" ? "API-wide" : source === "global" ? "Client-global" : "Client assignment",
     sourceDescription:
-      source === "api"
-        ? "Inherited from the API-wide override for this client."
-        : source === "global"
-          ? "Inherited from the client-global default for this client."
-          : "Falling back to the client's base plan assignment.",
+      payload.blocked
+        ? "Inherited block — all requests are denied at this scope."
+        : source === "api"
+          ? "Inherited from the API-wide override for this client."
+          : source === "global"
+            ? "Inherited from the client-global default for this client."
+            : "Falling back to the client's base plan assignment.",
     profileId: payload.id ?? null,
     planId: payload.planId,
     routingPolicyId: payload.routingPolicyId ?? plan?.modelRoutingPolicyId ?? null,
     allowedDeployments: payload.allowedDeployments.length > 0 ? payload.allowedDeployments : (plan?.allowedDeployments ?? []),
+    blocked: payload.blocked ?? false,
     enabled: true,
   }
 }
 
 export function AccessProfiles() {
-  const { accounts } = useMsal()
+  const adminRoleClaims = useAdminRoleClaims()
   const [clients, setClients] = useState<ClientAssignment[]>([])
   const [plans, setPlans] = useState<PlanData[]>([])
   const [routingPolicies, setRoutingPolicies] = useState<ModelRoutingPolicy[]>([])
@@ -132,10 +140,6 @@ export function AccessProfiles() {
   const [accessDenied, setAccessDenied] = useState(false)
 
   const selectedClientKeyRef = useRef("")
-  const adminRoleClaims = useMemo(() => {
-    const roles = accounts[0]?.idTokenClaims?.roles
-    return Array.isArray(roles) ? roles : []
-  }, [accounts])
   const lacksExplicitAdminRole = adminRoleClaims.length > 0 && !adminRoleClaims.includes("AIPolicy.Admin")
 
   const {
@@ -474,9 +478,10 @@ export function AccessProfiles() {
             tenantId: selectedClient.tenantId,
             apiId: target.apiId,
             operationId: target.operationId,
-            planId: values.planId,
+            planId: values.planId || undefined,
             routingPolicyId: values.routingPolicyId,
             allowedDeployments: values.allowedDeployments,
+            blocked: values.blocked,
             enabled: values.enabled,
           })),
         }
@@ -490,7 +495,11 @@ export function AccessProfiles() {
         }
         setQueuedScopeKeys([])
       } else if (editorState.existingProfile) {
-        await updateAccessProfile(editorState.existingProfile.id, values)
+        await updateAccessProfile(editorState.existingProfile.id, {
+          ...values,
+          routingPolicyId: values.routingPolicyId,
+          planId: values.planId || undefined,
+        })
         showToast("Access Profile updated.")
       } else {
         const target = editorState.targets[0]
@@ -499,9 +508,10 @@ export function AccessProfiles() {
           tenantId: selectedClient.tenantId,
           apiId: target.apiId,
           operationId: target.operationId,
-          planId: values.planId,
+          planId: values.planId || undefined,
           routingPolicyId: values.routingPolicyId,
           allowedDeployments: values.allowedDeployments,
+          blocked: values.blocked,
           enabled: values.enabled,
         })
         showToast("Access Profile created.")

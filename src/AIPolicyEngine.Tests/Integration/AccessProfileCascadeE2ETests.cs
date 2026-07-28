@@ -103,8 +103,8 @@ public sealed class AccessProfileCascadeE2ETests : IClassFixture<ChargebackApiFa
         Name = name,
         MonthlyRate = 99m,
         MonthlyTokenQuota = 1_000_000,
-        TokensPerMinuteLimit = 0,
-        RequestsPerMinuteLimit = 0,
+        TokensPerMinuteLimit = 100_000,
+        RequestsPerMinuteLimit = 100_000,
         AllowOverbilling = true,
         CostPerMillionTokens = 5m,
         RollUpAllDeployments = true

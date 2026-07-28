@@ -27,6 +27,14 @@ public static class ClientDetailEndpoints
             .Produces<ClientTracesResponse>()
             .Produces(StatusCodes.Status500InternalServerError);
 
+        routes.MapPost("/api/clients/{clientAppId}/{tenantId}/reset-usage", ResetUsage)
+            .WithName("ResetClientUsage")
+            .WithDescription("Reset all usage counters for a customer — clears all apiId counters, token usage, request counts, and overbilling accumulators")
+            .RequireAuthorization("AdminPolicy")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status500InternalServerError);
+
         return routes;
     }
 
@@ -182,6 +190,66 @@ public static class ClientDetailEndpoints
         {
             logger.LogError(ex, "Error fetching traces for customer {ClientAppId}/{TenantId}", clientAppId, tenantId);
             return Results.Json(new { error = "Failed to fetch client traces" }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    private static async Task<IResult> ResetUsage(
+        string clientAppId,
+        string tenantId,
+        IRepository<ClientPlanAssignment> clientRepo,
+        IConnectionMultiplexer redis,
+        ILogger<ClientPlanAssignment> logger)
+    {
+        try
+        {
+            var db = redis.GetDatabase();
+            var lockToken = (RedisValue)Guid.NewGuid().ToString("N");
+
+            if (!await ClientUpdateLock.TryAcquireAsync(db, clientAppId, tenantId, lockToken, logger))
+            {
+                return Results.Json(
+                    new { error = "Client usage update is busy, retry request" },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            try
+            {
+                var clientId = $"{clientAppId}:{tenantId}";
+                var assignment = await clientRepo.GetAsync(clientId);
+                if (assignment is null)
+                    return Results.NotFound(new { error = $"Customer '{clientAppId}/{tenantId}' not found" });
+
+                assignment.CurrentPeriodUsage = 0;
+                assignment.OverbilledTokens = 0;
+                assignment.DeploymentUsage = new();
+                assignment.CurrentPeriodRequests = 0;
+                assignment.OverbilledRequests = 0;
+                assignment.RequestsByTier = new();
+                assignment.ApiUsage = new();
+                assignment.LastUpdated = DateTime.UtcNow;
+
+                await db.LockExtendAsync(
+                    RedisKeys.ClientUpdateLock(clientAppId, tenantId),
+                    lockToken, ClientUpdateLock.Ttl);
+                await clientRepo.UpsertAsync(assignment);
+
+                logger.LogInformation("Usage reset: ClientAppId={ClientAppId}, TenantId={TenantId}", clientAppId, tenantId);
+                return Results.Ok(new { message = $"Usage counters reset for '{clientAppId}/{tenantId}'" });
+            }
+            finally
+            {
+                await ClientUpdateLock.ReleaseAsync(db, clientAppId, tenantId, lockToken, logger);
+            }
+        }
+        catch (RedisException ex)
+        {
+            logger.LogError(ex, "Failed to interact with Redis while resetting usage for {ClientAppId}/{TenantId}", clientAppId, tenantId);
+            return Results.Json(new { error = "Failed to interact with Redis" }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error resetting usage for customer {ClientAppId}/{TenantId}", clientAppId, tenantId);
+            return Results.Json(new { error = "Failed to reset usage" }, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 }

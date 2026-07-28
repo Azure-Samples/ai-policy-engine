@@ -56,11 +56,29 @@ public static class PrecheckEndpoints
                 planRepo,
                 routingPolicyRepo,
                 usagePolicyStore,
-                redis);
+                redis,
+                logger);
         }
 
         var resolved = await accessProfileResolver.ResolveAsync(clientAppId, tenantId, apiId, operationId);
         var assignment = await clientRepo.GetAsync($"{clientAppId}:{tenantId}");
+
+        if (resolved is { Blocked: true })
+        {
+            return Results.Json(
+                new
+                {
+                    error = "Access blocked by access profile",
+                    clientAppId,
+                    tenantId,
+                    apiId,
+                    operationId,
+                    accessProfileId = resolved.AccessProfileId,
+                    deniedBy = "access-profile-blocked"
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         if (resolved is null)
         {
             if (assignment is null)
@@ -106,7 +124,8 @@ public static class PrecheckEndpoints
                 resolvedPlanId: assignment.PlanId,
                 accessProfileId: null,
                 apiId: apiId,
-                operationId: operationId);
+                operationId: operationId,
+                logger: logger);
         }
 
         if (assignment is null)
@@ -153,7 +172,8 @@ public static class PrecheckEndpoints
             resolvedPlanId: resolved.PlanId,
             accessProfileId: resolved.AccessProfileId,
             apiId: apiId,
-            operationId: operationId);
+            operationId: operationId,
+            logger: logger);
     }
 
     private static async Task<IResult> LegacyPrecheck(
@@ -164,7 +184,8 @@ public static class PrecheckEndpoints
         IRepository<PlanData> planRepo,
         IRepository<ModelRoutingPolicy> routingPolicyRepo,
         IUsagePolicyStore usagePolicyStore,
-        IConnectionMultiplexer redis)
+        IConnectionMultiplexer redis,
+        ILogger<PlanData> logger)
     {
         var clientId = $"{clientAppId}:{tenantId}";
         var assignment = await clientRepo.GetAsync(clientId);
@@ -199,7 +220,8 @@ public static class PrecheckEndpoints
             usagePolicyStore,
             redis,
             includeAccessProfileMetadata: false,
-            resolvedPlanId: assignment.PlanId);
+            resolvedPlanId: assignment.PlanId,
+            logger: logger);
     }
 
     private static async Task<IResult> EvaluatePrecheck(
@@ -217,7 +239,8 @@ public static class PrecheckEndpoints
         string resolvedPlanId,
         string? accessProfileId = null,
         string? apiId = null,
-        string? operationId = null)
+        string? operationId = null,
+        ILogger<PlanData>? logger = null)
     {
         string? routedDeploymentId = null;
         string? routingPolicyId = null;
@@ -342,62 +365,103 @@ public static class PrecheckEndpoints
         long currentRpm = 0;
         long currentTpm = 0;
 
-        if (plan.RequestsPerMinuteLimit > 0)
+        // For non-AI REST calls (apiId present, no deploymentId): use API-scoped RPM key and REST quota.
+        // This ensures each API has its own counter rather than sharing a single tenant-level bucket.
+        var isRestCall = !string.IsNullOrEmpty(apiId) && string.IsNullOrEmpty(effectiveDeployment);
+
+        // Guard: if Redis is out of memory it throws RedisServerException (OOM). Catch it here so the
+        // unhandled exception doesn't propagate as a 500 that APIM misreports as "Pre-authorization check failed".
+        // We allow the request through rather than blocking all traffic while Redis recovers.
+        try
         {
-            var rpmKey = !string.IsNullOrEmpty(effectiveDeployment)
-                ? RedisKeys.RateLimitRpm(clientAppId, tenantId, effectiveDeployment, minuteWindow)
-                : RedisKeys.RateLimitRpm(clientAppId, tenantId, minuteWindow);
-            currentRpm = await db.StringIncrementAsync(rpmKey);
-            if (currentRpm == 1)
-                await db.KeyExpireAsync(rpmKey, TimeSpan.FromSeconds(120));
-            if (currentRpm > plan.RequestsPerMinuteLimit)
+
+        if (isRestCall)
+        {
+            var apiUsage = newBillingPeriod ? 0 : assignment.ApiUsage.GetValueOrDefault(apiId!, 0);
+            if (apiUsage + 1 > plan.MonthlyRestRequestQuota)
             {
                 return includeAccessProfileMetadata
                     ? Results.Json(
                         new
                         {
-                            error = "Rate limit exceeded — requests per minute",
-                            limit = plan.RequestsPerMinuteLimit,
-                            current = currentRpm,
+                            error = "Monthly REST quota exceeded",
+                            usage = apiUsage,
+                            limit = plan.MonthlyRestRequestQuota,
                             planId = resolvedPlanId,
                             accessProfileId,
                             apiId,
                             operationId,
-                            deniedBy = "rpm-exceeded"
+                            deniedBy = "rest-quota-exceeded"
                         },
                         statusCode: StatusCodes.Status429TooManyRequests)
                     : Results.Json(
-                        new { error = "Rate limit exceeded — requests per minute", limit = plan.RequestsPerMinuteLimit, current = currentRpm },
+                        new { error = "Monthly REST quota exceeded", usage = apiUsage, limit = plan.MonthlyRestRequestQuota },
                         statusCode: StatusCodes.Status429TooManyRequests);
             }
         }
 
-        if (plan.TokensPerMinuteLimit > 0)
+        var effectiveRpmLimit = isRestCall
+            ? plan.RestRequestsPerMinuteLimit
+            : plan.RequestsPerMinuteLimit;
+
+        var rpmKey = isRestCall
+            ? RedisKeys.RateLimitRpmApi(clientAppId, tenantId, apiId!, minuteWindow)
+            : !string.IsNullOrEmpty(effectiveDeployment)
+                ? RedisKeys.RateLimitRpm(clientAppId, tenantId, effectiveDeployment, minuteWindow)
+                : RedisKeys.RateLimitRpm(clientAppId, tenantId, minuteWindow);
+        currentRpm = await db.StringIncrementAsync(rpmKey);
+        if (currentRpm == 1)
+            await db.KeyExpireAsync(rpmKey, TimeSpan.FromSeconds(120));
+        if (effectiveRpmLimit > 0 && currentRpm > effectiveRpmLimit)
         {
-            var tpmKey = !string.IsNullOrEmpty(effectiveDeployment)
-                ? RedisKeys.RateLimitTpm(clientAppId, tenantId, effectiveDeployment, minuteWindow)
-                : RedisKeys.RateLimitTpm(clientAppId, tenantId, minuteWindow);
-            currentTpm = (long)(await db.StringGetAsync(tpmKey));
-            if (currentTpm >= plan.TokensPerMinuteLimit)
-            {
-                return includeAccessProfileMetadata
-                    ? Results.Json(
-                        new
-                        {
-                            error = "Rate limit exceeded — tokens per minute",
-                            limit = plan.TokensPerMinuteLimit,
-                            current = currentTpm,
-                            planId = resolvedPlanId,
-                            accessProfileId,
-                            apiId,
-                            operationId,
-                            deniedBy = "tpm-exceeded"
-                        },
-                        statusCode: StatusCodes.Status429TooManyRequests)
-                    : Results.Json(
-                        new { error = "Rate limit exceeded — tokens per minute", limit = plan.TokensPerMinuteLimit, current = currentTpm },
-                        statusCode: StatusCodes.Status429TooManyRequests);
-            }
+            return includeAccessProfileMetadata
+                ? Results.Json(
+                    new
+                    {
+                        error = "Rate limit exceeded — requests per minute",
+                        limit = effectiveRpmLimit,
+                        current = currentRpm,
+                        planId = resolvedPlanId,
+                        accessProfileId,
+                        apiId,
+                        operationId,
+                        deniedBy = "rpm-exceeded"
+                    },
+                    statusCode: StatusCodes.Status429TooManyRequests)
+                : Results.Json(
+                    new { error = "Rate limit exceeded — requests per minute", limit = effectiveRpmLimit, current = currentRpm },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
+        // TPM is only meaningful for AI calls — REST calls have no tokens.
+        // Key must match what UpdateTpmCounter writes: tenant-level (no deployment segment).
+        var tpmKey = RedisKeys.RateLimitTpm(clientAppId, tenantId, minuteWindow);
+        currentTpm = isRestCall ? 0 : (long)(await db.StringGetAsync(tpmKey));
+        if (!isRestCall && plan.TokensPerMinuteLimit > 0 && currentTpm >= plan.TokensPerMinuteLimit)
+        {
+            return includeAccessProfileMetadata
+                ? Results.Json(
+                    new
+                    {
+                        error = "Rate limit exceeded — tokens per minute",
+                        limit = plan.TokensPerMinuteLimit,
+                        current = currentTpm,
+                        planId = resolvedPlanId,
+                        accessProfileId,
+                        apiId,
+                        operationId,
+                        deniedBy = "tpm-exceeded"
+                    },
+                    statusCode: StatusCodes.Status429TooManyRequests)
+                : Results.Json(
+                    new { error = "Rate limit exceeded — tokens per minute", limit = plan.TokensPerMinuteLimit, current = currentTpm },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+        }
+        }
+        catch (StackExchange.Redis.RedisException ex)
+        {
+            logger?.LogError(ex, "Redis unavailable during rate-limit check for {ClientAppId}/{TenantId} — allowing request through", clientAppId, tenantId);
+            // Allow the request through; rate limiting is best-effort when Redis is unhealthy.
         }
 
         if (!string.IsNullOrEmpty(effectiveDeployment) &&

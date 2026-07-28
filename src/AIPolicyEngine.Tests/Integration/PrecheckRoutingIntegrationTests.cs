@@ -22,8 +22,8 @@ public class PrecheckRoutingIntegrationTests
     private static PlanData CreatePlan(
         string? routingPolicyId = null,
         long monthlyTokenQuota = 10_000_000,
-        int requestsPerMinuteLimit = 0,
-        int tokensPerMinuteLimit = 0,
+        int requestsPerMinuteLimit = 100_000,
+        int tokensPerMinuteLimit = 100_000,
         bool allowOverbilling = true,
         List<string>? allowedDeployments = null)
     {

@@ -838,8 +838,8 @@ public class EndpointTests : IClassFixture<ChargebackApiFactory>
         long monthlyTokenQuota = 1_000_000,
         bool allowOverbilling = true,
         bool rollUpAllDeployments = true,
-        int tokensPerMinuteLimit = 0,
-        int requestsPerMinuteLimit = 0,
+        int tokensPerMinuteLimit = 100_000,
+        int requestsPerMinuteLimit = 100_000,
         Dictionary<string, long>? deploymentQuotas = null,
         List<string>? allowedDeployments = null)
     {

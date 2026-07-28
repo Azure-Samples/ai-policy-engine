@@ -1,0 +1,103 @@
+<!--
+    Keycloak JWT — Non-AI REST template.
+
+    Assumes the All APIs policy handles:
+    - JWT validation (validate-jwt)
+    - Keycloak service account token acquisition (backend-access-token variable)
+    - Extraction of tenantId and clientAppId from JWT claims
+
+    Rate limits and quotas are enforced per-tenant per-API by the AI Policy Engine.
+    Configure limits on the Plan assigned to this tenant via an Access Profile
+    (clientAppId + tenantId + apiId → planId).
+
+    Required APIM named values:
+    - {{NonAiBackendUrl}} — target REST backend host/FQDN. Routed as https://{{NonAiBackendUrl}}.
+    - {{ContainerAppUrl}} — Base URL of the AI Policy Engine.
+-->
+<policies>
+	<inbound>
+		<base />
+		<set-variable name="customerKey" value="@((string)context.Variables[&quot;clientAppId&quot;] + &quot;:&quot; + (string)context.Variables[&quot;tenantId&quot;])" />
+		<set-variable name="apiIdValue" value="@(context.Api.Id)" />
+		<set-variable name="operationIdValue" value="@(context.Operation.Id)" />
+		<set-variable name="containerAppBaseUrl" value="{{ContainerAppUrl}}" />
+		<!-- Precheck: enforces per-tenant, per-API rate limits and quotas from the assigned plan -->
+		<send-request mode="new" response-variable-name="precheckResponse" timeout="10" ignore-error="true">
+			<set-url>@($"{(string)context.Variables["containerAppBaseUrl"]}/api/precheck/{(string)context.Variables["clientAppId"]}/{(string)context.Variables["tenantId"]}?apiId={(string)context.Variables["apiIdValue"]}&operationId={(string)context.Variables["operationIdValue"]}")</set-url>
+			<set-method>GET</set-method>
+			<set-header name="Authorization" exists-action="override">
+				<value>@("Bearer " + (string)context.Variables["backend-access-token"])</value>
+			</set-header>
+		</send-request>
+		<choose>
+			<when condition="@(context.Variables["precheckResponse"] == null || ((IResponse)context.Variables["precheckResponse"]).StatusCode == 401)">
+				<return-response>
+					<set-status code="401" reason="Unauthorized" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@{
+						var resp = context.Variables["precheckResponse"] as IResponse;
+						return resp != null ? resp.Body.As<string>() : "{\"error\":\"Pre-check failed — could not reach authorization service\"}";
+					}</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 403)">
+				<return-response>
+					<set-status code="403" reason="Forbidden" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode == 429)">
+				<return-response>
+					<set-status code="429" reason="Too Many Requests" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>@(((IResponse)context.Variables["precheckResponse"]).Body.As<string>())</set-body>
+				</return-response>
+			</when>
+			<when condition="@(((IResponse)context.Variables["precheckResponse"]).StatusCode != 200)">
+				<return-response>
+					<set-status code="500" reason="Internal Server Error" />
+					<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+					<set-body>{"error":"Pre-authorization check failed"}</set-body>
+				</return-response>
+			</when>
+		</choose>
+		<set-variable name="accessProfileId" value="@(((IResponse)context.Variables[&quot;precheckResponse&quot;]).Body.As&lt;JObject&gt;(preserveContent: true)[&quot;accessProfileId&quot;]?.ToString())" />
+		<set-variable name="resolvedPlanId" value="@(((IResponse)context.Variables[&quot;precheckResponse&quot;]).Body.As&lt;JObject&gt;(preserveContent: true)[&quot;planId&quot;]?.ToString())" />
+		<set-backend-service base-url="https://{{NonAiBackendUrl}}" />
+	</inbound>
+	<backend>
+		<base />
+	</backend>
+	<outbound>
+		<base />
+		<!-- Fire-and-forget REST usage log -->
+		<send-one-way-request mode="new">
+			<set-url>{{ContainerAppUrl}}/api/log-rest</set-url>
+			<set-method>POST</set-method>
+			<set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+			<set-header name="Authorization" exists-action="override">
+				<value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;backend-access-token&quot;])</value>
+			</set-header>
+			<set-body>@{
+				var latencyMs = (long)(DateTime.UtcNow - context.Timestamp).TotalMilliseconds;
+				var payload = new Newtonsoft.Json.Linq.JObject();
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("tenantId", (string)context.Variables.GetValueOrDefault("tenantId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("clientAppId", (string)context.Variables.GetValueOrDefault("clientAppId", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("customerKey", (string)context.Variables.GetValueOrDefault("customerKey", "")));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("requestPath", context.Request.Url.Path));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("statusCode", context.Response.StatusCode));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("latencyMs", latencyMs));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("accessProfileId", context.Variables.GetValueOrDefault<string>("accessProfileId") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("planId", context.Variables.GetValueOrDefault<string>("resolvedPlanId") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("apiId", context.Variables.GetValueOrDefault<string>("apiIdValue") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("operationId", context.Variables.GetValueOrDefault<string>("operationIdValue") ?? ""));
+				payload.Add(new Newtonsoft.Json.Linq.JProperty("correlationId", context.RequestId.ToString()));
+				return payload.ToString();
+			}</set-body>
+		</send-one-way-request>
+	</outbound>
+	<on-error>
+		<base />
+	</on-error>
+</policies>

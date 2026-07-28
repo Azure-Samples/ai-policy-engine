@@ -136,6 +136,7 @@ module "gateway" {
   container_app_fqdn               = module.compute.container_app_fqdn
   container_app_id                 = module.compute.container_app_id
   container_app_principal_id       = module.compute.container_app_principal_id
+  create_container_app_role        = true
   api_app_id                       = module.identity.api_app_id
   gateway_app_id                   = module.identity.gateway_app_id
   tenant_id                        = module.identity.tenant_id

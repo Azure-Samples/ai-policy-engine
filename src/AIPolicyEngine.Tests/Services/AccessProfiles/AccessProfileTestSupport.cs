@@ -26,6 +26,7 @@ internal static class AccessProfileTestSupport
         string planId,
         string? routingPolicyId = null,
         IEnumerable<string>? allowedDeployments = null,
+        bool blocked = false,
         bool enabled = true)
     {
         var accessProfileType = RequireType("AccessProfile");
@@ -41,6 +42,7 @@ internal static class AccessProfileTestSupport
         SetProperty(accessProfile, "PlanId", planId);
         SetProperty(accessProfile, "RoutingPolicyId", routingPolicyId);
         SetProperty(accessProfile, "AllowedDeployments", (allowedDeployments ?? []).ToList());
+        SetProperty(accessProfile, "Blocked", blocked);
         SetProperty(accessProfile, "Enabled", enabled);
         SetProperty(accessProfile, "CreatedAt", new DateTime(2026, 05, 21, 12, 0, 0, DateTimeKind.Utc));
         SetProperty(accessProfile, "UpdatedAt", new DateTime(2026, 05, 21, 12, 0, 0, DateTimeKind.Utc));
@@ -116,6 +118,7 @@ internal static class AccessProfileTestSupport
         SetProperty(resolved, "RoutingPolicyId", snapshot.RoutingPolicyId);
         SetProperty(resolved, "AllowedDeployments", snapshot.AllowedDeployments.ToList());
         SetProperty(resolved, "SourceProfileId", snapshot.SourceProfileId);
+        SetProperty(resolved, "Blocked", snapshot.Blocked);
         return resolved;
     }
 
@@ -132,6 +135,9 @@ internal static class AccessProfileTestSupport
             _ => throw new XunitException($"Property '{propertyName}' is not a string list.")
         };
     }
+
+    public static bool GetBool(object? instance, string propertyName)
+        => instance is not null && GetProperty(instance, propertyName) is bool b && b;
 
     private static void RegisterConstructorDependencies(IServiceCollection services, Type implementationType, IReadOnlyList<object> accessProfiles)
     {
@@ -312,7 +318,7 @@ internal static class AccessProfileTestSupport
         => JsonSerializer.Deserialize(JsonSerializer.Serialize(instance, instance.GetType(), JsonConfig.Default), instance.GetType(), JsonConfig.Default)
            ?? throw new XunitException($"Failed to clone instance of '{instance.GetType().Name}'.");
 
-    internal sealed record ResolvedAccessSnapshot(string PlanId, string? RoutingPolicyId, IReadOnlyList<string> AllowedDeployments, string? SourceProfileId);
+    internal sealed record ResolvedAccessSnapshot(string PlanId, string? RoutingPolicyId, IReadOnlyList<string> AllowedDeployments, string? SourceProfileId, bool Blocked = false);
 
     internal sealed class ResolverInvocationTracker
     {
@@ -341,7 +347,8 @@ internal static class AccessProfileTestSupport
                 GetString(result, "PlanId") ?? throw new XunitException("Resolved access is missing PlanId."),
                 GetString(result, "RoutingPolicyId"),
                 GetStrings(result, "AllowedDeployments"),
-                GetString(result, "SourceProfileId"));
+                GetString(result, "SourceProfileId"),
+                GetBool(result, "Blocked"));
         }
 
         public void Dispose()

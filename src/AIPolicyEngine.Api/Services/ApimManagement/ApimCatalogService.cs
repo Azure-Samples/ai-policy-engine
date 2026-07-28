@@ -26,7 +26,7 @@ public sealed class ApimCatalogService : IApimCatalogService
         ArgumentNullException.ThrowIfNull(options);
 
         _armClient = armClient;
-        _resourceIdText = options.Value.ResourceId;
+        _resourceIdText = options.Value.ResourceId?.Trim() ?? string.Empty;
         _logger = logger;
     }
 

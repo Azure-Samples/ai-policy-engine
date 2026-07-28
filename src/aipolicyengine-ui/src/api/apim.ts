@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, parseErrorMessage } from "../api.ts"
+import { authFetch, parseErrorMessage } from "../api.ts"
 import type {
   ApisResponse,
   ApiOperationsResponse,
@@ -19,15 +19,16 @@ function operationPolicyPath(apiId: string, operationId: string): string {
 }
 
 async function buildHttpError(res: Response, fallback: string): Promise<HttpError> {
+  const cloned = res.clone()
   const message = await parseErrorMessage(res, fallback)
   const error = new Error(message) as HttpError
   error.status = res.status
-  error.body = await res.clone().json().catch(() => null)
+  error.body = await cloned.json().catch(() => null)
   return error
 }
 
 async function requestJson<T>(path: string, fallback: string, options: RequestInit = {}): Promise<T> {
-  const res = await authFetch(`${API_BASE}${path}`, options)
+  const res = await authFetch(path, options)
   if (!res.ok) {
     throw await buildHttpError(res, fallback)
   }

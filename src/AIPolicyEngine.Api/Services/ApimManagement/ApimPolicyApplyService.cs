@@ -160,7 +160,7 @@ public sealed class ApimPolicyApplyService : IApimPolicyApplyService
                 ?? throw new KeyNotFoundException($"APIM operation '{operationId}' was not found on API '{apiId}'.");
         }
 
-        var renderedTemplate = await _templateLibraryService.RenderAsync(request.TemplateId, request.Parameters, ct);
+        var renderedTemplate = await _templateLibraryService.RenderAsync(request.TemplateId, request.Parameters ?? [], ct);
         var existingAssignment = await _assignmentRepository.GetAsync(apiId, operationId, ct);
         var now = DateTime.UtcNow;
 
@@ -198,7 +198,7 @@ public sealed class ApimPolicyApplyService : IApimPolicyApplyService
         return new ApplyPolicyAcceptedResponse
         {
             AssignmentId = assignment.Id,
-            Status = PolicyAssignmentStatuses.Applying
+            Status = PolicyAssignmentStatuses.Pending
         };
     }
 

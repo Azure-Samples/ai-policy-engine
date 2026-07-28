@@ -81,6 +81,8 @@ export interface PlanData {
   monthlyRequestQuota?: number;
   overageRatePerRequest?: number;
   useMultiplierBilling?: boolean;
+  restRequestsPerMinuteLimit?: number;
+  monthlyRestRequestQuota?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,6 +102,8 @@ export interface PlanCreateRequest {
   monthlyRequestQuota?: number;
   overageRatePerRequest?: number;
   useMultiplierBilling?: boolean;
+  restRequestsPerMinuteLimit?: number;
+  monthlyRestRequestQuota?: number;
 }
 
 export interface PlanUpdateRequest {
@@ -117,6 +121,8 @@ export interface PlanUpdateRequest {
   monthlyRequestQuota?: number;
   overageRatePerRequest?: number;
   useMultiplierBilling?: boolean;
+  restRequestsPerMinuteLimit?: number;
+  monthlyRestRequestQuota?: number;
 }
 
 export interface ClientAssignment {

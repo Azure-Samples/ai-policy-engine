@@ -178,8 +178,11 @@ public sealed class ApimManagementEndpointTests : IClassFixture<ChargebackApiFac
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(payload);
-        Assert.Equal(5, payload!.Templates.Count);
+        Assert.Equal(8, payload!.Templates.Count);
         Assert.Contains(payload.Templates, template => template.Id == "entra-jwt-rest");
+        Assert.Contains(payload.Templates, template => template.Id == "keycloak-jwt-ai");
+        Assert.Contains(payload.Templates, template => template.Id == "keycloak-jwt-ai-dlp");
+        Assert.Contains(payload.Templates, template => template.Id == "keycloak-jwt-rest");
     }
 
     [Fact]

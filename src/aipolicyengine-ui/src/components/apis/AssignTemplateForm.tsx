@@ -12,7 +12,7 @@ interface AssignTemplateFormProps {
   templates: ApimTemplateSummary[]
   initialTemplateId?: string
   initialParameters?: Record<string, string | number | null>
-  planDefaults?: Record<string, string | number>
+  parameterDefaults?: Record<string, string | number>
   submitting: boolean
   onSubmit: (payload: { templateId: string; parameters: Record<string, string | number> }) => Promise<void>
 }
@@ -25,14 +25,14 @@ function toInputValue(value: string | number | null | undefined): string {
 function buildInitialValues(
   template: ApimTemplateSummary,
   initialParameters: Record<string, string | number | null> | undefined,
-  planDefaults: Record<string, string | number> | undefined,
+  parameterDefaults: Record<string, string | number> | undefined,
 ): Record<string, string> {
   return Object.fromEntries(
     template.parameters.map((parameter) => {
       const existingValue = initialParameters?.[parameter.name]
-      const planValue = planDefaults?.[parameter.name]
+      const defaultValue = parameterDefaults?.[parameter.name]
       const fallbackValue = parameter.default
-      return [parameter.name, toInputValue(existingValue ?? planValue ?? fallbackValue)]
+      return [parameter.name, toInputValue(existingValue ?? defaultValue ?? fallbackValue)]
     }),
   )
 }
@@ -49,7 +49,7 @@ export function AssignTemplateForm({
   templates,
   initialTemplateId,
   initialParameters,
-  planDefaults,
+  parameterDefaults,
   submitting,
   onSubmit,
 }: AssignTemplateFormProps) {
@@ -83,14 +83,14 @@ export function AssignTemplateForm({
       setSelectedTemplateId(preferredTemplateId)
 
       const template = filteredTemplates.find((item) => item.id === preferredTemplateId)
-      setParameterValues(template ? buildInitialValues(template, initialParameters, planDefaults) : {})
+      setParameterValues(template ? buildInitialValues(template, initialParameters, parameterDefaults) : {})
       setFormError(null)
     })
 
     return () => {
       cancelled = true
     }
-  }, [filteredTemplates, initialParameters, initialTemplateId, open, planDefaults])
+  }, [filteredTemplates, initialParameters, initialTemplateId, open, parameterDefaults])
 
   const missingRequiredFields = useMemo(() => {
     if (!selectedTemplate) return []
@@ -104,7 +104,7 @@ export function AssignTemplateForm({
     setSelectedTemplateId(templateId)
     setFormError(null)
     const template = filteredTemplates.find((item) => item.id === templateId)
-    setParameterValues(template ? buildInitialValues(template, initialParameters, planDefaults) : {})
+    setParameterValues(template ? buildInitialValues(template, initialParameters, parameterDefaults) : {})
   }
 
   const handleApply = async () => {
@@ -173,11 +173,11 @@ export function AssignTemplateForm({
           ) : selectedTemplate.parameters.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">This template does not require parameters.</p>
           ) : (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 space-y-4">
               {selectedTemplate.parameters.map((parameter) => (
                 <div key={parameter.name} className="min-w-0 space-y-2 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <label htmlFor={`template-parameter-${parameter.name}`} className="min-w-0 flex-1 truncate text-sm font-medium">
+                    <label htmlFor={`template-parameter-${parameter.name}`} className="min-w-0 flex-1 text-sm font-medium">
                       {parameter.name}
                     </label>
                     {parameter.required && <Badge variant="red" className="flex-shrink-0">Required</Badge>}
@@ -201,8 +201,8 @@ export function AssignTemplateForm({
                   {parameter.default !== undefined && parameter.default !== null && (
                     <p className="text-xs text-muted-foreground">Default: {String(parameter.default)}</p>
                   )}
-                  {planDefaults?.[parameter.name] !== undefined && (
-                    <p className="text-xs text-muted-foreground">Plan default: {String(planDefaults[parameter.name])}</p>
+                  {parameterDefaults?.[parameter.name] !== undefined && (
+                    <p className="text-xs text-muted-foreground">Default: {String(parameterDefaults[parameter.name])}</p>
                   )}
                 </div>
               ))}

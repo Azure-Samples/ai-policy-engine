@@ -23,6 +23,7 @@ public sealed class ResolvedAccessProfile
     public string PlanId { get; set; } = string.Empty;
     public string? RoutingPolicyId { get; set; }
     public List<string> AllowedDeployments { get; set; } = [];
+    public bool Blocked { get; set; }
     public string? AccessProfileId { get; set; }
     public string? SourceProfileId
     {

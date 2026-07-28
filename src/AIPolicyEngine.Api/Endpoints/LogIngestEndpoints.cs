@@ -12,12 +12,6 @@ namespace AIPolicyEngine.Api.Endpoints;
 /// </summary>
 public static class LogIngestEndpoints
 {
-    // TTL must cover the full read-compute-write cycle including Cosmos latency.
-    // If the lock expires mid-operation, concurrent requests can read stale data.
-    private static readonly TimeSpan ClientUpdateLockTtl = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ClientUpdateLockRetryDelay = TimeSpan.FromMilliseconds(25);
-    private const int ClientUpdateLockMaxAttempts = 40;
-
     public static RouteGroupBuilder MapLogIngestEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api");
@@ -30,6 +24,15 @@ public static class LogIngestEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status429TooManyRequests)
+            .Produces(StatusCodes.Status500InternalServerError);
+
+        group.MapPost("/log-rest", IngestRestLog)
+            .WithName("IngestRestLog")
+            .WithDescription("Receives log data from the non-AI REST APIM outbound policy — increments per-API usage counters")
+            .RequireAuthorization("ApimPolicy")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status500InternalServerError);
 
         return group;
@@ -84,7 +87,7 @@ public static class LogIngestEndpoints
             var logCacheTtl = TimeSpan.FromDays(usagePolicy.AggregatedLogRetentionDays);
             var traceCacheTtl = TimeSpan.FromDays(usagePolicy.TraceRetentionDays);
             var lockToken = (RedisValue)Guid.NewGuid().ToString("N");
-            if (!await TryAcquireClientUpdateLock(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger))
+            if (!await ClientUpdateLock.TryAcquireAsync(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger))
             {
                 return Results.Json(
                     new { error = "Client usage update is busy, retry request" },
@@ -199,7 +202,7 @@ public static class LogIngestEndpoints
                 // Update client assignment usage
                 clientAssignment.CurrentPeriodUsage = newUsage;
                 if (isOverQuota)
-                    clientAssignment.OverbilledTokens += totalTokensInRequest;
+                    clientAssignment.OverbilledTokens = newUsage - plan.MonthlyTokenQuota;
 
                 if (!clientAssignment.DeploymentUsage.ContainsKey(ingestRequest.DeploymentId))
                     clientAssignment.DeploymentUsage[ingestRequest.DeploymentId] = 0;
@@ -211,7 +214,7 @@ public static class LogIngestEndpoints
                 // Extend the lock TTL before the Cosmos write to prevent expiry during I/O
                 await db.LockExtendAsync(
                     RedisKeys.ClientUpdateLock(ingestRequest.ClientAppId, ingestRequest.TenantId),
-                    lockToken, ClientUpdateLockTtl);
+                    lockToken, ClientUpdateLock.Ttl);
                 await clientRepo.UpsertAsync(clientAssignment);
 
                 // --- Aggregate into log cache (ephemeral — stays Redis-direct) ---
@@ -276,7 +279,7 @@ public static class LogIngestEndpoints
             }
             finally
             {
-                await ReleaseClientUpdateLock(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger);
+                await ClientUpdateLock.ReleaseAsync(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger);
             }
 
             // Emit custom metrics
@@ -326,49 +329,87 @@ public static class LogIngestEndpoints
         }
     }
 
-    private static async Task<bool> TryAcquireClientUpdateLock(
-        IDatabase db,
-        string clientAppId,
-        string tenantId,
-        RedisValue lockToken,
-        ILogger logger)
+    private static async Task<IResult> IngestRestLog(
+        HttpRequest request,
+        IConnectionMultiplexer redis,
+        IRepository<ClientPlanAssignment> clientRepo,
+        IUsagePolicyStore usagePolicyStore,
+        ILogger<LogIngestRequest> logger)
     {
-        var lockKey = RedisKeys.ClientUpdateLock(clientAppId, tenantId);
-
-        for (var attempt = 0; attempt < ClientUpdateLockMaxAttempts; attempt++)
-        {
-            if (await db.LockTakeAsync(lockKey, lockToken, ClientUpdateLockTtl))
-                return true;
-
-            await Task.Delay(ClientUpdateLockRetryDelay);
-        }
-
-        logger.LogWarning("Failed to acquire client usage lock for {ClientAppId}/{TenantId}", clientAppId, tenantId);
-        return false;
-    }
-
-    private static async Task ReleaseClientUpdateLock(
-        IDatabase db,
-        string clientAppId,
-        string tenantId,
-        RedisValue lockToken,
-        ILogger logger)
-    {
+        RestLogIngestRequest? ingestRequest;
         try
         {
-            var lockKey = RedisKeys.ClientUpdateLock(clientAppId, tenantId);
-            await db.LockReleaseAsync(lockKey, lockToken);
+            ingestRequest = await request.ReadFromJsonAsync<RestLogIngestRequest>(JsonConfig.Default);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Invalid REST log request body");
+            return Results.BadRequest("Invalid request body");
+        }
+
+        if (ingestRequest is null)
+            return Results.BadRequest("Empty request body");
+
+        if (string.IsNullOrWhiteSpace(ingestRequest.TenantId) ||
+            string.IsNullOrWhiteSpace(ingestRequest.ClientAppId) ||
+            string.IsNullOrWhiteSpace(ingestRequest.ApiId))
+        {
+            return Results.BadRequest("Missing required fields (tenantId, clientAppId, apiId)");
+        }
+
+        try
+        {
+            var db = redis.GetDatabase();
+            var usagePolicy = await usagePolicyStore.GetAsync();
+            var lockToken = (RedisValue)Guid.NewGuid().ToString("N");
+
+            if (!await ClientUpdateLock.TryAcquireAsync(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger))
+            {
+                return Results.Json(
+                    new { error = "Client usage update is busy, retry request" },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            try
+            {
+                var clientId = $"{ingestRequest.ClientAppId}:{ingestRequest.TenantId}";
+                var assignment = await clientRepo.GetAsync(clientId);
+                if (assignment is null)
+                {
+                    logger.LogWarning("Unauthorized client in REST log: {ClientAppId}/{TenantId}", ingestRequest.ClientAppId, ingestRequest.TenantId);
+                    return Results.Json(new { error = "Client not authorized — no plan assigned" }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                ResetBillingPeriodIfNeeded(assignment, usagePolicy.BillingCycleStartDay, DateTime.UtcNow);
+
+                if (!assignment.ApiUsage.ContainsKey(ingestRequest.ApiId))
+                    assignment.ApiUsage[ingestRequest.ApiId] = 0;
+                assignment.ApiUsage[ingestRequest.ApiId]++;
+                assignment.LastUpdated = DateTime.UtcNow;
+
+                await db.LockExtendAsync(
+                    RedisKeys.ClientUpdateLock(ingestRequest.ClientAppId, ingestRequest.TenantId),
+                    lockToken, ClientUpdateLock.Ttl);
+                await clientRepo.UpsertAsync(assignment);
+            }
+            finally
+            {
+                await ClientUpdateLock.ReleaseAsync(db, ingestRequest.ClientAppId, ingestRequest.TenantId, lockToken, logger);
+            }
+
+            return Results.Ok("REST log processed");
         }
         catch (RedisException ex)
         {
-            logger.LogWarning(ex, "Failed to release client usage lock for {ClientAppId}/{TenantId}", clientAppId, tenantId);
+            logger.LogError(ex, "Failed to interact with Redis in REST log ingest");
+            return Results.Json(new { error = "Failed to interact with Redis" }, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
     private static async Task UpdateTpmCounter(
         IDatabase db, PlanData plan, string clientAppId, string tenantId, long minuteWindow, long totalTokens, ILogger logger)
     {
-        if (plan.TokensPerMinuteLimit > 0 && totalTokens > 0)
+        if (totalTokens > 0)
         {
             var tpmKey = RedisKeys.RateLimitTpm(clientAppId, tenantId, minuteWindow);
             var currentTpm = await db.StringIncrementAsync(tpmKey, totalTokens);
@@ -392,6 +433,7 @@ public static class LogIngestEndpoints
             assignment.CurrentPeriodRequests = 0;
             assignment.OverbilledRequests = 0;
             assignment.RequestsByTier = new();
+            assignment.ApiUsage = new();
         }
     }
 }

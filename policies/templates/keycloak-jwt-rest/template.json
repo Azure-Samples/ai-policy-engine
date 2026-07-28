@@ -1,0 +1,20 @@
+{
+  "id": "keycloak-jwt-rest",
+  "displayName": "Keycloak JWT — Non-AI REST (Rate Limit + Quota)",
+  "version": "1.1",
+  "scope": "api",
+  "parameters": [
+    {
+      "name": "NonAiBackendUrl",
+      "type": "string",
+      "required": true,
+      "description": "Target REST backend host/FQDN routed through APIM."
+    },
+    {
+      "name": "ContainerAppUrl",
+      "type": "string",
+      "required": true,
+      "description": "Base URL of the AI Policy Engine used by precheck and log-rest callbacks."
+    }
+  ]
+}

@@ -32,6 +32,10 @@ public static class RedisKeys
     public static string RateLimitTpm(string clientAppId, string tenantId, string deploymentId, long minuteWindow)
         => $"ratelimit:tpm:{clientAppId}:{tenantId}:{deploymentId}:{minuteWindow}";
 
+    // API-scoped rate limit keys (non-AI REST — counter is per tenant+API, not shared across APIs)
+    public static string RateLimitRpmApi(string clientAppId, string tenantId, string apiId, long minuteWindow)
+        => $"ratelimit:rpm:{clientAppId}:{tenantId}:api:{apiId}:{minuteWindow}";
+
     // Key prefix patterns for scanning
     public const string PlanPrefix = "plan:*";
     public const string ClientPrefix = "client:*";

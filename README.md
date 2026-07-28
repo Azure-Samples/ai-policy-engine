@@ -154,9 +154,12 @@ All decisions are cached in Redis for sub-millisecond latency; all configuration
 ## Key Features
 
 ### 🔐 Authentication & Authorization at the Gate
+- **Dual identity provider support**: Switch between Entra ID (Azure AD) and Keycloak via a single `AuthProvider` config toggle
 - Entra ID JWT bearer tokens with multi-tenant support
+- Keycloak OIDC with client_credentials flow for APIM service-to-service calls
 - Pre-check endpoint validates client, plan, deployment access, and quotas BEFORE backend receives the request
 - No subscription keys — pure identity-driven access control
+- Runtime auth config endpoint (`/api/auth-config`) — one container image works across all environments
 
 ### 🚀 Intelligent Model Routing (Auto-Router)
 - Automatically routes requests to optimal deployments based on plan routing policies
@@ -238,6 +241,10 @@ The React SPA provides five pages:
 
 ## Authentication
 
+The AI Policy Engine supports two identity providers, selected at runtime via the `AuthProvider` configuration value (`AzureAd` or `Keycloak`). The same container image works for both — no rebuild required.
+
+### Entra ID (Azure AD) — Default
+
 Authentication uses **Entra ID (Azure AD) App Registrations** with JWT bearer tokens and a **two-app model**:
 
 | App Registration | Audience | Purpose |
@@ -253,7 +260,39 @@ The APIM policy (`policies/entra-jwt-policy.xml`) validates incoming tokens agai
 | `aud` | Audience — validates the token is intended for this API |
 | `azp` / `appid` | Authorized Party — identifies the calling client application (`azp` for delegated tokens, `appid` for client_credentials) |
 
-> **Subscription keys are disabled.** All authentication uses standard `Authorization: Bearer <token>` headers validated by Entra ID.
+> **Subscription keys are disabled.** All authentication uses standard `Authorization: Bearer <token>` headers validated by the configured identity provider.
+
+### Keycloak OIDC — Alternative
+
+To use Keycloak instead of Entra ID, set `AuthProvider=Keycloak` in the configmap/appsettings and configure the Keycloak section:
+
+```yaml
+# Kubernetes configmap
+AuthProvider: "Keycloak"
+Keycloak__Authority: "https://keycloak.example.com/realms/myrealm"
+Keycloak__Audience: "ai-policy-engine"
+Keycloak__ClientId: "ai-policy-engine-api"        # Confidential client (backend)
+Keycloak__FrontendClientId: "ai-policy-engine-ui"  # Public client (SPA)
+Keycloak__Realm: "myrealm"
+Keycloak__FrontendUrl: "https://keycloak.example.com"
+Keycloak__RequireHttpsMetadata: "true"
+```
+
+**Required Keycloak roles** (create as realm roles or client roles):
+
+| Role | Purpose |
+|------|---------|
+| `AIPolicy.Admin` | Create/edit/delete plans, clients, pricing, routing policies |
+| `AIPolicy.Apim` | APIM service-to-service calls (precheck, log ingest) |
+| `AIPolicy.Export` | Access to data export endpoints |
+
+Ensure roles are included in the `roles` claim of the access token via a Keycloak protocol mapper.
+
+**APIM integration**: Use `policies/keycloak-jwt-policy.xml` instead of `entra-jwt-policy.xml`. Configure these APIM named values:
+- `KeycloakOpenIdConfigUrl` — OIDC discovery URL
+- `KeycloakTokenEndpoint` — Token endpoint for client_credentials
+- `AIPolicyEngineApiBaseUrl` — Backend API URL
+- `AIPolicyEngineApimClientId` / `AIPolicyEngineApimClientSecret` — APIM service account credentials
 
 ### Multi-Tenant Customer Model
 

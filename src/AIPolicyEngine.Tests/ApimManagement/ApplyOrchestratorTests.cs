@@ -37,7 +37,7 @@ public sealed class ApplyOrchestratorTests
         await sut.ProcessAssignmentAsync("api-1", null);
 
         Assert.Equal("pa:api-1:_all", response.AssignmentId);
-        Assert.Equal(PolicyAssignmentStatuses.Applying, response.Status);
+        Assert.Equal(PolicyAssignmentStatuses.Pending, response.Status);
         Assert.Equal([PolicyAssignmentStatuses.Pending, PolicyAssignmentStatuses.Applying, PolicyAssignmentStatuses.Synced], repo.UpsertHistory.Select(x => x.Status).ToArray());
 
         var stored = await repo.GetAsync("api-1", null);

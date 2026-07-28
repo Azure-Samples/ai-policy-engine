@@ -1,0 +1,32 @@
+# .NET build outputs
+src/**/bin/
+src/**/obj/
+
+# Node / frontend
+src/**/node_modules/
+
+# IDE folders
+src/**/.vs/
+src/**/.vscode/
+
+# Projects not needed in the image
+src/AIPolicyEngine.Tests/
+src/AIPolicyEngine.AppHost/
+src/AIPolicyEngine.Benchmarks/
+src/AIPolicyEngine.LoadTest/
+
+# Solution / misc files that add no value to the build
+src/*.slnx
+src/*.sln
+src/*.md
+
+# Repo-level files not needed in the build context
+infra/
+k8s/
+demo/
+docs/
+Tests/
+scripts/
+.git/
+.gitignore
+*.md

@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, parseErrorMessage } from "../api"
+import { authFetch, parseErrorMessage } from "../api"
 import type { HttpError } from "../types/apim"
 import type {
   AccessProfile,
@@ -18,7 +18,7 @@ async function buildHttpError(res: Response, fallback: string): Promise<HttpErro
 }
 
 async function requestJson<T>(path: string, fallback: string, options: RequestInit = {}): Promise<T> {
-  const res = await authFetch(`${API_BASE}${path}`, options)
+  const res = await authFetch(path, options)
   if (!res.ok) {
     throw await buildHttpError(res, fallback)
   }
@@ -64,7 +64,7 @@ export function updateAccessProfile(profileId: string, data: AccessProfileUpdate
 }
 
 export async function deleteAccessProfile(profileId: string): Promise<void> {
-  const res = await authFetch(`${API_BASE}/api/access-profiles/${encodeURIComponent(profileId)}`, {
+  const res = await authFetch(`/api/access-profiles/${encodeURIComponent(profileId)}`, {
     method: "DELETE",
   })
 

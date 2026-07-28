@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MessagePack" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="NBomber" />
     <PackageReference Include="NBomber.Http" />

@@ -154,7 +154,7 @@ public sealed class TemplateLibraryService : ITemplateLibraryService
                 }
 
                 var policyXml = await File.ReadAllTextAsync(policyPath, ct);
-                ValidateManifestAgainstPolicy(manifest, policyXml, policyPath);
+                ValidateManifestAgainstPolicy(manifest, policyXml, manifestPath);
 
                 if (templates.ContainsKey(manifest.Id))
                 {
@@ -192,11 +192,11 @@ public sealed class TemplateLibraryService : ITemplateLibraryService
             $"Unable to locate policies/templates under '{_hostEnvironment.ContentRootPath}'.");
     }
 
-    private static void ValidateManifestAgainstPolicy(TemplateManifest manifest, string policyXml, string policyPath)
+    private static void ValidateManifestAgainstPolicy(TemplateManifest manifest, string policyXml, string manifestPath)
     {
         if (string.IsNullOrWhiteSpace(manifest.Id))
         {
-            throw new InvalidOperationException($"Template manifest '{policyPath}' must declare a non-empty id.");
+            throw new InvalidOperationException($"Template manifest '{manifestPath}' must declare a non-empty id.");
         }
 
         if (string.IsNullOrWhiteSpace(manifest.DisplayName))

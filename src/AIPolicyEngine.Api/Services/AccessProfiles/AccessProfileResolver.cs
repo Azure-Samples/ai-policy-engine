@@ -58,6 +58,7 @@ public sealed class AccessProfileResolver : IAccessProfileResolver
         PlanId = profile.PlanId,
         RoutingPolicyId = profile.RoutingPolicyId,
         AllowedDeployments = profile.AllowedDeployments?.ToList() ?? [],
+        Blocked = profile.Blocked,
         AccessProfileId = profile.Id
     };
 }
