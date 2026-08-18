@@ -62,7 +62,8 @@ builder.Services.AddSingleton<IChargebackCalculator, ChargebackCalculator>();
 builder.Services.AddSingleton<ChargebackMetrics>();
 builder.Services.AddSingleton<ILogDataService, LogDataService>();
 builder.Services.AddSingleton<IAuditStore, AuditStore>();
-builder.Services.AddSingleton<IDeploymentDiscoveryService, DeploymentDiscoveryService>();
+builder.Services.Configure<FoundryDiscoveryOptions>(builder.Configuration.GetSection("Foundry"));
+builder.Services.AddHttpClient<IDeploymentDiscoveryService, DeploymentDiscoveryService>();
 builder.Services.Configure<ApimManagementOptions>(builder.Configuration.GetSection("Apim"));
 builder.Services.AddSingleton<ArmClient>(_ => new ArmClient(new DefaultAzureCredential()));
 

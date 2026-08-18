@@ -74,6 +74,24 @@ public sealed class ApimPolicyApplyService : IApimPolicyApplyService
             .ToList();
     }
 
+    public async Task<int> QueueAllPolicyReapplyAsync(CancellationToken ct = default)
+    {
+        var assignments = await _assignmentRepository.GetAllAsync(ct);
+        var queued = 0;
+        foreach (var assignment in assignments)
+        {
+            assignment.Status = PolicyAssignmentStatuses.Pending;
+            assignment.ErrorMessage = null;
+            assignment.UpdatedAt = DateTime.UtcNow;
+            await _assignmentRepository.UpsertAsync(assignment, ct);
+            if (!_queue.Writer.TryWrite(new ApimPolicyApplyWorkItem(assignment.ApiId, assignment.OperationId)))
+                throw new InvalidOperationException("Failed to enqueue an APIM policy reapply request.");
+            queued++;
+        }
+
+        return queued;
+    }
+
     public async Task ProcessAssignmentAsync(string apiId, string? operationId, CancellationToken ct = default)
     {
         var assignment = await _assignmentRepository.GetAsync(apiId, operationId, ct);

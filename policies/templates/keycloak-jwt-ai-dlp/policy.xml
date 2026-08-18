@@ -117,6 +117,8 @@
 		<!-- AUTO-ROUTER -->
 		<set-variable name="routedDeployment"
 			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routedDeployment"]?.ToString())" />
+		<set-variable name="backendUrl"
+			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["backendUrl"]?.ToString())" />
 		<set-variable name="routingPolicyId"
 			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routingPolicyId"]?.ToString())" />
 		<set-variable name="accessProfileId"
@@ -135,7 +137,14 @@
 				}" />
 			</when>
 		</choose>
-		<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+		<choose>
+			<when condition="@(!string.IsNullOrEmpty((string)context.Variables["backendUrl"]))">
+				<set-backend-service id="apim-generated-policy" base-url="@((string)context.Variables["backendUrl"])" />
+			</when>
+			<otherwise>
+				<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+			</otherwise>
+		</choose>
 		<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
 		<set-body>@{
             var rawBody = context.Variables.GetValueOrDefault<string>("requestBody");

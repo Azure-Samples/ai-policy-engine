@@ -1,5 +1,5 @@
 import { initAuth, type AuthProvider, type AuthConfig } from "./auth";
-import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse, RoutingPoliciesResponse, ModelRoutingPolicy, ModelRoutingPolicyCreateRequest, ModelRoutingPolicyUpdateRequest, RequestSummaryResponse } from "./types";
+import type { ChargebackResponse, QuotasResponse, QuotaUpdateRequest, QuotaData, PlansResponse, PlanCreateRequest, PlanUpdateRequest, PlanData, ClientsResponse, ClientAssignRequest, ClientUsageResponse, ClientTracesResponse, UsageSummaryResponse, RequestLogsResponse, ModelPricingResponse, ModelPricingCreateRequest, ModelPricing, ExportPeriodsResponse, DeploymentsResponse, FoundryOnboardingResponse, RoutingPoliciesResponse, ModelRoutingPolicy, ModelRoutingPolicyCreateRequest, ModelRoutingPolicyUpdateRequest, RequestSummaryResponse } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -206,6 +206,12 @@ export function exportCsvUrl(): string {
 export async function fetchDeployments(): Promise<DeploymentsResponse> {
   const res = await authFetch(`/api/deployments`);
   if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to fetch deployments"));
+  return res.json();
+}
+
+export async function onboardFoundry(): Promise<FoundryOnboardingResponse> {
+  const res = await authFetch(`/api/deployments/onboard`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to onboard Foundry resources"));
   return res.json();
 }
 

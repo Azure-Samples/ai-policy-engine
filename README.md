@@ -496,6 +496,15 @@ APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...
 # Optional — enables Purview DLP/audit integration
 PURVIEW_CLIENT_APP_ID=your-purview-app-id
 
+# Optional — discover/onboard Foundry resources with a service principal.
+# Use Foundry__SubscriptionIds__0 for one subscription, or set
+# Foundry__DiscoverAllSubscriptions=true to scan every enabled subscription
+# visible to the service principal.
+Foundry__TenantId=<tenant-id>
+Foundry__ClientId=<service-principal-client-id>
+Foundry__ClientSecret=<service-principal-secret>
+Foundry__SubscriptionIds__0=<subscription-id>
+
 # DemoClient configuration (alternative to user-secrets; auto-loaded from .env.local/.env)
 # See demo/.env.sample for a copyable template.
 DemoClient__TenantId=<tenant-id>
@@ -511,6 +520,8 @@ DemoClient__Clients__0__Plan=Enterprise
 DemoClient__Clients__0__DeploymentId=gpt-4.1
 DemoClient__Clients__0__TenantId=<tenant-id>
 ```
+
+The Foundry service principal needs **Reader** on discovery scopes and **Role Based Access Control Administrator** on resources it onboards. Onboarding grants APIM's managed identity the **Cognitive Services User** role; the service-principal secret is never copied into APIM.
 
 For local React dashboard development, copy `src/AIPolicyEngine-ui/.env.sample` to `src/AIPolicyEngine-ui/.env.local` and set your Entra app values.
 
