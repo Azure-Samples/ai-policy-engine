@@ -47,7 +47,7 @@ function buildApiUrl(path: string): string {
 
 export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const url = buildApiUrl(path);
-  let token: string | null = null;
+  let token: string | null;
   try {
     token = await getToken();
   } catch {

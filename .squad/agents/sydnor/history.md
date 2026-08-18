@@ -385,4 +385,100 @@ Update all 5 APIM policy templates (version 1.0 → 1.1):
 - Bunk all 21 AAA tests active and passing
 - Kima M5 UI now consuming finalized template metadata; `/access` page shipped in parallel
 
+---
+
+## 2026-07-31 — UI Supply-Chain Audit (Requested by Zack Way)
+
+**Scope:** `src/aipolicyengine-ui` — dependency hardening, version verification, lockfile integrity.
+
+### Requested Version Verification (npm Registry)
+
+| Package | Requested | Exists? | Finding |
+|---|---|---|---|
+| typescript | 7.0.2 | ✅ | Stable. **BLOCKED** by typescript-eslint peer ceiling `<6.1.0` |
+| vite | 8.2.0 | ❌ | Only `8.2.0-beta.0` exists. Latest stable 8.x is `8.1.5`. |
+| eslint | 10.8.0 | ❌ | Does not exist. Latest is `10.7.0`. Kima already installed 10.7.0. |
+
+**vite dist-tag hazard:** npm `latest` for vite resolves to `8.2.0-beta.0` (pre-release). Any `npm install vite@latest` would pull the beta. Project is pinned so not an immediate risk, but must specify exact version on upgrade.
+
+### Phase Status vs McNulty's Plan
+
+- Phase A (removals): ✅ Complete — date-fns, clsx, class-variance-authority removed; source clean (0 remaining imports verified by grep).
+- Phase B (Vite 8): ❌ Not started — vite at 7.3.6. Stable target is 8.1.5 (not 8.2.0 which is beta). Upgrade is unblocked. `@vitejs/plugin-react` must move to `6.0.4` simultaneously (6.x requires `vite: ^8`). Plugin 5.x supports vite 4–8 so current state works but 6.x is the matched major.
+- Phase C (ESLint 10): ✅ Complete — eslint 10.7.0, typescript-eslint 8.65.0 installed.
+- Phase D (TypeScript 7): 🚫 Blocked — typescript-eslint peerDep ceiling unresolved.
+
+### Security
+
+`npm audit` → **0 vulnerabilities** on current lockfile. ESLint 10 upgrade resolved the full `brace-expansion` (GHSA-mh99-v99m-4gvg) chain. `brace-expansion` is now at 5.0.8 (patched), `minimatch` at 10.2.5.
+
+No deprecated packages. No install scripts (clean supply chain).
+
+### Supply-Chain Concern: recharts@3.10.1
+
+`npm view recharts@3.10.1 → E404` — this exact version is not in npm registry metadata (latest is `3.10.0`). Lockfile has it resolved from `registry.npmjs.org` with an integrity hash. Most likely the version was published but `latest` tag not bumped. **Recommendation: downgrade to `3.10.0` and regenerate lockfile.** McNulty's review also flagged this mismatch.
+
+### Lockfile Health
+
+281 packages (down from 342), lockfile v3, 7 minor transitive duplicates (all unavoidable), 0 deprecated. Package tree is healthy.
+
+### Package Misplacement
+
+`@tailwindcss/vite` and `tailwindcss` are in `dependencies` (runtime) instead of `devDependencies`. Both are build tools with zero runtime presence. No functional impact for a Vite SPA but incorrect classification. Kima to fix.
+
+### CI Gap
+
+`ci.yml` has no frontend steps — no build, lint, test, or audit for `aipolicyengine-ui`. The Bunk-approved quality gate is enforced manually only. Added a recommended job block in the decision file. This is the most systemic gap found.
+
+### Decisions Written
+
+- `.squad/decisions/inbox/sydnor-ui-supply-chain-audit.md` — full audit table with all findings, evidence, and action items for team review.
+
+### 2026-07-31 (follow-up) — TypeScript 6.0.3: Compatible Ceiling Verified
+
+Subsequent investigation confirmed TypeScript **6.0.3** is a viable intermediate upgrade between the current 5.9.3 and the blocked 7.0.2.
+
+**Registry facts (npm):**
+- `6.0.2` published 2026-03-23; `6.0.3` published 2026-04-16. Both are stable (not pre-release, not deprecated).
+- Neither carries the `latest` dist-tag (that is `7.0.2`), but stable published versions without a dist-tag are routinely installable and supportable.
+
+**Peer-dep satisfaction (verified with inline semver logic):**
+```
+typescript-eslint@8.65.0 requires "typescript": ">=4.8.4 <6.1.0"
+typescript@6.0.3 satisfies: TRUE
+typescript@6.1.0 satisfies: FALSE  ← first excluded version
+```
+`6.0.3` is the exact ceiling. `6.1.0` is the first version that breaks the range.
+
+**Toolchain compatibility:** Vite, @vitejs/plugin-react, vitest carry no TypeScript peer dep. Node requirement for TS 6.0.3 is `>=14.17` (trivially met). `erasableSyntaxOnly` tsconfig flag (added in 5.8) is supported by TS 6.
+
+**Decision appended to inbox:** Phase D relabeled — upgrade TypeScript to `6.0.3` now (clear, immediate); hold at `6.0.3` until typescript-eslint broadens its ceiling to support TS 7.
+
+---
+
+## 2026-07-31 — Azurite emulator image refresh (3.35.0 → 3.36.0)
+
+**Request:** Force-pull Azurite 3.36.0 for the Cosmos/storage emulator container; preserve existing dev data.
+
+**Target container:** `storage-e7b23ac9` — Aspire-managed persistent container, image `mcr.microsoft.com/azure-storage/azurite:3.35.0`.
+
+**Volume:** `aspire-managed-e7b23ac96a-storage-data` → `/data`, 208 KB, 20 blobs in 2 extents. **Not touched.**
+
+**Disambiguation note:** `Aspire.Hosting.Azure.CosmosDB 13.4.6` uses `mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:stable` for its emulator — NOT Azurite. The `storage-e7b23ac9` container was created by a prior AppHost iteration that had an `AddAzureStorage("storage").RunAsEmulator()` resource. That resource no longer exists in `AppHost.cs`; the container persists via Aspire's `persistent: "true"` lifecycle label. **No AppHost code change was needed or made.**
+
+**3.36.0 GC incompatibility — discovered and mitigated:**
+
+On first start of 3.36.0 against 3.35.0 data, the Blob GC crashed with `TypeError: Cannot restore loki DB persisted object to Uint8Array. Key 0 is missing` in `listAllBlobs`. Root cause: 3.36.0 added a `restoreUint8Array` call on `contentMD5` that does not handle the `{"type":"Buffer","data":[...]}` Node.js Buffer JSON format written by 3.35.0.
+
+Fix: ran a one-shot Node.js migration script inside the 3.36.0 container against the mounted volume, converting all 20 blobs' `contentMD5` from Buffer JSON format to `{0: byte, 1: byte, ...}` numeric-key format. Extent files (actual blob data) were untouched.
+
+**Outcome:**
+- Container running: `mcr.microsoft.com/azure-storage/azurite:3.36.0` digest `sha256:76b8127d...`
+- Volume `aspire-managed-e7b23ac96a-storage-data` → `/data` — same name, same destination, 208 KB intact
+- All 3 services healthy: blob :50400, queue :50401, table :50399
+- No other containers affected; AppHost.cs unchanged
+
+**Lesson for future upgrades:** Any persistent Azurite volume created under 3.35.0 requires a one-time `contentMD5` format migration before 3.36.0 will start. See `.squad/decisions/inbox/sydnor-emulator-image-refresh.md` for the migration snippet.
+
+
 

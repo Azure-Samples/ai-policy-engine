@@ -209,3 +209,23 @@ The `/access` page is the primary admin interface for the AAA authorization laye
 3. ✅ Zack: Frontend test infrastructure decision APPROVED (Vitest adopted as standard)
 
 **Outcome:** Feature complete, all gates closed, ready for PR review + merge.
+
+## 2026-07-31T09:30:00Z — UI Dependency Hardening Final Review (APPROVED)
+
+**Verdict:** APPROVED
+**Author:** Kima (Frontend), Tests by Bunk (QA)
+**Scope:** Remove CVA/clsx/date-fns + unused test packages; upgrade TS 5.9→6.0.3, Vite 7.3→8.1.5, ESLint 9→10.7.0; inline variant logic in button/badge.
+
+**Key Findings:**
+1. cn() reduced API safe — all 30+ call sites use string|boolean only, no object syntax
+2. Button/Badge null variant fallback correct — destructuring default + nullish coalescing double-covers undefined and null
+3. className merge order preserved — last-arg-to-cn semantics identical before/after
+4. All 7 removed packages have zero remaining imports
+5. Version pins correct: TS 6.0.3 within typescript-eslint ceiling, Vite 8.2.0/ESLint 10.8.0 correctly rejected as unpublished
+6. api.ts `= null` removal valid (TS 6.0 definite assignment, both try/catch branches assign)
+7. ESLint React Compiler rule suppressions appropriate (separate refactor scope)
+8. 46/46 tests, clean tsc/lint/build, 0 audit vulnerabilities (Bunk-verified)
+
+**Non-blocking advisories:** tailwindcss/vite plugin in dependencies (cosmetic), recharts 3.10.1 phantom version (pre-existing), CI frontend job missing (separate scope).
+
+**Decision:** `.squad/decisions/inbox/mcnulty-ui-dependency-final-review.md`

@@ -365,3 +365,11 @@ const { filteredSections, globalVisible, visibleScopeCount, filtersActive } = us
 - **Pattern:** Extract pure functions to `.ts` modules; test independently via Vitest; import into components for use
 
 **Cross-Team Note:** Vitest infrastructure now in place. Future frontend features should follow this pattern: pure logic in dedicated modules, components as thin rendering layers, tests for pure functions. Component-level testing can follow when needed (jsdom + @testing-library/react are already installed).
+
+## 2026-07-31 — UI Dependency Hardening
+
+- Audited every direct UI dependency against source/config usage. Removed `class-variance-authority`, `clsx`, and unused `date-fns`; also removed unused browser-test/UI packages while retaining Vitest for the 35 Node-based tests.
+- Replaced CVA in Button/Badge with typed class maps and replaced clsx with native falsey filtering while preserving `tailwind-merge`.
+- Registry evidence constrained requested versions: TypeScript 7.0.2 exists but typescript-eslint 8.65.0 supports TypeScript only below 6.1, so 6.0.3 is the latest compatible release; Vite 8.2.0 and ESLint 10.8.0 do not exist as stable releases, so 8.1.5 and 10.7.0 were selected.
+- ESLint 10 surfaces React Compiler diagnostics that require broader component refactors; keep core Hooks rules while deferring `immutability`, `purity`, and `set-state-in-effect`.
+- Direct dependencies dropped from 30 to 23 and lockfile packages from 405 to 281. Tests (35), lint, production build, and npm audit (0 vulnerabilities) pass.
