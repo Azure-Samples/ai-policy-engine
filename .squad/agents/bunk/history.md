@@ -647,3 +647,92 @@ pm run test:watch (vitest)
 2. Spread syntax in fixture setup causes duplication — use const baseModel = create({ overrides }) pattern
 3. Vitest runs fast; pure function tests are instant feedback
 4. Edge cases matter: empty query, null values, fallback values, boundary conditions all covered in Access Profiles tests
+
+---
+
+### 2026-07-31 — UI Dependency Hardening Quality Gate
+
+**Task:** Review Kima's uncommitted dependency-hardening changes in `src/aipolicyengine-ui`.  
+**Expected outcome:** TypeScript 6.0.3, Vite 8.1.5, ESLint 10.7.0; removal of CVA/clsx/date-fns; native replacements preserving behavior; remaining deps upgraded and justified.  
+**Verdict:** ✅ APPROVED (with advisory on pre-existing proxy issue)
+
+**Changes reviewed (7 files, all uncommitted working-tree changes):**
+- `package.json` — removed CVA, clsx, date-fns, @testing-library/*, @vitest/ui, jsdom; upgraded eslint 9→10, vite 7→8, typescript 5.9→6.0, @vitejs/plugin-react 5→6, vitest 4.1.9→4.1.10, globals 16→17, @types/node 24→26, typescript-eslint 8.48→8.65, lucide-react 0.577→1.26, tailwind-merge 3.5→3.6, tailwindcss/tailwind-vite 4.2→4.3, @eslint/js 9→10
+- `src/lib/utils.ts` — removed clsx; `cn` now `twMerge(inputs.filter(Boolean).join(" "))` with typed `(string|false|null|undefined)[]`
+- `src/components/ui/badge.tsx` — CVA replaced by plain object lookup + cn(). null/undefined variant fallback via `?? "default"`. Public props correct.
+- `src/components/ui/button.tsx` — same pattern; both variant and size replaced. null/undefined fallback. Public props correct.
+- `src/api.ts` — removed unnecessary `= null` initializer; correct TS 6.0 strict fix (try/catch ensures definite assignment).
+- `eslint.config.js` — added `off` rules for react-hooks React Compiler diagnostics (react-hooks v7.x new rules); appropriate with explanatory comment.
+- `package-lock.json` — regenerated from direct npm registry (not proxy); lockfile entries valid.
+
+**Package removal justifications (all clean):**
+- `class-variance-authority`: zero remaining imports; behavior preserved in badge/button
+- `clsx`: zero remaining imports; all 13 cn() call sites use string|boolean only (no object-style)
+- `date-fns`: never imported in any source file — was dead dependency
+- `@testing-library/react`, `@testing-library/jest-dom`: not imported; node-env-only tests don't need them
+- `@vitest/ui`: not referenced in any script/config; optional tooling removed cleanly
+- `jsdom`: vitest.config.ts uses `environment: 'node'`; DOM env not needed for current test suite
+
+**Validation results (all Kima's version upgrades available on proxy):**
+- `npm test`: 46/46 pass (35 filtering + 11 new utils/variants) ✅
+- `tsc -b`: clean, zero errors ✅
+- `eslint .`: clean, zero errors ✅
+- `npm run build`: succeeded, vite v8.1.5 confirmed in output ✅
+- `npm audit`: 0 vulnerabilities ✅
+- Build artifacts (`wwwroot/`): correctly gitignored via `src/AIPolicyEngine.Api/.gitignore` ✅
+
+**PONYTAIL FULL — added `src/lib/utils.test.ts`:**
+11 tests covering cn (3), badgeVariants (4), buttonVariants (4). Verifies: string merge, tailwind-merge conflict resolution, default variant, null variant fallback, className override, size variants.
+
+**Pre-existing proxy issue (NOT introduced by Kima):**
+5 packages in the lockfile (from commit `0c24f871`) reference versions not yet synced to `packagefeedproxy.microsoft.io/npm`:
+- `@azure/msal-browser@5.17.3` (proxy max: 5.17.1)
+- `@azure/msal-react@5.5.4` (proxy max: 5.5.3)
+- `recharts@3.10.1` (proxy max: 3.10.0)
+- `@types/react@19.2.18` (proxy max: 19.2.17)
+- `@types/react-dom@19.2.4` (proxy max: 19.2.3)
+
+Determination: Environment/proxy lag (lockfile references real registry.npmjs.org URLs; proxy hasn't synced patch versions published after ~7/28/2026). `npm ci` will fail until proxy syncs. Action: wait for proxy auto-sync or request manual sync. Kima's specific version changes are all proxy-available.
+
+**Files added by Bunk:**
+- `src/aipolicyengine-ui/src/lib/utils.test.ts` (11 tests)
+
+### 2026-07-31 — Azurite Emulator Quality Gate (3.35.0 → 3.36.0 refresh)
+
+**Requested by:** Zack Way | **Verified:** Sydnor's emulator refresh report
+
+**Verdict: APPROVED**
+
+**Evidence gathered (read-only, no mutation):**
+
+- **Container:** `/storage-e7b23ac9` running image `mcr.microsoft.com/azure-storage/azurite:3.36.0`
+  (immutable ID `sha256:76b8127d…`, manifest digest `sha256:d5bb99496dc8…`). Status: `running`, RestartCount: 0.
+
+- **Volume:** `aspire-managed-e7b23ac96a-storage-data` confirmed present, mounted RW at `/data`, no anonymous
+  volume replacement. Volume created 2026-07-23 (pre-dates refresh as expected).
+
+- **Data footprint:** `du -sh /data` = **208.0K** ✅. `$BLOBS_COLLECTION$` = **20 records** ✅.
+  `$EXTENTS_COLLECTION$` = **2 records** ✅. Physical `__blobstorage__/` files = **2** ✅ (IDs
+  `19d6d11b…` 64,604 bytes / `6fb3176e…` 75,871 bytes). All blob `persistency.id` fields cross-reference
+  exactly these two extent IDs.
+
+- **Services:** All three responding. Logs: "successfully listening" on :10000/:10001/:10002. HTTP probes
+  to 127.0.0.1:50400/50401/50399 all return 400 (correct unauthenticated response). Ports map to blob:50400,
+  queue:50401, table:50399 as claimed.
+
+- **contentMD5 migration:** All 20 blobs have `contentMD5` as an indexed-key JSON object
+  (`{"0": n, "1": n, ...}`) — exactly the format Sydnor documented as the migration output. Extent file mtimes
+  are Jul 24 and Jul 28 (predating the Jul 31 migration), confirming payloads were untouched.
+
+- **Git status:** `AppHost.cs` not changed. `AppHost.csproj` has an SDK bump (13.2.4→13.4.6) from a
+  separate dependency-upgrade task (`ad5516c3`), unrelated to the emulator refresh. No product source changes
+  attributable to the Azurite operation.
+
+- **Log noise:** Two GC crash cycles ("Cannot close server in status Starting") appear in container logs,
+  consistent with Sydnor's documented 3.36.0 incompatibility on first starts against 3.35.0 data. Container
+  is stable; all services confirmed up.
+
+**Caveat:** No pre-refresh checksums exist for extent files or metadata JSON. Payload preservation is
+supported by mtime evidence and zero new extents, but cannot be cryptographically proven.
+
+**Report filed:** `.squad/decisions/inbox/bunk-emulator-refresh-quality-gate.md`
