@@ -482,3 +482,14 @@ Fix: ran a one-shot Node.js migration script inside the 3.36.0 container against
 
 
 
+
+## 2026-08-18 — CodeQL PR Workflow (PR #76, chore/package-updates)
+
+- Added .github/workflows/codeql.yml for advanced CodeQL setup.
+- Triggers: push + PR to main/master. Matrix: csharp (build-mode: none) + javascript-typescript (build-mode: none).
+- Permissions: contents: read, security-events: write, packages: read — fork-safe per CodeQL action v3 docs.
+- Action version: github/codeql-action/init@v3 + nalyze@v3 (latest v3.37.7 at time of writing).
+- No pull_request_target, no secrets, no third-party actions.
+- Concurrency group: codeql-{PR or ref}, cancel-in-progress, timeout 30m.
+- YAML validated via Python yaml.safe_load.
+- **Follow-up required:** If GitHub default setup / security configuration is enabled in repo Settings → Code security → Code scanning, it must be switched to "Advanced" (or disabled) for the checked-in workflow to take effect and satisfy the prot_def_branch ruleset. Admin action by Zack Way.
