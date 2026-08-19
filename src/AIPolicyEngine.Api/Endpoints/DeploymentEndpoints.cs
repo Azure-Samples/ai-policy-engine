@@ -58,12 +58,29 @@ public static class DeploymentEndpoints
                 PoliciesQueuedForReapply = policiesQueued
             }, JsonConfig.Default);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            logger.LogError(ex, "Failed to onboard Foundry resources");
-            return Results.Json(
-                new { error = "Failed to onboard Foundry resources" },
-                statusCode: StatusCodes.Status500InternalServerError);
+            throw;
         }
+        catch (HttpRequestException ex)
+        {
+            return OnboardingFailure(ex, logger);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return OnboardingFailure(ex, logger);
+        }
+        catch (Azure.Identity.AuthenticationFailedException ex)
+        {
+            return OnboardingFailure(ex, logger);
+        }
+    }
+
+    private static IResult OnboardingFailure(Exception ex, ILogger logger)
+    {
+        logger.LogError(ex, "Failed to onboard Foundry resources");
+        return Results.Json(
+            new { error = "Failed to onboard Foundry resources" },
+            statusCode: StatusCodes.Status500InternalServerError);
     }
 }

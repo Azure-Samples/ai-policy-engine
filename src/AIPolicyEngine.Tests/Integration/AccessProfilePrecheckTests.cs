@@ -234,9 +234,10 @@ public sealed class AccessProfilePrecheckTests : IClassFixture<ChargebackApiFact
     [Fact]
     public void AiTemplates_UseResolvedFoundryBackend()
     {
-        foreach (var templateId in ShippedTemplateIds.Where(id => id.Contains("-ai", StringComparison.Ordinal)))
+        foreach (var policyXml in ShippedTemplateIds
+                     .Where(id => id.Contains("-ai", StringComparison.Ordinal))
+                     .Select(ReadTemplatePolicy))
         {
-            var policyXml = ReadTemplatePolicy(templateId);
             Assert.Contains("[\"backendUrl\"]", policyXml, StringComparison.Ordinal);
             Assert.Contains("base-url=\"@((string)context.Variables[\"backendUrl\"])\"", policyXml, StringComparison.Ordinal);
             Assert.Contains("authentication-managed-identity resource=\"https://cognitiveservices.azure.com/\"", policyXml, StringComparison.Ordinal);
