@@ -38,7 +38,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
 
     <!-- OpenApi, Pinned to v2 until .NET 11 -->
-    <PackageVersion Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageVersion Include="Microsoft.OpenApi" Version="3.10.2" />
 
     <!-- OpenTelemetry -->
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
