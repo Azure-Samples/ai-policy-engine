@@ -231,14 +231,26 @@ export interface ExportPeriodsResponse {
 
 export interface DeploymentInfo {
   id: string;
+  name: string;
   model: string;
   modelVersion: string;
   skuName: string;
   skuCapacity: number;
+  endpoint: string;
+  resourceId: string;
+  resourceName: string;
+  resourceGroup: string;
+  subscriptionId: string;
 }
 
 export interface DeploymentsResponse {
   deployments: DeploymentInfo[];
+}
+
+export interface FoundryOnboardingResponse {
+  resourcesOnboarded: number;
+  deploymentsDiscovered: number;
+  policiesQueuedForReapply: number;
 }
 
 // --- Phase 4: Model Routing & Multiplier Billing ---

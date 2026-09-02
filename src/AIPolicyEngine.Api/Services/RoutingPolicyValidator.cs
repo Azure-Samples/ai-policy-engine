@@ -20,7 +20,8 @@ public sealed class RoutingPolicyValidator
     {
         var deployments = await _deploymentService.GetDeploymentsAsync(ct);
         var knownIds = new HashSet<string>(
-            deployments.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
+            deployments.SelectMany(d => new[] { d.Id, d.Name }).Where(value => !string.IsNullOrWhiteSpace(value)),
+            StringComparer.OrdinalIgnoreCase);
 
         var errors = new List<string>();
 

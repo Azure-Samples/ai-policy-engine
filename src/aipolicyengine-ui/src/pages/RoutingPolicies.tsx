@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import { fetchRoutingPolicies, createRoutingPolicy, updateRoutingPolicy, deleteRoutingPolicy, fetchDeployments, fetchPlans } from "../api"
+import { fetchRoutingPolicies, createRoutingPolicy, updateRoutingPolicy, deleteRoutingPolicy, fetchDeployments, fetchPlans, onboardFoundry } from "../api"
 import type { ModelRoutingPolicy, ModelRoutingPolicyCreateRequest, RouteRule, RoutingBehavior, DeploymentInfo, PlanData } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -7,7 +7,7 @@ import { Input } from "../components/ui/input"
 import { Badge } from "../components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle, DialogClose } from "../components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { Pencil, Trash2, Plus, Route, ArrowRight, AlertTriangle } from "lucide-react"
+import { Pencil, Trash2, Plus, Route, ArrowRight, AlertTriangle, CloudDownload } from "lucide-react"
 
 interface PolicyForm {
   name: string
@@ -37,6 +37,7 @@ export function RoutingPolicies() {
   const [form, setForm] = useState<PolicyForm>({ ...emptyForm })
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [onboarding, setOnboarding] = useState(false)
 
   // Rule builder state
   const [newRuleRequested, setNewRuleRequested] = useState("")
@@ -145,6 +146,18 @@ export function RoutingPolicies() {
 
   const isFormValid = form.name.trim().length > 0
 
+  const handleOnboard = async () => {
+    setOnboarding(true)
+    try {
+      await onboardFoundry()
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to onboard Foundry resources")
+    } finally {
+      setOnboarding(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -166,10 +179,16 @@ export function RoutingPolicies() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create Policy
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleOnboard} disabled={onboarding} className="gap-2">
+            <CloudDownload className="h-4 w-4" />
+            {onboarding ? "Onboarding…" : "Onboard Foundry"}
+          </Button>
+          <Button onClick={openCreate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Create Policy
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -306,7 +325,7 @@ export function RoutingPolicies() {
                 >
                   <option value="">None</option>
                   {deployments.map(d => (
-                    <option key={d.id} value={d.id}>{d.id} ({d.model})</option>
+                    <option key={d.id} value={d.id}>{d.resourceName}/{d.name} ({d.model})</option>
                   ))}
                 </select>
               ) : (
@@ -378,7 +397,7 @@ export function RoutingPolicies() {
                   >
                     <option value="">Requested…</option>
                     {deployments.map(d => (
-                      <option key={d.id} value={d.id}>{d.id}</option>
+                      <option key={d.id} value={d.name}>{d.name}</option>
                     ))}
                   </select>
                   <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -389,7 +408,7 @@ export function RoutingPolicies() {
                   >
                     <option value="">Routed to…</option>
                     {deployments.map(d => (
-                      <option key={d.id} value={d.id}>{d.id}</option>
+                      <option key={d.id} value={d.id}>{d.resourceName}/{d.name}</option>
                     ))}
                   </select>
                 </>

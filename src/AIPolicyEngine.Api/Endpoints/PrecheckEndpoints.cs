@@ -36,6 +36,7 @@ public static class PrecheckEndpoints
         IRepository<ClientPlanAssignment> clientRepo,
         IRepository<PlanData> planRepo,
         IRepository<ModelRoutingPolicy> routingPolicyRepo,
+        IDeploymentDiscoveryService deploymentDiscoveryService,
         IAccessProfileResolver accessProfileResolver,
         IUsagePolicyStore usagePolicyStore,
         IConnectionMultiplexer redis,
@@ -55,6 +56,7 @@ public static class PrecheckEndpoints
                 clientRepo,
                 planRepo,
                 routingPolicyRepo,
+                deploymentDiscoveryService,
                 usagePolicyStore,
                 redis,
                 logger);
@@ -118,6 +120,7 @@ public static class PrecheckEndpoints
                 assignment.ModelRoutingPolicyOverride ?? fallbackPlan.ModelRoutingPolicyId,
                 fallbackAllowedDeployments,
                 routingPolicyRepo,
+                deploymentDiscoveryService,
                 usagePolicyStore,
                 redis,
                 includeAccessProfileMetadata: true,
@@ -166,6 +169,7 @@ public static class PrecheckEndpoints
             resolved.RoutingPolicyId ?? plan.ModelRoutingPolicyId,
             effectiveAllowedDeployments,
             routingPolicyRepo,
+            deploymentDiscoveryService,
             usagePolicyStore,
             redis,
             includeAccessProfileMetadata: true,
@@ -183,6 +187,7 @@ public static class PrecheckEndpoints
         IRepository<ClientPlanAssignment> clientRepo,
         IRepository<PlanData> planRepo,
         IRepository<ModelRoutingPolicy> routingPolicyRepo,
+        IDeploymentDiscoveryService deploymentDiscoveryService,
         IUsagePolicyStore usagePolicyStore,
         IConnectionMultiplexer redis,
         ILogger<PlanData> logger)
@@ -217,6 +222,7 @@ public static class PrecheckEndpoints
             assignment.ModelRoutingPolicyOverride ?? plan.ModelRoutingPolicyId,
             effectiveAllowedDeployments,
             routingPolicyRepo,
+            deploymentDiscoveryService,
             usagePolicyStore,
             redis,
             includeAccessProfileMetadata: false,
@@ -233,6 +239,7 @@ public static class PrecheckEndpoints
         string? effectivePolicyId,
         IReadOnlyCollection<string> effectiveAllowedDeployments,
         IRepository<ModelRoutingPolicy> routingPolicyRepo,
+        IDeploymentDiscoveryService deploymentDiscoveryService,
         IUsagePolicyStore usagePolicyStore,
         IConnectionMultiplexer redis,
         bool includeAccessProfileMetadata,
@@ -277,6 +284,12 @@ public static class PrecheckEndpoints
         }
 
         var effectiveDeployment = routedDeploymentId ?? requestedDeploymentId;
+        var deploymentTarget = string.IsNullOrWhiteSpace(effectiveDeployment)
+            ? null
+            : await deploymentDiscoveryService.ResolveAsync(effectiveDeployment);
+        var resolvedRoutedDeployment = routedDeploymentId is null
+            ? null
+            : deploymentTarget?.Name ?? routedDeploymentId;
 
         var usagePolicy = await usagePolicyStore.GetAsync();
         var currentDateUtc = DateTime.UtcNow;
@@ -503,7 +516,8 @@ public static class PrecheckEndpoints
                 rpmLimit = plan.RequestsPerMinuteLimit,
                 currentTpm,
                 tpmLimit = plan.TokensPerMinuteLimit,
-                routedDeployment = routedDeploymentId,
+                routedDeployment = resolvedRoutedDeployment,
+                backendUrl = deploymentTarget?.Endpoint,
                 requestedDeployment = requestedDeploymentId,
                 routingPolicyId
             })
@@ -520,7 +534,8 @@ public static class PrecheckEndpoints
                 rpmLimit = plan.RequestsPerMinuteLimit,
                 currentTpm,
                 tpmLimit = plan.TokensPerMinuteLimit,
-                routedDeployment = routedDeploymentId,
+                routedDeployment = resolvedRoutedDeployment,
+                backendUrl = deploymentTarget?.Endpoint,
                 requestedDeployment = requestedDeploymentId,
                 routingPolicyId
             });
