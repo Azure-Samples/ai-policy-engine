@@ -139,6 +139,26 @@ public sealed class ApplyOrchestratorTests
     }
 
     [Fact]
+    public async Task QueueAllPolicyReapplyAsync_QueuesExistingAssignments()
+    {
+        var repo = new InMemoryPolicyAssignmentRepository();
+        var channel = Channel.CreateUnbounded<ApimPolicyApplyWorkItem>();
+        var sut = CreateSut(
+            Substitute.For<IApimCatalogService>(),
+            CreateTemplateLibrary(),
+            repo,
+            channel);
+        await repo.UpsertAsync(CreateAssignment("api-1", status: PolicyAssignmentStatuses.Synced));
+        await repo.UpsertAsync(CreateAssignment("api-2", "chat", PolicyAssignmentStatuses.Failed));
+
+        var count = await sut.QueueAllPolicyReapplyAsync();
+
+        Assert.Equal(2, count);
+        Assert.Equal(2, channel.Reader.Count);
+        Assert.All(await repo.GetAllAsync(), assignment => Assert.Equal(PolicyAssignmentStatuses.Pending, assignment.Status));
+    }
+
+    [Fact]
     public async Task ClearApiPolicyAsync_DeletesAssignmentAndAppliesPassthrough()
     {
         var catalog = Substitute.For<IApimCatalogService>();

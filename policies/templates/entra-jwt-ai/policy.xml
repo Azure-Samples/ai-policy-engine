@@ -122,6 +122,8 @@
 		<!-- Extract routedDeployment from the precheck 200 response (null-safe) -->
 		<set-variable name="routedDeployment"
 			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routedDeployment"]?.ToString())" />
+		<set-variable name="backendUrl"
+			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["backendUrl"]?.ToString())" />
 		<set-variable name="routingPolicyId"
 			value="@(((IResponse)context.Variables["precheckResponse"]).Body.As<JObject>(preserveContent: true)["routingPolicyId"]?.ToString())" />
 		<set-variable name="accessProfileId"
@@ -145,8 +147,14 @@
 				}" />
 			</when>
 		</choose>
-		<!-- Set the backend service to the Azure OpenAI endpoint -->
-		<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+		<choose>
+			<when condition="@(!string.IsNullOrEmpty((string)context.Variables["backendUrl"]))">
+				<set-backend-service id="apim-generated-policy" base-url="@((string)context.Variables["backendUrl"])" />
+			</when>
+			<otherwise>
+				<set-backend-service id="apim-generated-policy" backend-id="openAiBackend" />
+			</otherwise>
+		</choose>
 		<!-- Use managed identity to authenticate against the Azure Cognitive Services -->
 		<authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
 		<!-- Start of Request Transformation policy -->

@@ -241,7 +241,10 @@ public static class RoutingPolicyEndpoints
             return null;
 
         var knownDeployments = await deploymentService.GetDeploymentsAsync();
-        var knownIds = knownDeployments.Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var knownIds = knownDeployments
+            .SelectMany(d => new[] { d.Id, d.Name })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // If discovery returned no deployments, reject the request (cannot validate routing rules)
         if (knownIds.Count == 0)
