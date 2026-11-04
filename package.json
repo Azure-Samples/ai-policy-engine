@@ -1,5 +1,8 @@
 {
+  "overrides": {
+    "zod": "4.6.6"
+  },
   "devDependencies": {
-    "@bradygaster/squad-cli": "^0.9.4"
+    "@bradygaster/squad-cli": "1.1.0"
   }
 }
